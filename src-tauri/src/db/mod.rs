@@ -138,27 +138,97 @@ pub struct Db {
     path: std::path::PathBuf,
 }
 
+fn is_corrupt_err(e: &AppError) -> bool {
+    let msg = e.to_string().to_lowercase();
+    msg.contains("corrupt")
+        || msg.contains("malformed")
+        || msg.contains("not a database")
+        || msg.contains("integrity check failed")
+        || msg.contains("file is not a database")
+        || msg.contains("database disk image")
+        || msg.contains("disk i/o error")
+        || msg.contains("unsupported file format")
+}
+
 impl Db {
     /// Open (and migrate) the SQLite database at `path`.
+    /// On detected database corruption, automatically archives the corrupt database
+    /// to `<filename>.corrupt-<ts>` and rebuilds a clean database without panicking.
     pub fn open(path: &Path) -> Result<Db, AppError> {
+        Self::open_inner(path, true)
+    }
+
+    fn open_inner(path: &Path, recover_on_corrupt: bool) -> Result<Db, AppError> {
         // Ensure parent directory exists.
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| AppError::Db(format!("create data dir: {e}")))?;
         }
 
-        let conn = Connection::open(path)
-            .map_err(|e| AppError::Db(format!("open db: {e}")))?;
+        let open_res = (|| -> Result<Db, AppError> {
+            let conn = Connection::open(path)
+                .map_err(|e| AppError::Db(format!("open db: {e}")))?;
 
-        // WAL mode + NORMAL durability.
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
-            .map_err(|e| AppError::Db(format!("pragma: {e}")))?;
+            // WAL mode + NORMAL durability + 5s busy timeout.
+            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;")
+                .map_err(|e| AppError::Db(format!("pragma: {e}")))?;
 
-        // Run migrations.
-        let db = Db { conn: Mutex::new(conn), path: path.to_path_buf() };
-        db.migrate()?;
+            // Full integrity check on open
+            let check: String = conn
+                .query_row("PRAGMA integrity_check(1)", [], |r| r.get(0))
+                .unwrap_or_else(|_| "corrupt".into());
+            if check != "ok" {
+                return Err(AppError::Db(format!("integrity check failed: {check}")));
+            }
 
-        Ok(db)
+            // Run migrations.
+            let db = Db { conn: Mutex::new(conn), path: path.to_path_buf() };
+            db.migrate()?;
+
+            Ok(db)
+        })();
+
+        match open_res {
+            Ok(db) => Ok(db),
+            Err(e) if recover_on_corrupt && is_corrupt_err(&e) => {
+                let now_ns = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos();
+                let stem = path.file_name().and_then(|n| n.to_str()).unwrap_or("state.db");
+                let corrupt_name = format!("{stem}.corrupt-{now_ns}");
+                let corrupt_path = path.with_file_name(corrupt_name);
+                tracing::warn!("DB corrupt ({e}); moving to {} and rebuilding", corrupt_path.display());
+
+                if std::fs::rename(path, &corrupt_path).is_err() {
+                    let _ = std::fs::copy(path, &corrupt_path);
+                    let _ = std::fs::remove_file(path);
+                }
+                let _ = std::fs::remove_file(format!("{}-wal", path.display()));
+                let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+
+                Self::open_inner(path, false)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Run full `PRAGMA integrity_check` returning true if "ok".
+    pub fn check_integrity(&self) -> Result<bool, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let res: String = conn
+            .query_row("PRAGMA integrity_check(1)", [], |r| r.get(0))
+            .map_err(|e| AppError::Db(format!("integrity_check: {e}")))?;
+        Ok(res == "ok")
+    }
+
+    /// Run `PRAGMA foreign_key_check` returning true if 0 errors.
+    pub fn check_foreign_keys(&self) -> Result<bool, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check()", [], |r| r.get(0))
+            .unwrap_or(0);
+        Ok(count == 0)
     }
 
     fn migrate(&self) -> Result<(), AppError> {
@@ -245,6 +315,16 @@ impl Db {
             .map_err(|e| AppError::Db(format!("list_dirty collect: {e}")))?;
 
         Ok(rows)
+    }
+
+    pub fn delete_file(&self, pair: &str, rel: &str) -> Result<(), AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.execute(
+            "DELETE FROM files WHERE pair_id=?1 AND rel_path=?2",
+            params![pair, rel],
+        )
+        .map_err(|e| AppError::Db(format!("delete_file: {e}")))?;
+        Ok(())
     }
 
     // ── jobs ─────────────────────────────────────────────────────────────────
