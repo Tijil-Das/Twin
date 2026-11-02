@@ -8,13 +8,15 @@ import {
   getConfig, updateConfig,
   authLogin, authLogout, authStatus,
   appdataSyncNow,
+  updateGetState, updateCheck, updateInstall,
+  type UpdateStatePayload,
 } from "@/lib/tauri";
 import type { Config } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, ShieldCheck, LogOut } from "lucide-react";
+import { ChevronDown, ChevronRight, ShieldCheck, LogOut, RefreshCw, Sparkles, ArrowDownCircle } from "lucide-react";
 import { formatBytes } from "@/lib/format";
 
 interface StorageQuota {
@@ -38,13 +40,21 @@ export function SettingsScreen() {
   const [syncingAppData, setSyncingAppData] = useState(false);
   const [quota, setQuota] = useState<StorageQuota | null>(null);
   const [autostart, setAutostart] = useState(false);
+  const [updateState, setUpdateState] = useState<UpdateStatePayload | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [cfg, a] = await Promise.all([getConfig(), authStatus()]);
+    const [cfg, a, uState] = await Promise.all([
+      getConfig(),
+      authStatus(),
+      updateGetState().catch(() => null),
+    ]);
     setConfig(cfg);
     setLocal(cfg);
     setAuthed(a.logged_in);
     setUserProfile(a.user ?? null);
+    if (uState) setUpdateState(uState);
 
     if (a.logged_in) {
       try {
@@ -122,6 +132,34 @@ export function SettingsScreen() {
       setAutostart(enable);
     } catch (e) {
       toast.error(`Autostart error: ${String(e)}`);
+    }
+  }
+
+  async function handleCheckUpdate() {
+    setCheckingUpdate(true);
+    try {
+      const res = await updateCheck();
+      setUpdateState(res);
+      if (res.ready_version) {
+        toast.success(`Twin v${res.ready_version} is ready to install!`);
+      } else if (res.status.status === "up-to-date") {
+        toast.info("Twin is up to date.");
+      }
+    } catch (e) {
+      toast.error(`Update check failed: ${String(e)}`);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
+
+  async function handleInstallUpdate() {
+    setInstallingUpdate(true);
+    try {
+      toast.info("Applying update and restarting Twin...");
+      await updateInstall();
+    } catch (e) {
+      toast.error(`Failed to install update: ${String(e)}`);
+      setInstallingUpdate(false);
     }
   }
 
@@ -308,6 +346,92 @@ export function SettingsScreen() {
               <span>1</span><span>8</span>
             </div>
           </FieldGroup>
+        </div>
+      </section>
+
+      {divider}
+
+      {/* Application Updates (JioTV Max pattern) */}
+      <section>
+        <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Application Updates</h2>
+
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "16px 18px",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          gap: 16,
+        }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#FFFFFF" }}>
+                Twin v{updateState?.current_version ?? "0.1.0"}
+              </span>
+              {updateState?.ready_version ? (
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  background: "rgba(34, 197, 94, 0.14)",
+                  color: "#4ADE80",
+                  border: "1px solid rgba(34, 197, 94, 0.35)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}>
+                  <Sparkles size={11} />
+                  v{updateState.ready_version} Ready
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  background: "var(--surface-2)",
+                  color: "var(--text-muted)",
+                  border: "1px solid var(--border)",
+                }}>
+                  64-bit Windows
+                </span>
+              )}
+            </div>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, display: "block" }}>
+              {updateState?.ready_version
+                ? `Version ${updateState.ready_version} has been downloaded in the background. Restart to apply immediately with zero re-install.`
+                : updateState?.status.status === "checking" || checkingUpdate
+                ? "Checking for new releases..."
+                : "Silent in-place background updates enabled (checked every 20m)."}
+            </span>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {updateState?.ready_version ? (
+              <Button
+                size="sm"
+                onClick={handleInstallUpdate}
+                disabled={installingUpdate}
+                style={{ background: "#22C55E", color: "#000", fontWeight: 600 }}
+              >
+                <ArrowDownCircle size={14} style={{ marginRight: 6 }} />
+                {installingUpdate ? "Restarting..." : "Restart & Apply Update"}
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate}
+              >
+                <RefreshCw size={13} style={{ marginRight: 6 }} className={checkingUpdate ? "animate-spin" : ""} />
+                {checkingUpdate ? "Checking…" : "Check for updates"}
+              </Button>
+            )}
+          </div>
         </div>
       </section>
 

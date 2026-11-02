@@ -10,6 +10,7 @@ pub mod queue;
 pub mod rules;
 pub mod sync;
 pub mod transfer;
+pub mod updater;
 pub mod watcher;
 
 use tauri::{

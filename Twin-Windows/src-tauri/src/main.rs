@@ -381,6 +381,10 @@ fn main() {
             commands::set_starred,
             commands::drive_search,
             appdata_sync_now,
+            updater::update_get_state,
+            updater::update_check,
+            updater::update_install,
+            updater::update_clear_pending,
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -532,6 +536,12 @@ fn main() {
                     }
                 });
             }
+
+            // Check pending update on launch (JioTV Max pattern).
+            updater::apply_pending_update_on_launch(&handle);
+
+            // Start autonomous background updater (JioTV Max 15s delay, 20m interval).
+            updater::init_updater(handle.clone());
 
             // Hide window on startup if --hidden flag was passed.
             if start_hidden {

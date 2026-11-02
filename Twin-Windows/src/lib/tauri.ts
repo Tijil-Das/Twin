@@ -176,3 +176,28 @@ export const validatePath = (path: string) =>
   invoke<boolean>("validate_path", { path }).catch(() => false);
 export const appdataSyncNow = () => invoke<void>("appdata_sync_now");
 
+// ── Updater types & invokes ──────────────────────────────────────────────────
+
+export type UpdateStatusKind =
+  | "idle"
+  | "checking"
+  | "update-available"
+  | "downloading"
+  | "ready"
+  | "installing"
+  | "up-to-date"
+  | "error";
+
+export interface UpdateStatePayload {
+  status: { status: UpdateStatusKind; [key: string]: unknown };
+  current_version: string;
+  ready_version?: string | null;
+  release_notes?: string | null;
+  last_checked?: string | null;
+}
+
+export const updateGetState = () => invoke<UpdateStatePayload>("update_get_state");
+export const updateCheck = () => invoke<UpdateStatePayload>("update_check");
+export const updateInstall = () => invoke<void>("update_install");
+export const updateClearPending = () => invoke<void>("update_clear_pending");
+

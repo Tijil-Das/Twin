@@ -4,9 +4,9 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { useStore, type ProgressEvent } from "@/store";
-import { getConfig, authStatus, govState, queueStatus } from "@/lib/tauri";
+import { getConfig, authStatus, govState, queueStatus, updateInstall } from "@/lib/tauri";
 import type { GovStatePayload } from "@/lib/tauri";
 import { Sidebar, type Screen } from "@/components/Sidebar";
 import { ConflictDialog } from "@/components/ConflictDialog";
@@ -99,6 +99,20 @@ export default function App() {
       // Sync conflict
       listen<{ pair_id: string; rel_path: string }>("sync://conflict", (ev) => {
         addConflict(ev.payload);
+      }),
+
+      // Background update ready (JioTV Max pattern)
+      listen<{ version: string; notes?: string }>("update://ready", (ev) => {
+        toast.success(`Twin v${ev.payload.version} is ready to apply!`, {
+          description: "Update was downloaded seamlessly in the background. Restart to apply with zero re-install.",
+          action: {
+            label: "Restart now",
+            onClick: () => {
+              void updateInstall();
+            },
+          },
+          duration: 20000,
+        });
       }),
     ];
 
