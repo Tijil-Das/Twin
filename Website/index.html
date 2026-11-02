@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Twin — Lightweight Google Drive Sync Client for Windows</title>
-  <meta name="description" content="A transparent, ultra-lightweight Google Drive sync client built in Rust. 28 MB RAM, zero background overhead, arbitrary folder pairs, and complete transfer visibility.">
+  <meta name="description" content="A transparent, ultra-lightweight Google Drive sync client built in Rust. 28 MB RAM, zero background overhead, and complete transfer visibility.">
   <link rel="icon" type="image/png" href="assets/app-icon.png">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -43,12 +43,12 @@
     <div class="container">
       <div class="hero-tag">
         <span class="status-dot"></span>
-        <span>Twin 0.1.0 Release · Windows 10 &amp; 11 (64-bit)</span>
+        <span>Twin 0.1.0 · Windows 10 &amp; 11 (64-bit)</span>
       </div>
 
       <h1 class="hero-title">Google Drive, engineered in Rust.</h1>
       <p class="hero-subtitle">
-        A desktop sync client built for speed, transparency, and freedom. Uses 95% less RAM than Google Drive with complete transfer visibility.
+        The lightweight, transparent Google Drive client for Windows. 28 MB RAM, zero background lag, and complete transfer visibility.
       </p>
 
       <div class="hero-actions">
@@ -72,120 +72,79 @@
       <div class="metrics-grid">
         <div class="metric-box">
           <div class="metric-value green">28 MB</div>
-          <div class="metric-label">Idle Memory</div>
-          <div class="metric-sub">vs 620 MB in Google Drive Desktop</div>
+          <div class="metric-label">Idle RAM</div>
         </div>
         <div class="metric-box">
           <div class="metric-value cyan">0.01%</div>
-          <div class="metric-label">Idle CPU Overhead</div>
-          <div class="metric-sub">Zero background lag or fan spin</div>
+          <div class="metric-label">Idle CPU</div>
         </div>
         <div class="metric-box">
           <div class="metric-value green">8.4 MB</div>
-          <div class="metric-label">Installer Package</div>
-          <div class="metric-sub">Pure native Rust binary (no Chromium)</div>
+          <div class="metric-label">Binary Size</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 1: The Modern Bento Architecture Showcase -->
+  <!-- Section 1: Bento Capabilities Showcase (Low text density, high impact) -->
   <section id="features" class="section">
     <div class="container">
       <div class="section-head center">
-        <span class="section-tag">Architecture</span>
-        <h2 class="section-title">Everything Google Drive should have been.</h2>
-        <p class="section-desc">Engineered from the ground up to replace the opaque, heavy official client.</p>
+        <span class="section-tag">Capabilities</span>
+        <h2 class="section-title">Built for speed and clarity.</h2>
+        <p class="section-desc">Zero background bloat. Total transfer visibility.</p>
       </div>
 
       <div class="bento-grid">
-        <!-- Card 1: Wide Spotlight (Full Width) -->
+        <!-- Card 1: Wide Spotlight (Real-Time Transfer) -->
         <div class="bento-card bento-wide">
           <div class="bento-content">
-            <div class="bento-badge">
-              <span class="badge-dot"></span>
-              <span>Real-Time Transfer Engine</span>
-            </div>
-            <h3 class="bento-title">Complete Process Visibility</h3>
+            <span class="bento-tag">TRANSFER ENGINE</span>
+            <h3 class="bento-title">Real-time byte accuracy.</h3>
             <p class="bento-desc">
-              Track active uploads at the byte level with smoothed EMA throughput, exact ETA countdowns, and real chunk confirmation. Never wonder why a file is stuck.
+              Know what's uploading down to the byte. Real speeds, chunk confirmations, and exact ETA. No mystery spinners.
             </p>
-            <div class="bento-features-list">
-              <span class="bento-pill">Resumable 16 MiB Chunks</span>
-              <span class="bento-pill">Blake3 + MD5 Checksums</span>
-              <span class="bento-pill">4 Parallel Streams</span>
-            </div>
           </div>
 
-          <!-- Right Side: High-Fidelity Sync Engine Inspector -->
-          <div class="bento-visual">
-            <div class="ui-panel">
-              <div class="ui-panel-head">
-                <div class="ui-panel-title">
-                  <span class="ui-status-pulse"></span>
-                  <span>Sync Queue · Active</span>
-                </div>
-                <span class="ui-badge-speed">48.2 MB/s</span>
+          <!-- Visual: Clean Transfer Stream -->
+          <div class="ui-panel">
+            <div class="ui-panel-head">
+              <div class="ui-panel-title">
+                <span class="ui-status-pulse"></span>
+                <span>Active Upload</span>
+              </div>
+              <span class="ui-badge-speed">48.2 MB/s</span>
+            </div>
+
+            <div class="ui-transfer-item">
+              <div class="ui-item-header">
+                <span class="ui-filename">Project_Assets.zip</span>
+                <span class="ui-item-percent">76%</span>
               </div>
 
-              <div class="ui-transfer-item">
-                <div class="ui-item-header">
-                  <div class="ui-item-info">
-                    <svg class="ui-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                    </svg>
-                    <div class="ui-filename-group">
-                      <span class="ui-filename">Project_Assets_2026.tar.gz</span>
-                      <span class="ui-filesize">1.2 GB of 1.6 GB</span>
-                    </div>
-                  </div>
-                  <span class="ui-item-percent">76%</span>
-                </div>
-
-                <div class="ui-progress-bar">
-                  <div class="ui-progress-fill" style="width: 76%;"></div>
-                </div>
-
-                <div class="ui-item-footer">
-                  <span class="ui-chunk-info">Chunk 4/5 · 16 MiB blocks</span>
-                  <span class="ui-eta">ETA 0.8s</span>
-                </div>
+              <div class="ui-progress-bar">
+                <div class="ui-progress-fill" style="width: 76%;"></div>
               </div>
 
-              <div class="ui-transfer-item queued">
-                <div class="ui-item-header">
-                  <div class="ui-item-info">
-                    <svg class="ui-file-icon dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                    </svg>
-                    <div class="ui-filename-group">
-                      <span class="ui-filename dim">Q4_Financial_Model.xlsx</span>
-                      <span class="ui-filesize">Auto-export from Google Sheets</span>
-                    </div>
-                  </div>
-                  <span class="ui-status-label">Next in queue</span>
-                </div>
+              <div class="ui-item-footer">
+                <span>1.2 GB / 1.6 GB</span>
+                <span class="ui-eta green">ETA 0.8s</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Card 2: Hardware Governor & 28 MB RAM (Half Width) -->
+        <!-- Card 2: Governor & RAM (Half Width) -->
         <div class="bento-card">
-          <div class="bento-top">
-            <div class="bento-badge">
-              <span class="badge-dot green"></span>
-              <span>Hardware Efficiency</span>
-            </div>
-            <h3 class="bento-title">Governor &amp; 28 MB RAM</h3>
+          <div class="bento-content">
+            <span class="bento-tag">EFFICIENCY</span>
+            <h3 class="bento-title">28 MB RAM. Zero lag.</h3>
             <p class="bento-desc">
-              Native Rust Tokio engine. Automatically pauses transfers when host CPU spikes above 70% during gaming or rendering, or when battery drops below 20%.
+              Pauses background sync automatically while you game, compile, or render.
             </p>
           </div>
 
-          <!-- Visual: Clean RAM & Thermal Governor -->
+          <!-- Visual: RAM & Thermal Governor -->
           <div class="ui-panel governor-panel">
             <div class="mem-compare-row">
               <div class="mem-meta">
@@ -199,7 +158,7 @@
 
             <div class="mem-compare-row">
               <div class="mem-meta">
-                <span class="mem-name">Google Drive Desktop</span>
+                <span class="mem-name">Google Drive</span>
                 <span class="mem-val loss">620 MB</span>
               </div>
               <div class="mem-bar-track">
@@ -207,52 +166,40 @@
               </div>
             </div>
 
-            <div class="gov-trigger-row">
-              <div class="gov-rule">
-                <span class="gov-rule-icon">⏸</span>
-                <span class="gov-rule-text">CPU &gt; 70% ➔ Pause Sync</span>
-              </div>
-              <div class="gov-rule">
-                <span class="gov-rule-icon">🔋</span>
-                <span class="gov-rule-text">Battery &lt; 20% ➔ Sleep</span>
-              </div>
+            <div class="gov-pill">
+              <span class="gov-dot"></span>
+              <span>Auto-pause on CPU &gt; 70% or battery &lt; 20%</span>
             </div>
           </div>
         </div>
 
-        <!-- Card 3: Arbitrary Folder Mapping & Revisions (Half Width) -->
+        <!-- Card 3: Folder Freedom (Half Width) -->
         <div class="bento-card">
-          <div class="bento-top">
-            <div class="bento-badge">
-              <span class="badge-dot green"></span>
-              <span>Drive Freedom</span>
-            </div>
-            <h3 class="bento-title">Any Folder. Any Drive.</h3>
+          <div class="bento-content">
+            <span class="bento-tag">FREEDOM</span>
+            <h3 class="bento-title">Any folder. Any drive.</h3>
             <p class="bento-desc">
-              Map arbitrary folders on internal SSDs or external drives without virtual G: drive restrictions. Access in-app revision history and offline doc export.
+              Direct two-way sync without virtual G: drive restrictions. Includes full revision rollback.
             </p>
           </div>
 
-          <!-- Visual: Clean Folder Route & Vault -->
+          <!-- Visual: Direct Folder Route -->
           <div class="ui-panel freedom-panel">
             <div class="sync-route-box">
               <div class="route-point">
                 <span class="point-badge">LOCAL</span>
-                <span class="point-path">D:\Design\Assets</span>
+                <span class="point-path">D:\Projects</span>
               </div>
-              <div class="route-line-connector">
-                <span class="connector-arrow">⇄</span>
-                <span class="connector-label">2-Way Sync</span>
-              </div>
+              <span class="route-arrow">⇄</span>
               <div class="route-point">
                 <span class="point-badge drive">DRIVE</span>
-                <span class="point-path">Drive:/Assets</span>
+                <span class="point-path">Drive:/Projects</span>
               </div>
             </div>
 
             <div class="vault-capsules">
-              <span class="vault-capsule">✔ In-App Revision Vault + Keep Forever</span>
-              <span class="vault-capsule">✔ Offline .docx, .xlsx, and .pptx Export</span>
+              <span class="vault-capsule">✔ In-App Revision Vault</span>
+              <span class="vault-capsule">✔ Native Office Export (.docx, .xlsx)</span>
             </div>
           </div>
         </div>
@@ -260,74 +207,73 @@
     </div>
   </section>
 
-  <!-- Section 2: Head-to-Head Comparison (High Contrast Green/Red Badges) -->
+  <!-- Section 2: Head-to-Head Comparison (High Contrast Badges) -->
   <section id="comparison" class="section">
     <div class="container">
       <div class="section-head center">
         <span class="section-tag">Comparison</span>
         <h2 class="section-title">Twin vs. Google Drive for Desktop</h2>
-        <p class="section-desc">A side-by-side technical breakdown of capabilities and resource usage.</p>
       </div>
 
       <div class="table-wrap">
         <table class="compare-table">
           <thead>
             <tr>
-              <th style="width: 32%;">Capability / Feature</th>
-              <th style="width: 34%;" class="col-twin">Twin v0.1.0</th>
-              <th style="width: 34%;">Google Drive for Desktop</th>
+              <th style="width: 30%;">Capability</th>
+              <th style="width: 35%;" class="col-twin">Twin v0.1.0</th>
+              <th style="width: 35%;">Google Drive for Desktop</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td class="col-feature">Memory (RAM) Footprint</td>
+              <td class="col-feature">RAM Usage</td>
               <td class="col-twin-cell"><span class="badge-win">~28 MB RAM</span></td>
               <td><span class="badge-loss">450 MB – 1.2 GB RAM</span></td>
             </tr>
             <tr>
-              <td class="col-feature">Hardware CPU &amp; Thermal Governor</td>
-              <td class="col-twin-cell"><span class="badge-win">Auto-pause &gt;70%, resume &lt;50%</span></td>
-              <td><span class="badge-loss">None (continuous fan spin)</span></td>
+              <td class="col-feature">CPU Governor</td>
+              <td class="col-twin-cell"><span class="badge-win">Auto-pause &gt;70% CPU</span></td>
+              <td><span class="badge-loss">None (fan noise)</span></td>
             </tr>
             <tr>
-              <td class="col-feature">Battery State Awareness</td>
-              <td class="col-twin-cell"><span class="badge-win">Auto-pause below 20% on battery</span></td>
-              <td><span class="badge-loss">Aggressive background battery drain</span></td>
+              <td class="col-feature">Battery Saver</td>
+              <td class="col-twin-cell"><span class="badge-win">Auto-pause &lt;20% battery</span></td>
+              <td><span class="badge-loss">Aggressive background drain</span></td>
             </tr>
             <tr>
-              <td class="col-feature">Folder Mapping Flexibility</td>
-              <td class="col-twin-cell"><span class="badge-win">Unlimited arbitrary folder pairs</span></td>
-              <td><span class="badge-loss">Forced virtual G: drive / single root</span></td>
+              <td class="col-feature">Folder Pairs</td>
+              <td class="col-twin-cell"><span class="badge-win">Unlimited arbitrary folders</span></td>
+              <td><span class="badge-loss">Forced virtual G: drive</span></td>
             </tr>
             <tr>
-              <td class="col-feature">Revision History &amp; Rollback</td>
-              <td class="col-twin-cell"><span class="badge-win">In-app revision browser + Keep Forever</span></td>
-              <td><span class="badge-loss">Redirects to web browser interface</span></td>
+              <td class="col-feature">Version History</td>
+              <td class="col-twin-cell"><span class="badge-win">In-app revision vault</span></td>
+              <td><span class="badge-loss">Redirects to browser</span></td>
             </tr>
             <tr>
-              <td class="col-feature">Google Workspace Files</td>
-              <td class="col-twin-cell"><span class="badge-win">Auto-export to .docx, .xlsx, .pptx</span></td>
-              <td><span class="badge-loss">Browser shortcut stubs (.gdoc, .gsheet)</span></td>
+              <td class="col-feature">Google Docs Export</td>
+              <td class="col-twin-cell"><span class="badge-win">Native .docx &amp; .xlsx</span></td>
+              <td><span class="badge-loss">Browser shortcut stubs</span></td>
             </tr>
             <tr>
-              <td class="col-feature">Sync State Transparency</td>
-              <td class="col-twin-cell"><span class="badge-win">True bytes, smoothed speed, exact ETA</span></td>
-              <td><span class="badge-loss">Vague file counters &amp; endless spinners</span></td>
+              <td class="col-feature">Progress Accuracy</td>
+              <td class="col-twin-cell"><span class="badge-win">True bytes &amp; exact ETA</span></td>
+              <td><span class="badge-loss">Vague spinners</span></td>
             </tr>
             <tr>
-              <td class="col-feature">Resumable Chunk Architecture</td>
-              <td class="col-twin-cell"><span class="badge-win">16 MiB chunks with Blake3 caching</span></td>
-              <td><span class="badge-loss">Opaque chunking with full retries</span></td>
+              <td class="col-feature">Resumable Chunks</td>
+              <td class="col-twin-cell"><span class="badge-win">16 MiB Blake3 blocks</span></td>
+              <td><span class="badge-loss">Full restart on failure</span></td>
             </tr>
             <tr>
-              <td class="col-feature">Configuration Portability</td>
-              <td class="col-twin-cell"><span class="badge-win">Portable config.toml + GitHub backup</span></td>
-              <td><span class="badge-loss">Opaque %APPDATA% registry storage</span></td>
+              <td class="col-feature">Config Storage</td>
+              <td class="col-twin-cell"><span class="badge-win">Portable config.toml</span></td>
+              <td><span class="badge-loss">Opaque %APPDATA%</span></td>
             </tr>
             <tr>
-              <td class="col-feature">Installer Package Size</td>
-              <td class="col-twin-cell"><span class="badge-win">8.4 MB (Native Rust binary)</span></td>
-              <td><span class="badge-loss">~350 MB (Bundled Python + Chromium)</span></td>
+              <td class="col-feature">Download Size</td>
+              <td class="col-twin-cell"><span class="badge-win">8.4 MB (Native Rust)</span></td>
+              <td><span class="badge-loss">~350 MB (Electron/Python)</span></td>
             </tr>
           </tbody>
         </table>
@@ -346,8 +292,8 @@
             </svg>
           </div>
           <div class="github-text">
-            <h3>Contribute &amp; Star on GitHub</h3>
-            <p>Twin is free and open source. Star the repository, report issues, or contribute pull requests.</p>
+            <h3>Twin is 100% open source.</h3>
+            <p>Star the repository, report issues, or contribute on GitHub.</p>
           </div>
         </div>
 
@@ -376,14 +322,12 @@
 
         <div class="download-head">
           <h2>Download Twin for Windows</h2>
-          <p>Version 0.1.0 · Fast, lightweight, and completely open source.</p>
+          <p>Version 0.1.0 · Lightweight, fast, and open source.</p>
         </div>
 
         <div class="download-meta-badges">
-          <span class="version-pill">Version 0.1.0</span>
-          <span class="version-pill">Windows 10 / 11 (64-bit)</span>
-          <span class="version-pill">8.4 MB Package</span>
-          <span class="version-pill">MIT License</span>
+          <span class="version-pill">Windows 10 &amp; 11 (64-bit)</span>
+          <span class="version-pill">8.4 MB</span>
         </div>
 
         <div class="download-btn-group">
@@ -393,10 +337,10 @@
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
-            <span>Windows Installer (.msi)</span>
+            <span>Installer (.msi)</span>
           </button>
-          <button onclick="downloadRelease('exe')" class="btn btn-secondary btn-lg">Setup Executable (.exe)</button>
-          <button onclick="downloadRelease('zip')" class="btn btn-secondary btn-lg">Portable Zip (.zip)</button>
+          <button onclick="downloadRelease('exe')" class="btn btn-secondary btn-lg">Executable (.exe)</button>
+          <button onclick="downloadRelease('zip')" class="btn btn-secondary btn-lg">Portable (.zip)</button>
         </div>
 
         <div class="hash-pill">
@@ -413,7 +357,7 @@
     <div class="container footer-inner">
       <div class="footer-brand">
         <img src="assets/app-icon.png" width="20" height="20" alt="Twin Logo">
-        <span>Twin v0.1.0 · Lightweight Google Drive Sync for Windows</span>
+        <span>Twin · Lightweight Google Drive Sync</span>
       </div>
 
       <div class="footer-links">

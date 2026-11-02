@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 use tokio::sync::Mutex;
@@ -159,36 +160,53 @@ const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const DRIVE_SCOPE: &str = "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata";
 
-/// Built-in Twin Google OAuth client credentials.
-/// Replace placeholder below with your Twin Google Cloud Console credentials.
-pub const DEFAULT_CLIENT_ID: &str = "YOUR_TWIN_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
-pub const DEFAULT_CLIENT_SECRET: &str = "YOUR_TWIN_GOOGLE_CLIENT_SECRET";
+// ── Built-in Twin Google OAuth client credentials ─────────────────────────
 
-/// Read client_id from env, Credential Manager, or built-in default.
-pub fn get_client_id() -> String {
+fn default_client_id() -> String {
     if let Ok(v) = std::env::var("TWIN_CLIENT_ID") {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
         }
     }
-    match cred_get(KEY_CLIENT_ID) {
-        Ok(v) if !v.trim().is_empty() => v,
-        _ => DEFAULT_CLIENT_ID.to_string(),
-    }
+    const ID_BYTES: [u8; 72] = [
+        104, 99, 109, 105, 109, 110, 109, 105, 111, 99, 109, 110, 119, 109, 98, 44, 46, 106, 54,
+        41, 48, 57, 42, 109, 60, 61, 109, 104, 62, 57, 111, 52, 48, 110, 53, 52, 110, 104, 98,
+        51, 47, 49, 52, 107, 55, 116, 59, 42, 42, 41, 116, 61, 53, 53, 61, 54, 63, 47, 41, 63,
+        40, 57, 53, 52, 46, 63, 52, 46, 116, 57, 53, 55,
+    ];
+    let decoded: Vec<u8> = ID_BYTES.iter().map(|b| b ^ 0x5A).collect();
+    String::from_utf8(decoded).unwrap_or_default()
 }
 
-/// Read client_secret from env, Credential Manager, or built-in default.
-pub fn get_client_secret() -> String {
+fn default_client_secret() -> String {
     if let Ok(v) = std::env::var("TWIN_CLIENT_SECRET") {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
         }
     }
+    const SEC_BYTES: [u8; 35] = [
+        29, 21, 25, 9, 10, 2, 119, 14, 10, 63, 0, 11, 0, 0, 53, 10, 14, 45, 119, 28, 17, 63, 51,
+        105, 8, 52, 8, 54, 108, 18, 107, 43, 51, 31, 63,
+    ];
+    let decoded: Vec<u8> = SEC_BYTES.iter().map(|b| b ^ 0x5A).collect();
+    String::from_utf8(decoded).unwrap_or_default()
+}
+
+/// Read client_id from env, Credential Manager, or built-in default.
+pub fn get_client_id() -> String {
+    match cred_get(KEY_CLIENT_ID) {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => default_client_id(),
+    }
+}
+
+/// Read client_secret from env, Credential Manager, or built-in default.
+pub fn get_client_secret() -> String {
     match cred_get(KEY_CLIENT_SECRET) {
         Ok(v) if !v.trim().is_empty() => v,
-        _ => DEFAULT_CLIENT_SECRET.to_string(),
+        _ => default_client_secret(),
     }
 }
 
@@ -487,7 +505,7 @@ pub async fn auth_logout() -> Result<(), AppError> {
 #[tauri::command]
 pub fn auth_status() -> AuthStatus {
     let cid = get_client_id();
-    let is_configured = !cid.is_empty() && cid != "YOUR_TWIN_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+    let is_configured = !cid.is_empty() && !cid.starts_with("YOUR_TWIN");
     let logged = is_logged_in();
     let user = if logged {
         if let Ok(guard) = profile_state().try_lock() {
