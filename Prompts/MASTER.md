@@ -35,3 +35,11 @@ You are a code-generation agent. Build a Windows background Google Drive sync ap
 
 ## Session template (paste at start of every session)
 "Read MASTER.md (COMMON RULES), SPEC.md, and prompts/Pxx_name.md. Implement exactly Pxx. Do not touch other modules. Stop when the done-test passes."
+
+## Credentials registry (all secrets in Windows Credential Manager, service `tether`)
+
+| Key | Description | Set by |
+|-----|-------------|--------|
+| `client_id` | Google OAuth Desktop Client ID | `auth_set_client_id` (P03) |
+| `client_secret` | Google OAuth Desktop Client Secret | `auth_set_client_secret` (P03) |
+| `refresh_token` | Google OAuth refresh token | `auth_login` / `auth_clear_credentials` (P03) |

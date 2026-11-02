@@ -16,3 +16,17 @@ On 400 `invalid_grant` clear stored token and return AppError::Auth("relogin").
 Commands: `auth_login`, `auth_logout`, `auth_status`. Emit event `auth://changed`.
 ## Done-test
 Wiremock tests for token exchange, refresh, invalid_grant. Manual: login works, restart app stays logged in, token not present in any file (grep the repo).
+
+## Settings integration
+
+| Field | Secret? | Storage | Tauri command to set |
+|-------|---------|---------|----------------------|
+| Google OAuth Client ID | Yes | Windows Credential Manager, service `tether`, key `client_id` | `auth_set_client_id(value: String)` |
+| Google OAuth Client Secret | Yes | Windows Credential Manager, service `tether`, key `client_secret` | `auth_set_client_secret(value: String)` |
+| (Refresh token) | Yes | Windows Credential Manager, service `tether`, key `refresh_token` | Managed internally by `auth_login` / `auth_clear_credentials` |
+
+**First-run checklist (Settings screen):**
+- [ ] Enter Google OAuth Client ID — paste from Google Cloud Console > Credentials > Desktop app
+- [ ] Enter Google OAuth Client Secret — paste from same console page
+- [ ] Click "Sign in with Google" → browser opens, grant Drive access
+- Status indicator shows "Signed in" / "Not signed in"

@@ -3,7 +3,7 @@
 
 use tauri::Manager;
 use tracing::info;
-use tether_lib::{config, setup_tray};
+use tether_lib::{auth, config, setup_tray};
 
 #[cfg(windows)]
 fn set_below_normal_priority() {
@@ -54,6 +54,12 @@ fn main() {
             config::update_config,
             config::add_pair,
             config::remove_pair,
+            auth::auth_login,
+            auth::auth_logout,
+            auth::auth_status,
+            auth::auth_set_client_id,
+            auth::auth_set_client_secret,
+            auth::auth_clear_credentials,
         ])
         .setup(move |app| {
             let handle = app.handle();
