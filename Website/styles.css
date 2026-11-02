@@ -408,251 +408,89 @@ p { color: var(--text-muted); font-size: 1rem; }
   line-height: 1.55;
 }
 
-/* Feature 1 Visual: Stream Inspector */
-.feature-visual {
-  background-color: #0B0D14;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+.feature-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-cyan);
+  margin-bottom: 6px;
+}
+
+/* Unified Stat & Capability Box */
+.feature-stat-box {
+  background-color: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
-.stream-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.stream-file {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #FFFFFF;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stream-speed {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--success-light);
-  background-color: var(--success-subtle);
-  border: 1px solid var(--success-border);
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-
-.stream-bar {
-  width: 100%;
-  height: 6px;
-  background-color: rgba(255, 255, 255, 0.06);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.stream-fill {
-  height: 100%;
-  background-color: var(--success-light);
-  border-radius: 3px;
-}
-
-.stream-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--text-subtle);
-  font-variant-numeric: tabular-nums;
-}
-
-.stream-eta {
-  color: var(--success-light);
-  font-weight: 600;
-}
-
-.stream-chunks {
-  display: flex;
-  gap: 6px;
-  margin-top: 2px;
-}
-
-.chunk-chip {
-  flex: 1;
-  font-size: 10.5px;
-  font-weight: 600;
-  text-align: center;
-  padding: 4px 2px;
-  border-radius: 4px;
-  font-variant-numeric: tabular-nums;
-}
-
-.chunk-chip.done {
-  background-color: rgba(74, 222, 128, 0.1);
-  color: var(--success-light);
-  border: 1px solid rgba(74, 222, 128, 0.25);
-}
-
-.chunk-chip.active {
-  background-color: rgba(56, 189, 248, 0.1);
-  color: var(--accent-cyan);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-}
-
-.chunk-chip.queue {
-  background-color: rgba(255, 255, 255, 0.03);
-  color: var(--text-subtle);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-/* Feature 2 Visual: Stat Compare Grid */
-.stat-compare-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.stat-tile {
-  background-color: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  padding: 10px 12px;
+.stat-highlight {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.stat-tile.win {
-  border-color: rgba(74, 222, 128, 0.25);
-  background-color: rgba(74, 222, 128, 0.04);
-}
-
-.stat-tile.loss {
-  border-color: rgba(248, 113, 113, 0.2);
-  background-color: rgba(248, 113, 113, 0.04);
-}
-
-.stat-tile-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.stat-tile-val {
-  font-size: 1.45rem;
+.stat-number {
+  font-size: 2.1rem;
   font-weight: 700;
+  color: #FFFFFF;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
-.stat-tile-val.green {
+.stat-number.green {
   color: var(--success-light);
 }
 
-.stat-tile-val.red {
-  color: var(--danger-light);
+.stat-unit {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
-.stat-tile-sub {
-  font-size: 10.5px;
+.stat-sub {
+  font-size: 12px;
   color: var(--text-subtle);
   margin-top: 2px;
 }
 
-.gov-status-pill {
+.spec-rows {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--accent-cyan);
-  background-color: rgba(56, 189, 248, 0.06);
-  border: 1px solid rgba(56, 189, 248, 0.18);
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  font-variant-numeric: tabular-nums;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.gov-status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--accent-cyan);
-  flex-shrink: 0;
-}
-
-/* Feature 3 Visual: Pipeline Box */
-.pipeline-box {
-  background-color: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 10px 12px;
+.spec-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  font-size: 12.5px;
 }
 
-.pipeline-node {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.node-tag {
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--accent-cyan);
-  letter-spacing: 0.05em;
-}
-
-.node-tag.drive {
-  color: var(--success-light);
-}
-
-.node-val {
-  font-size: 12px;
-  font-weight: 600;
-  color: #FFFFFF;
-}
-
-.pipeline-connector {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-}
-
-.pipeline-arrow {
-  color: var(--accent-cyan);
-  font-size: 13px;
-  line-height: 1;
-}
-
-.pipeline-label {
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--text-subtle);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.feature-checks {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.check-item {
-  font-size: 11.5px;
-  font-weight: 500;
+.spec-k {
   color: var(--text-muted);
+  font-weight: 500;
+}
+
+.spec-v {
+  color: #FFFFFF;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.spec-v.green {
+  color: var(--success-light);
 }
 
 /* ========================================================

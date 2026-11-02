@@ -99,89 +99,111 @@
       </div>
 
       <div class="features-grid">
-        <!-- Card 1: Process Visibility -->
+        <!-- Card 1: Visibility -->
         <div class="feature-card">
           <div class="feature-head">
+            <div class="feature-icon-wrap">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </div>
             <span class="feature-tag">01 / VISIBILITY</span>
-            <h3 class="feature-title">Real-time byte accuracy.</h3>
-            <p class="feature-desc">Know what's uploading down to the byte. Real speeds, chunk confirmations, and exact ETA.</p>
+            <h3 class="feature-title">Complete Process Visibility</h3>
+            <p class="feature-desc">Know exactly what's syncing down to the byte. Real network throughput and exact ETA.</p>
           </div>
 
-          <div class="feature-visual">
-            <div class="stream-header">
-              <span class="stream-file">Project_Assets.zip</span>
-              <span class="stream-speed">48.2 MB/s</span>
+          <div class="feature-stat-box">
+            <div class="stat-highlight">
+              <div class="stat-number green">48.2 <span class="stat-unit">MB/s</span></div>
+              <div class="stat-sub">Byte-accurate real-time speed</div>
             </div>
-            <div class="stream-bar">
-              <div class="stream-fill" style="width: 76%;"></div>
-            </div>
-            <div class="stream-meta">
-              <span>1.2 GB of 1.6 GB</span>
-              <span class="stream-eta">ETA 0.8s · 76%</span>
-            </div>
-            <div class="stream-chunks">
-              <span class="chunk-chip done">16M ✓</span>
-              <span class="chunk-chip done">16M ✓</span>
-              <span class="chunk-chip active">16M 76%</span>
-              <span class="chunk-chip queue">16M Queue</span>
+
+            <div class="spec-rows">
+              <div class="spec-row">
+                <span class="spec-k">Chunk Architecture</span>
+                <span class="spec-v">16 MiB Resumable</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-k">Integrity Check</span>
+                <span class="spec-v">Blake3 + MD5</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-k">Concurrency</span>
+                <span class="spec-v">4 Parallel Streams</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Card 2: Hardware Efficiency -->
+        <!-- Card 2: Efficiency -->
         <div class="feature-card">
           <div class="feature-head">
+            <div class="feature-icon-wrap">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </div>
             <span class="feature-tag">02 / EFFICIENCY</span>
-            <h3 class="feature-title">28 MB RAM. Zero lag.</h3>
-            <p class="feature-desc">Engineered in native Rust. Automatically pauses transfers while you game, compile, or render.</p>
+            <h3 class="feature-title">28 MB RAM &amp; CPU Governor</h3>
+            <p class="feature-desc">Engineered in native Rust Tokio. Pauses automatically during gaming, compiling, or low battery.</p>
           </div>
 
-          <div class="feature-visual">
-            <div class="stat-compare-grid">
-              <div class="stat-tile win">
-                <span class="stat-tile-label">Twin</span>
-                <span class="stat-tile-val green">28 MB</span>
-                <span class="stat-tile-sub">95% less RAM</span>
-              </div>
-              <div class="stat-tile loss">
-                <span class="stat-tile-label">Google Drive</span>
-                <span class="stat-tile-val red">620 MB</span>
-                <span class="stat-tile-sub">Heavy background tax</span>
-              </div>
+          <div class="feature-stat-box">
+            <div class="stat-highlight">
+              <div class="stat-number green">28 <span class="stat-unit">MB</span></div>
+              <div class="stat-sub">95% less RAM than Google Drive</div>
             </div>
-            <div class="gov-status-pill">
-              <span class="gov-status-dot"></span>
-              <span>Auto-pause on CPU &gt; 70% or battery &lt; 20%</span>
+
+            <div class="spec-rows">
+              <div class="spec-row">
+                <span class="spec-k">Idle Memory</span>
+                <span class="spec-v green">28 MB (vs 620 MB)</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-k">CPU Governor</span>
+                <span class="spec-v">Auto-pause &gt; 70%</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-k">Battery Guard</span>
+                <span class="spec-v">Auto-pause &lt; 20%</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Card 3: Extended Freedom -->
+        <!-- Card 3: Freedom -->
         <div class="feature-card">
           <div class="feature-head">
+            <div class="feature-icon-wrap">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
             <span class="feature-tag">03 / FREEDOM</span>
-            <h3 class="feature-title">Any folder. Any drive.</h3>
-            <p class="feature-desc">Direct two-way sync without virtual G: drive restrictions. Includes full revision rollback.</p>
+            <h3 class="feature-title">Any Folder. Any Drive.</h3>
+            <p class="feature-desc">Direct two-way sync without virtual G: drive restrictions. Includes in-app revision rollback.</p>
           </div>
 
-          <div class="feature-visual">
-            <div class="pipeline-box">
-              <div class="pipeline-node">
-                <span class="node-tag">LOCAL SSD</span>
-                <span class="node-val">D:\Projects</span>
-              </div>
-              <div class="pipeline-connector">
-                <span class="pipeline-arrow">⇄</span>
-                <span class="pipeline-label">Two-Way</span>
-              </div>
-              <div class="pipeline-node drive">
-                <span class="node-tag drive">GOOGLE DRIVE</span>
-                <span class="node-val">Drive:/Projects</span>
-              </div>
+          <div class="feature-stat-box">
+            <div class="stat-highlight">
+              <div class="stat-number green">100% <span class="stat-unit">Direct</span></div>
+              <div class="stat-sub">Zero virtual drive clutter</div>
             </div>
-            <div class="feature-checks">
-              <span class="check-item">✔ In-App Revisions Vault (Keep Forever)</span>
-              <span class="check-item">✔ Native Office Export (.docx, .xlsx)</span>
+
+            <div class="spec-rows">
+              <div class="spec-row">
+                <span class="spec-k">Folder Pairing</span>
+                <span class="spec-v">Any Internal / External SSD</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-k">Revision Vault</span>
+                <span class="spec-v">Rollback + Keep Forever</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-k">Document Export</span>
+                <span class="spec-v">Native .docx &amp; .xlsx</span>
+              </div>
             </div>
           </div>
         </div>
