@@ -32,6 +32,7 @@ const MAX_RETRIES: u32 = 5;
 pub struct DriveClient {
     pub(crate) http: Client,
     pub(crate) base_url: String,
+    pub(crate) upload_base_url: String,
     /// Cache: Drive folder path -> folder id, keyed by (pair_id, rel_dir).
     path_cache: Arc<Mutex<HashMap<String, String>>>,
 }
@@ -51,13 +52,28 @@ impl DriveClient {
         Ok(DriveClient {
             http,
             base_url: API_BASE.into(),
+            upload_base_url: UPLOAD_BASE.into(),
             path_cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
     pub fn with_base_url(mut self, base_url: String) -> Self {
+        self.upload_base_url = base_url.clone();
         self.base_url = base_url;
         self
+    }
+
+    pub fn with_upload_base_url(mut self, upload_base_url: String) -> Self {
+        self.upload_base_url = upload_base_url;
+        self
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    pub fn upload_base_url(&self) -> &str {
+        &self.upload_base_url
     }
 
     // Helpers
@@ -295,8 +311,8 @@ impl DriveClient {
         let content_type = format!("multipart/related; boundary={boundary}");
 
         let (method, url) = match existing_id {
-            Some(id) => (Method::PATCH, format!("{UPLOAD_BASE}/files/{id}?uploadType=multipart")),
-            None => (Method::POST, format!("{UPLOAD_BASE}/files?uploadType=multipart")),
+            Some(id) => (Method::PATCH, format!("{}/files/{id}?uploadType=multipart", self.upload_base_url)),
+            None => (Method::POST, format!("{}/files?uploadType=multipart", self.upload_base_url)),
         };
 
         let resp = self.execute_with_retry(|| {
@@ -331,8 +347,8 @@ impl DriveClient {
         });
 
         let (method, url) = match existing_id {
-            Some(id) => (Method::PATCH, format!("{UPLOAD_BASE}/files/{id}?uploadType=resumable")),
-            None => (Method::POST, format!("{UPLOAD_BASE}/files?uploadType=resumable")),
+            Some(id) => (Method::PATCH, format!("{}/files/{id}?uploadType=resumable", self.upload_base_url)),
+            None => (Method::POST, format!("{}/files?uploadType=resumable", self.upload_base_url)),
         };
 
         let resp = self.http.request(method, &url)

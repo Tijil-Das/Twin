@@ -463,11 +463,13 @@ mod tests {
 
     // ── Fake CPU source ───────────────────────────────────────────────────────
 
+    #[allow(dead_code)]
     struct FakeCpu {
         samples: VecDeque<f32>,
         default: f32,
     }
 
+    #[allow(dead_code)]
     impl FakeCpu {
         fn new(samples: Vec<f32>, default: f32) -> Self {
             Self { samples: samples.into(), default }

@@ -111,7 +111,7 @@ mod tests {
         let elapsed = t.elapsed().as_secs_f64();
         // Allow 5% tolerance plus 100ms scheduling slack.
         assert!(
-            elapsed >= 0.85 && elapsed <= 2.0,
+            (0.85..=2.0).contains(&elapsed),
             "elapsed {elapsed:.3}s outside expected range 0.85..2.0"
         );
     }

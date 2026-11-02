@@ -41,9 +41,7 @@ impl DriveClient {
     /// List all revisions for a file.
     pub async fn list_revisions(&self, file_id: &str) -> Result<Vec<Revision>, AppError> {
         let token = auth::access_token().await?;
-        let url = format!(
-            "https://www.googleapis.com/drive/v3/files/{file_id}/revisions"
-        );
+        let url = format!("{}/files/{file_id}/revisions", self.base_url);
         let resp = self
             .execute_with_retry(|| {
                 self.http
@@ -71,9 +69,7 @@ impl DriveClient {
         rev_id: &str,
     ) -> Result<reqwest::Response, AppError> {
         let token = auth::access_token().await?;
-        let url = format!(
-            "https://www.googleapis.com/drive/v3/files/{file_id}/revisions/{rev_id}"
-        );
+        let url = format!("{}/files/{file_id}/revisions/{rev_id}", self.base_url);
         let resp = self
             .execute_with_retry(|| {
                 self.http
@@ -93,9 +89,7 @@ impl DriveClient {
         keep: bool,
     ) -> Result<(), AppError> {
         let token = auth::access_token().await?;
-        let url = format!(
-            "https://www.googleapis.com/drive/v3/files/{file_id}/revisions/{rev_id}"
-        );
+        let url = format!("{}/files/{file_id}/revisions/{rev_id}", self.base_url);
         let body = serde_json::json!({ "keepForever": keep });
         self.execute_with_retry(|| {
             self.http

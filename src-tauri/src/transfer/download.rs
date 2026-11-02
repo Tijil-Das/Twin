@@ -49,7 +49,6 @@ const PARALLEL_THRESHOLD: u64 = 32 * 1024 * 1024; // 32 MiB
 const NUM_RANGES: u64 = 4;
 const RANGE_BUFFER: usize = 4 * 1024 * 1024; // 4 MiB max per range at once
 
-const API_BASE: &str = "https://www.googleapis.com/drive/v3";
 
 // ── DownloadRunner ────────────────────────────────────────────────────────────
 
@@ -343,6 +342,7 @@ async fn download_parallel(
         let http   = drive.http.clone();
         let token  = token.clone();
         let drive_id = drive_id.to_string();
+        let drive_base_url = drive.base_url.clone();
         let part_path = part_path.to_path_buf();
         let limiter   = Arc::clone(limiter);
         let bytes_done_c = Arc::clone(&bytes_done);
@@ -360,7 +360,7 @@ async fn download_parallel(
             gov_c.checkpoint().await;
 
             let range_hdr = format!("bytes={start}-{end}");
-            let url = format!("{API_BASE}/files/{drive_id}?alt=media&supportsAllDrives=true");
+            let url = format!("{drive_base_url}/files/{drive_id}?alt=media&supportsAllDrives=true");
 
             let resp = http.get(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
@@ -457,7 +457,7 @@ async fn download_single(
     progress: &ProgressTx,
 ) -> Result<(), AppError> {
     let token = auth::access_token().await?;
-    let url = format!("{API_BASE}/files/{drive_id}?alt=media&supportsAllDrives=true");
+    let url = format!("{}/files/{drive_id}?alt=media&supportsAllDrives=true", drive.base_url);
 
     let resp = drive.http.get(&url)
         .header(header::AUTHORIZATION, format!("Bearer {token}"))
@@ -614,9 +614,7 @@ pub async fn restore_file(
     if let Some(rid) = rev_id {
         // Download via revisions endpoint.
         let token = auth::access_token().await?;
-        let url = format!(
-            "https://www.googleapis.com/drive/v3/files/{file_id}/revisions/{rid}?alt=media"
-        );
+        let url = format!("{}/files/{file_id}/revisions/{rid}?alt=media", drive.base_url);
         let resp = drive.http.get(&url)
             .header(header::AUTHORIZATION, format!("Bearer {token}"))
             .send()
@@ -704,7 +702,7 @@ pub async fn restore_folder(
         .map_err(|e| AppError::Io(format!("restore_folder mkdir: {e}")))?;
 
     let token = auth::access_token().await?;
-    let url = "https://www.googleapis.com/drive/v3/files".to_string();
+    let url = format!("{}/files", drive.base_url);
     let mut page_token: Option<String> = None;
 
     loop {
@@ -802,7 +800,7 @@ pub async fn restore_from_trash(drive: &DriveClient, file_id: &str) -> Result<()
 /// Fetch live metadata for a Drive file.
 async fn fetch_file_meta(drive: &DriveClient, file_id: &str) -> Result<NamedFileMeta, AppError> {
     let token = auth::access_token().await?;
-    let url = format!("{API_BASE}/files/{file_id}");
+    let url = format!("{}/files/{file_id}", drive.base_url);
     let resp = drive.execute_with_retry(|| {
         drive.http.get(&url)
             .header(header::AUTHORIZATION, format!("Bearer {token}"))
@@ -1097,7 +1095,7 @@ mod tests {
             })
             .collect();
         assert_eq!(backups.len(), 1);
-        let content = std::fs::read(&backups[0].path()).unwrap();
+        let content = std::fs::read(backups[0].path()).unwrap();
         assert_eq!(content, b"original");
     }
 

@@ -9,7 +9,6 @@ use crate::auth;
 use crate::drive::client::DriveClient;
 use crate::error::AppError;
 
-const API_BASE: &str = "https://www.googleapis.com/drive/v3";
 
 /// A trashed file entry (includes `name` which `DriveFile` omits).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +43,7 @@ impl DriveClient {
         parent_id: Option<&str>,
     ) -> Result<Vec<TrashedFile>, AppError> {
         let token = auth::access_token().await?;
-        let url = format!("{API_BASE}/files");
+        let url = format!("{}/files", self.base_url);
 
         let q = match parent_id {
             Some(pid) => format!("trashed=true and '{pid}' in parents"),
@@ -90,7 +89,7 @@ impl DriveClient {
     /// Restore a trashed file by setting `trashed=false`.
     pub async fn untrash(&self, file_id: &str) -> Result<(), AppError> {
         let token = auth::access_token().await?;
-        let url = format!("{API_BASE}/files/{file_id}");
+        let url = format!("{}/files/{file_id}", self.base_url);
         let body = serde_json::json!({ "trashed": false });
         self.execute_with_retry(|| {
             self.http

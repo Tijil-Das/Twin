@@ -1,13 +1,14 @@
 //! P07 wiremock tests for the Drive client and upload runner.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use std::sync::Arc;
     use tempfile::TempDir;
-    use wiremock::matchers::{header_exists, method, path, path_regex, query_param};
+    use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use crate::db::{Db, NewJob};
+    use crate::db::Db;
     use crate::drive::client::DriveClient;
     use crate::error::AppError;
 
@@ -63,7 +64,6 @@ mod tests {
 
     #[test]
     fn progress_never_exceeds_100_percent() {
-        use crate::queue::ProgressUpdate;
         use crate::transfer::progress::RichProgress;
 
         // Simulate a series of progress updates and verify bytes_done <= bytes_total.

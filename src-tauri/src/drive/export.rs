@@ -12,7 +12,6 @@ use crate::auth;
 use crate::drive::client::DriveClient;
 use crate::error::AppError;
 
-const API_BASE: &str = "https://www.googleapis.com/drive/v3";
 
 /// Configured export format for Google-native mime types.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -74,7 +73,7 @@ impl DriveClient {
         export_mime_type: &str,
     ) -> Result<Option<Vec<u8>>, AppError> {
         let token = auth::access_token().await?;
-        let url = format!("{API_BASE}/files/{file_id}/export");
+        let url = format!("{}/files/{file_id}/export", self.base_url);
 
         let resp = self.http
             .get(&url)

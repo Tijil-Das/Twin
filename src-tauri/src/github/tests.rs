@@ -138,14 +138,16 @@ async fn unchanged_hash_skips_push() {
     let data_dir = TempDir::new().unwrap();
     let repo_root = TempDir::new().unwrap();
 
-    let mut cfg = Config::default();
-    cfg.pairs = vec![PairEntry {
-        id: "p1".into(),
-        local: "C:\\sync".into(),
-        drive_folder_id: "folder123".into(),
-        mode: PairMode::TwoWay,
-        enabled: true,
-    }];
+    let cfg = Config {
+        pairs: vec![PairEntry {
+            id: "p1".into(),
+            local: "C:\\sync".into(),
+            drive_folder_id: "folder123".into(),
+            mode: PairMode::TwoWay,
+            enabled: true,
+        }],
+        ..Default::default()
+    };
 
     // Build the sync state bytes and pre-calculate hash
     let state_bytes = crate::github::state::build_sync_state_bytes(&db, &cfg).unwrap();

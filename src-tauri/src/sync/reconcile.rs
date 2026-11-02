@@ -667,7 +667,7 @@ mod tests {
     use std::sync::Arc;
     use tempfile::TempDir;
 
-    use crate::config::{ConflictPolicy, DeletionPolicy, PairEntry, PairMode};
+    use crate::config::{PairEntry, PairMode};
     use crate::db::{Db, FileRow};
 
     fn temp_db() -> (TempDir, Arc<Db>) {

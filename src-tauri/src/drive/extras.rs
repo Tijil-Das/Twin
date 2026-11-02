@@ -268,7 +268,7 @@ impl DriveClient {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    use wiremock::matchers::{method, path, query_param};
+    use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
     use crate::config::Config;
     use crate::db::{Db, Job};

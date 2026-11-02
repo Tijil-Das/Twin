@@ -10,7 +10,6 @@ use crate::auth;
 use crate::drive::client::DriveClient;
 use crate::error::AppError;
 
-const API_BASE: &str = "https://www.googleapis.com/drive/v3";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -87,7 +86,7 @@ struct FilePage {
 /// Get the current start page token for the Changes API.
 pub async fn get_start_page_token(drive: &DriveClient) -> Result<String, AppError> {
     let token = auth::access_token().await?;
-    let url = format!("{API_BASE}/changes/startPageToken");
+    let url = format!("{}/changes/startPageToken", drive.base_url);
     let resp = drive
         .execute_with_retry(|| {
             drive
@@ -113,7 +112,7 @@ pub async fn fetch_changes(
     root_folder_id: &str,
 ) -> Result<ChangesResult, AppError> {
     let token = auth::access_token().await?;
-    let url = format!("{API_BASE}/changes");
+    let url = format!("{}/changes", drive.base_url);
     let fields = "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,parents,md5Checksum,modifiedTime,size,mimeType,trashed))";
 
     let mut all_changes: Vec<DriveChange> = Vec::new();
@@ -226,7 +225,7 @@ async fn is_in_folder_tree(
 /// Fetch the parent IDs of a Drive file/folder.
 async fn fetch_parents(drive: &DriveClient, file_id: &str) -> Result<Vec<String>, AppError> {
     let token = auth::access_token().await?;
-    let url = format!("{API_BASE}/files/{file_id}");
+    let url = format!("{}/files/{file_id}", drive.base_url);
     let resp = drive
         .execute_with_retry(|| {
             drive
@@ -256,7 +255,7 @@ pub async fn list_drive_folder(
     root_folder_id: &str,
 ) -> Result<Vec<DriveEntry>, AppError> {
     let token = auth::access_token().await?;
-    let url = "https://www.googleapis.com/drive/v3/files".to_string();
+    let url = format!("{}/files", drive.base_url);
     let fields = "nextPageToken,files(id,name,parents,md5Checksum,modifiedTime,size,mimeType,trashed)";
 
     let mut all: Vec<DriveEntry> = Vec::new();
