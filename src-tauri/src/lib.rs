@@ -107,15 +107,12 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         })
         .on_tray_icon_event({
             let app_handle = app.clone();
-            move |_tray, event| {
-                if let TrayIconEvent::Click {
-                    button: MouseButton::Left,
-                    button_state: MouseButtonState::Up,
-                    ..
-                } = event
-                {
-                    show_window(&app_handle);
-                }
+            move |_tray, event| if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event {
+                show_window(&app_handle);
             }
         })
         .build(app)?;
