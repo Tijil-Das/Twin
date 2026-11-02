@@ -316,6 +316,15 @@ pub fn is_logged_in() -> bool {
     cred_get(KEY_REFRESH_TOKEN).is_ok()
 }
 
+#[cfg(test)]
+pub async fn set_token_for_test(token: &str) {
+    let expires_at = Instant::now() + Duration::from_secs(3600);
+    *auth_state().lock().await = Some(TokenState {
+        access_token: token.to_string(),
+        expires_at,
+    });
+}
+
 // ── Settings helpers (called from Tauri commands) ─────────────────────────
 
 /// Store client_id in Credential Manager.

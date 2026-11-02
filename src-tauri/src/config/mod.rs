@@ -69,6 +69,7 @@ pub struct AppSection {
     pub fallback_rescan_mins: u64,
     pub github_push_mins: u64,
     pub start_hidden: bool,
+    pub dry_run: bool,
 }
 
 impl Default for AppSection {
@@ -80,6 +81,7 @@ impl Default for AppSection {
             fallback_rescan_mins: 30,
             github_push_mins: 30,
             start_hidden: true,
+            dry_run: false,
         }
     }
 }

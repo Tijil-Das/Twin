@@ -2,6 +2,7 @@
  * Restore screen — Drive browser, revisions panel, trash sub-tab, restore progress.
  */
 import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { driveList, listRevisions, restoreFileCmd, listTrash, untrash, keepRevision } from "@/lib/tauri";
 import type { DriveFile, Revision, TrashedFile } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
@@ -9,10 +10,20 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { FolderOpen, FileText, ChevronRight } from "lucide-react";
+import { FolderOpen, FileText, ChevronRight, Search, Star, Share2, HardDrive } from "lucide-react";
 import { formatBytes, formatRelTime } from "@/lib/format";
 
 type Tab = "files" | "trash";
+
+interface ExtendedDriveFile extends DriveFile {
+  description?: string | null;
+  starred?: boolean | null;
+}
+
+interface SharedDrive {
+  id: string;
+  name: string;
+}
 
 export function RestoreScreen() {
   const [tab, setTab] = useState<Tab>("files");
@@ -51,20 +62,33 @@ export function RestoreScreen() {
 function FileBrowser() {
   const [rootId, setRootId] = useState("");
   const [rootInput, setRootInput] = useState("");
-  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [files, setFiles] = useState<ExtendedDriveFile[]>([]);
   const [breadcrumb, setBreadcrumb] = useState<{ id: string; name: string }[]>([]);
-  const [selected, setSelected] = useState<DriveFile | null>(null);
+  const [selected, setSelected] = useState<ExtendedDriveFile | null>(null);
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [revLoading, setRevLoading] = useState(false);
   const [dest, setDest] = useState("");
   const [restoreProgress, setRestoreProgress] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [sharedDrives, setSharedDrives] = useState<SharedDrive[]>([]);
+  const [selectedDrive, setSelectedDrive] = useState("root");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [descInput, setDescInput] = useState("");
+
+  useEffect(() => {
+    invoke<SharedDrive[]>("list_shared_drives")
+      .then((d) => setSharedDrives(d))
+      .catch(() => {});
+  }, []);
+
   async function loadFolder(folderId: string, name = "Root") {
     setLoading(true);
+    setIsSearching(false);
     try {
       const result = await driveList(folderId);
-      setFiles(result);
+      setFiles(result as ExtendedDriveFile[]);
       setRootId(folderId);
       setBreadcrumb((bc) => {
         const idx = bc.findIndex((b) => b.id === folderId);
@@ -85,13 +109,42 @@ function FileBrowser() {
     await loadFolder(id, "Root");
   }
 
-  async function handleSelect(file: DriveFile) {
+  async function handleDriveChange(driveId: string) {
+    setSelectedDrive(driveId);
+    setBreadcrumb([]);
+    const name = driveId === "root" ? "My Drive" : (sharedDrives.find((d) => d.id === driveId)?.name ?? "Shared Drive");
+    await loadFolder(driveId, name);
+  }
+
+  async function handleSearch() {
+    const q = searchQuery.trim();
+    if (!q) return;
+    setLoading(true);
+    setIsSearching(true);
+    try {
+      const results = await invoke<ExtendedDriveFile[]>("drive_search", { query: q });
+      setFiles(results);
+    } catch (e) {
+      toast.error(`Search error: ${String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleClearSearch() {
+    setSearchQuery("");
+    setIsSearching(false);
+    void loadFolder(rootId || "root", selectedDrive === "root" ? "My Drive" : "Shared Drive");
+  }
+
+  async function handleSelect(file: ExtendedDriveFile) {
     const isFolder = file.mime_type === "application/vnd.google-apps.folder";
     if (isFolder) {
       await loadFolder(file.id, file.name ?? file.id);
       return;
     }
     setSelected(file);
+    setDescInput(file.description ?? "");
     setRevLoading(true);
     try {
       const revs = await listRevisions(file.id);
@@ -100,6 +153,49 @@ function FileBrowser() {
       toast.error(`Failed to load revisions: ${String(e)}`);
     } finally {
       setRevLoading(false);
+    }
+  }
+
+  async function handleShareLink() {
+    if (!selected) return;
+    try {
+      const link = await invoke<string>("drive_share_link", {
+        fileId: selected.id,
+        role: "reader",
+        anyone: true,
+      });
+      await navigator.clipboard.writeText(link);
+      toast.success("Share link copied to clipboard!");
+    } catch (e) {
+      toast.error(`Share link failed: ${String(e)}`);
+    }
+  }
+
+  async function handleToggleStar() {
+    if (!selected) return;
+    const newStar = !(selected.starred ?? false);
+    try {
+      await invoke("set_starred", { fileId: selected.id, starred: newStar });
+      setSelected({ ...selected, starred: newStar });
+      setFiles((prev) =>
+        prev.map((f) => (f.id === selected.id ? { ...f, starred: newStar } : f))
+      );
+    } catch (e) {
+      toast.error(`Star failed: ${String(e)}`);
+    }
+  }
+
+  async function handleSaveDescription() {
+    if (!selected) return;
+    try {
+      await invoke("set_description", { fileId: selected.id, text: descInput.trim() });
+      setSelected({ ...selected, description: descInput.trim() });
+      setFiles((prev) =>
+        prev.map((f) => (f.id === selected.id ? { ...f, description: descInput.trim() } : f))
+      );
+      toast.success("Description saved");
+    } catch (e) {
+      toast.error(`Save description failed: ${String(e)}`);
     }
   }
 
@@ -135,13 +231,57 @@ function FileBrowser() {
     <div style={{ display: "flex", gap: 16 }}>
       {/* File list */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Root input */}
+        {/* Drive selector and search bar */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <HardDrive size={14} strokeWidth={1.5} style={{ color: "var(--text-muted)" }} />
+            <select
+              value={selectedDrive}
+              onChange={(e) => void handleDriveChange(e.target.value)}
+              style={{
+                fontSize: 13,
+                height: 32,
+                padding: "0 8px",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                background: "var(--surface)",
+                color: "var(--text)",
+              }}
+            >
+              <option value="root">My Drive</option>
+              {sharedDrives.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: "flex", gap: 6, flex: 1, minWidth: 200 }}>
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search Drive files..."
+              onKeyDown={(e) => { if (e.key === "Enter") void handleSearch(); }}
+              style={{ flex: 1 }}
+            />
+            <Button variant="secondary" size="sm" onClick={() => void handleSearch()}>
+              <Search size={13} strokeWidth={1.5} style={{ marginRight: 4 }} />
+              Search
+            </Button>
+            {isSearching && (
+              <Button variant="ghost" size="sm" onClick={handleClearSearch}>
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Root input (fallback) */}
         {!rootId && (
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <Input
               value={rootInput}
               onChange={(e) => setRootInput(e.target.value)}
-              placeholder="Drive folder ID"
+              placeholder="Or enter Drive folder ID directly"
               onKeyDown={(e) => { if (e.key === "Enter") void handleBrowse(); }}
               style={{ flex: 1 }}
             />
@@ -217,6 +357,9 @@ function FileBrowser() {
                   >
                     {file.name ?? file.id}
                   </span>
+                  {file.starred && (
+                    <Star size={12} fill="var(--accent)" color="var(--accent)" style={{ flexShrink: 0 }} />
+                  )}
                   {file.size && (
                     <span style={{ fontSize: 12, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
                       {formatBytes(parseInt(file.size, 10))}
@@ -248,14 +391,59 @@ function FileBrowser() {
               padding: 16,
             }}
           >
-            <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, wordBreak: "break-word" }}>
-              {selected.name}
-            </p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
+              <p style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-word", margin: 0, flex: 1 }}>
+                {selected.name}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleToggleStar}
+                title={selected.starred ? "Unstar" : "Star"}
+                style={{ padding: 4, height: 28, width: 28 }}
+              >
+                {selected.starred ? (
+                  <Star size={14} fill="var(--accent)" color="var(--accent)" />
+                ) : (
+                  <Star size={14} style={{ color: "var(--text-muted)" }} />
+                )}
+              </Button>
+            </div>
+
             {selected.size && (
-              <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
                 {formatBytes(parseInt(selected.size, 10))}
               </p>
             )}
+
+            {/* Description metadata */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", display: "block", marginBottom: 2 }}>
+                Description
+              </label>
+              <div style={{ display: "flex", gap: 6 }}>
+                <Input
+                  value={descInput}
+                  onChange={(e) => setDescInput(e.target.value)}
+                  placeholder="Add a description"
+                  style={{ fontSize: 12, height: 28 }}
+                />
+                <Button variant="secondary" size="sm" onClick={handleSaveDescription} style={{ height: 28, padding: "0 8px", fontSize: 12 }}>
+                  Save
+                </Button>
+              </div>
+            </div>
+
+            {/* Copy share link */}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleShareLink}
+              style={{ width: "100%", marginBottom: 12, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}
+            >
+              <Share2 size={13} strokeWidth={1.5} />
+              Copy share link
+            </Button>
 
             <label style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
               Restore destination

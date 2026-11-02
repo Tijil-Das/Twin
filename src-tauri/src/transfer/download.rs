@@ -72,6 +72,23 @@ impl JobRunner for DownloadRunner {
         let limiter = Arc::clone(&self.limiter);
 
         async move {
+            if cfg.app.dry_run {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+                let _ = db.log_activity(crate::db::Activity {
+                    id: None,
+                    ts_ms: now,
+                    pair_id: job.pair_id,
+                    kind: job.kind,
+                    rel_path: job.rel_path,
+                    result: "dry-run".into(),
+                    detail: None,
+                });
+                return Ok(());
+            }
+
             match job.kind.as_str() {
                 "download" => run_download(job, db, cfg, gov, drive, limiter, progress).await,
                 "restore"  => run_restore(job, db, cfg, gov, drive, limiter, progress).await,

@@ -31,6 +31,7 @@ const MAX_RETRIES: u32 = 5;
 #[derive(Clone)]
 pub struct DriveClient {
     pub(crate) http: Client,
+    pub(crate) base_url: String,
     /// Cache: Drive folder path -> folder id, keyed by (pair_id, rel_dir).
     path_cache: Arc<Mutex<HashMap<String, String>>>,
 }
@@ -49,8 +50,14 @@ impl DriveClient {
             .map_err(|e| AppError::Other(format!("build http client: {e}")))?;
         Ok(DriveClient {
             http,
+            base_url: API_BASE.into(),
             path_cache: Arc::new(Mutex::new(HashMap::new())),
         })
+    }
+
+    pub fn with_base_url(mut self, base_url: String) -> Self {
+        self.base_url = base_url;
+        self
     }
 
     // Helpers
@@ -110,7 +117,7 @@ impl DriveClient {
         let token = auth::access_token().await?;
         let q = format!("'{parent_id}' in parents and name='{n}' and trashed=false",
             n = name.replace('\'', "\\'"));
-        let url = format!("{API_BASE}/files");
+        let url = format!("{}/files", self.base_url);
         let resp = self.execute_with_retry(|| {
             self.http.get(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
@@ -132,16 +139,17 @@ impl DriveClient {
         parent_id: &str,
     ) -> Result<Vec<DriveFile>, AppError> {
         let token = auth::access_token().await?;
-        let url = format!("{API_BASE}/files");
+        let url = format!("{}/files", self.base_url);
         let q = format!("'{parent_id}' in parents and trashed=false");
         let resp = self.execute_with_retry(|| {
             self.http.get(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[
-                    ("q",                 q.as_str()),
-                    ("fields",            "files(id,mimeType,md5Checksum,modifiedTime,size)"),
-                    ("pageSize",          "1000"),
-                    ("supportsAllDrives", "true"),
+                    ("q",                         q.as_str()),
+                    ("fields",                    "files(id,name,mimeType,md5Checksum,modifiedTime,size,description,starred)"),
+                    ("pageSize",                  "1000"),
+                    ("supportsAllDrives",         "true"),
+                    ("includeItemsFromAllDrives", "true"),
                 ])
         }).await?;
         let list: FileList = resp.json().await
@@ -156,7 +164,7 @@ impl DriveClient {
         name: &str,
     ) -> Result<String, AppError> {
         let token = auth::access_token().await?;
-        let url = format!("{API_BASE}/files");
+        let url = format!("{}/files", self.base_url);
         let body = serde_json::json!({
             "name": name,
             "mimeType": "application/vnd.google-apps.folder",
@@ -232,7 +240,7 @@ impl DriveClient {
     /// Move a file to trash.
     pub async fn trash(&self, file_id: &str) -> Result<(), AppError> {
         let token = auth::access_token().await?;
-        let url = format!("{API_BASE}/files/{file_id}");
+        let url = format!("{}/files/{file_id}", self.base_url);
         let body = serde_json::json!({ "trashed": true });
         self.execute_with_retry(|| {
             self.http.patch(&url)
@@ -246,7 +254,7 @@ impl DriveClient {
     /// Permanently delete a file.
     pub async fn delete(&self, file_id: &str) -> Result<(), AppError> {
         let token = auth::access_token().await?;
-        let url = format!("{API_BASE}/files/{file_id}");
+        let url = format!("{}/files/{file_id}", self.base_url);
         self.execute_with_retry(|| {
             self.http.delete(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
@@ -438,6 +446,8 @@ impl Default for DriveClient {
 pub struct DriveFile {
     pub id: String,
     #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
     pub md5_checksum: Option<String>,
     #[serde(default)]
     pub modified_time: Option<String>,
@@ -445,6 +455,10 @@ pub struct DriveFile {
     pub size: Option<String>,
     #[serde(default)]
     pub mime_type: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub starred: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

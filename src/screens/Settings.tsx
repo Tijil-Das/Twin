@@ -2,6 +2,7 @@
  * Settings screen — Account, General, Advanced (collapsed).
  */
 import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "@/store";
 import {
   getConfig, updateConfig,
@@ -14,6 +15,14 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { formatBytes } from "@/lib/format";
+
+interface StorageQuota {
+  limit: number | null;
+  usage: number;
+  usageInDrive: number;
+  usageInDriveTrash: number;
+}
 
 export function SettingsScreen() {
   const setConfig = useStore((s) => s.setConfig);
@@ -26,12 +35,30 @@ export function SettingsScreen() {
   const [advOpen, setAdvOpen] = useState(false);
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [quota, setQuota] = useState<StorageQuota | null>(null);
+  const [autostart, setAutostart] = useState(false);
 
   const refresh = useCallback(async () => {
     const [cfg, a] = await Promise.all([getConfig(), authStatus()]);
     setConfig(cfg);
     setLocal(cfg);
     setAuthed(a);
+
+    if (a) {
+      try {
+        const q = await invoke<StorageQuota>("get_storage_quota");
+        setQuota(q);
+      } catch {
+        // Ignore quota error if offline
+      }
+    }
+
+    try {
+      const auto = await invoke<boolean>("get_autostart");
+      setAutostart(auto);
+    } catch {
+      // Ignore autostart query error
+    }
   }, [setConfig, setAuthed]);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -92,6 +119,15 @@ export function SettingsScreen() {
       toast.error("Credentials cleared.");
     } catch (e) {
       toast.error(`Failed: ${String(e)}`);
+    }
+  }
+
+  async function handleAutostartToggle(enable: boolean) {
+    try {
+      await invoke("set_autostart", { enable });
+      setAutostart(enable);
+    } catch (e) {
+      toast.error(`Autostart error: ${String(e)}`);
     }
   }
 
@@ -161,11 +197,49 @@ export function SettingsScreen() {
         <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>General</h2>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {quota && (
+            <FieldGroup label="Google Drive storage quota">
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                  <span>{formatBytes(quota.usage)} of {quota.limit ? formatBytes(quota.limit) : "Unlimited"}</span>
+                  <span>{quota.limit ? `${Math.round((quota.usage / quota.limit) * 100)}%` : ""}</span>
+                </div>
+                <div style={{ height: 8, width: "100%", background: "var(--border)", borderRadius: 4, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${quota.limit ? Math.min(100, Math.round((quota.usage / quota.limit) * 100)) : 0}%`,
+                      background: "var(--accent)",
+                    }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 16, fontSize: 11, color: "var(--text-muted)" }}>
+                  <span>Drive: {formatBytes(quota.usageInDrive)}</span>
+                  <span>Trash: {formatBytes(quota.usageInDriveTrash)}</span>
+                </div>
+              </div>
+            </FieldGroup>
+          )}
+
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 13 }}>Start with Windows</span>
+            <div>
+              <span style={{ fontSize: 13, display: "block" }}>Start with Windows</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Launch minimized to tray upon login</span>
+            </div>
             <Switch
-              checked={local.app.autostart}
-              onCheckedChange={(v) => patchLocal((c) => ({ ...c, app: { ...c.app, autostart: v } }))}
+              checked={autostart}
+              onCheckedChange={handleAutostartToggle}
+            />
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <span style={{ fontSize: 13, display: "block" }}>Dry-run mode</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Simulate transfers without disk or Drive writes</span>
+            </div>
+            <Switch
+              checked={Boolean((local.app as unknown as Record<string, unknown>).dry_run)}
+              onCheckedChange={(v) => patchLocal((c) => ({ ...c, app: { ...c.app, dry_run: v } as unknown as typeof c.app }))}
             />
           </div>
 
@@ -217,8 +291,20 @@ export function SettingsScreen() {
             <FieldGroup label="Include patterns (one per line)">
               <textarea
                 rows={3}
-                value={""/* rules are in config not yet wired */}
-                onChange={() => {/* P12 */}}
+                value={(((local as unknown as Record<string, unknown>).rules as Record<string, string[]>)?.include || []).join("\n")}
+                onChange={(e) => {
+                  const lines = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
+                  patchLocal((c) => {
+                    const r = ((c as unknown as Record<string, unknown>).rules as Record<string, unknown>) || { exclude: [], max_file_mb: 0 };
+                    return {
+                      ...c,
+                      rules: {
+                        ...r,
+                        include: lines,
+                      },
+                    } as unknown as typeof c;
+                  });
+                }}
                 placeholder="*.md&#10;*.txt"
                 style={{
                   width: "100%",
@@ -237,8 +323,20 @@ export function SettingsScreen() {
             <FieldGroup label="Exclude patterns (one per line)">
               <textarea
                 rows={3}
-                value={""}
-                onChange={() => {/* P12 */}}
+                value={(((local as unknown as Record<string, unknown>).rules as Record<string, string[]>)?.exclude || []).join("\n")}
+                onChange={(e) => {
+                  const lines = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
+                  patchLocal((c) => {
+                    const r = ((c as unknown as Record<string, unknown>).rules as Record<string, unknown>) || { include: [], max_file_mb: 0 };
+                    return {
+                      ...c,
+                      rules: {
+                        ...r,
+                        exclude: lines,
+                      },
+                    } as unknown as typeof c;
+                  });
+                }}
                 placeholder=".git&#10;node_modules&#10;*.tmp"
                 style={{
                   width: "100%",

@@ -418,6 +418,18 @@ impl Governor {
             .unwrap_or(GovState::Running);
         let _ = self.0.tx.send(state);
     }
+
+    /// Update configuration live without restart.
+    pub fn update_cfg(&self, cfg: GovernorCfg) {
+        if let Ok(mut inner) = self.0.inner.lock() {
+            inner.cfg = cfg;
+        }
+        let cpu = self.0.cpu_pct.lock().map(|c| *c).unwrap_or(0.0);
+        let state = self.0.inner.lock().ok()
+            .map(|i| i.compute_state(cpu))
+            .unwrap_or(GovState::Running);
+        let _ = self.0.tx.send(state);
+    }
 }
 
 // ── Tauri managed state wrapper ───────────────────────────────────────────────

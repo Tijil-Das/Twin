@@ -2,13 +2,113 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::Arc;
+use std::fs::{File, OpenOptions};
+use std::io::Write;
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 use tauri::Manager;
 use tracing::info;
-use tether_lib::{auth, config, db, drive, github, governor, queue, sync, transfer, setup_tray};
+use tether_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, watcher, setup_tray};
 use tether_lib::drive::revisions::Revision;
 use tether_lib::drive::client::DriveFile;
 use tether_lib::drive::trash::TrashedFile;
+
+// ── Rotating logger for data/tether.log (Item 11) ─────────────────────────────
+
+struct RotatingLogger {
+    path: PathBuf,
+    file: Option<File>,
+    size: u64,
+    max_bytes: u64,
+}
+
+impl RotatingLogger {
+    fn new(path: PathBuf, max_bytes: u64) -> Self {
+        if let Some(p) = path.parent() {
+            let _ = std::fs::create_dir_all(p);
+        }
+        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok();
+        Self {
+            path,
+            file,
+            size,
+            max_bytes,
+        }
+    }
+
+    fn rotate_if_needed(&mut self, incoming_len: u64) {
+        if self.size + incoming_len > self.max_bytes {
+            self.file = None;
+            let backup = self.path.with_extension("log.1");
+            let _ = std::fs::remove_file(&backup);
+            let _ = std::fs::rename(&self.path, &backup);
+            self.file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&self.path)
+                .ok();
+            self.size = 0;
+        }
+    }
+}
+
+impl Write for RotatingLogger {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.rotate_if_needed(buf.len() as u64);
+        if let Some(ref mut f) = self.file {
+            let written = f.write(buf)?;
+            self.size += written as u64;
+            Ok(written)
+        } else {
+            Ok(buf.len())
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        if let Some(ref mut f) = self.file {
+            f.flush()
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[derive(Clone)]
+struct CombinedWriter {
+    file_logger: Arc<Mutex<RotatingLogger>>,
+}
+
+impl Write for CombinedWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let _ = std::io::stdout().write_all(buf);
+        if let Ok(mut l) = self.file_logger.lock() {
+            let _ = l.write_all(buf);
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let _ = std::io::stdout().flush();
+        if let Ok(mut l) = self.file_logger.lock() {
+            let _ = l.flush();
+        }
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CombinedWriter {
+    type Writer = CombinedWriter;
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
 
 #[cfg(windows)]
 fn set_below_normal_priority() {
@@ -201,10 +301,15 @@ fn main() {
     // Set process priority first -- before any heavy work starts.
     set_below_normal_priority();
 
-    // Initialise tracing: stdout only, INFO level.
+    // Initialise tracing: stdout + data/tether.log with 2 MB rotation, keeping 2 files.
+    let log_path = std::path::PathBuf::from(".").join("data").join("tether.log");
+    let rotating_logger = Arc::new(Mutex::new(RotatingLogger::new(log_path, 2 * 1024 * 1024)));
+    let combined_writer = CombinedWriter { file_logger: rotating_logger };
+
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_target(false)
+        .with_writer(combined_writer)
         .init();
 
     info!("Tether starting");
@@ -256,6 +361,14 @@ fn main() {
             gh_status,
             gh_push_now,
             gh_pull_now,
+            commands::get_autostart,
+            commands::set_autostart,
+            commands::drive_share_link,
+            commands::get_storage_quota,
+            commands::list_shared_drives,
+            commands::set_description,
+            commands::set_starred,
+            commands::drive_search,
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -329,10 +442,76 @@ fn main() {
             // Register tray icon and menu.
             setup_tray(handle)?;
 
-            // Start config file watcher.
-            config::watch_config(|cfg| {
-                info!("Config reloaded: parallel_transfers={}", cfg.app.parallel_transfers);
-            });
+            // Start config file watcher with live limiter/governor/rules reload.
+            {
+                let gov_live = gov.clone();
+                let up_limiter_live = Arc::clone(&up_limiter);
+                let db_live = Arc::clone(&db_arc);
+                config::watch_config(move |cfg| {
+                    info!("Config reloaded live: parallel_transfers={}", cfg.app.parallel_transfers);
+
+                    // 1. Live bandwidth limit update (no restart)
+                    let limiter = Arc::clone(&up_limiter_live);
+                    let up_kbps = cfg.limits.upload_kbps;
+                    tokio::spawn(async move {
+                        limiter.set_rate(up_kbps).await;
+                    });
+
+                    // 2. Live governor update (no restart)
+                    let gov_cfg = governor::GovernorCfg {
+                        cpu_pause_pct: cfg.governor.cpu_pause_pct,
+                        cpu_resume_pct: cfg.governor.cpu_resume_pct,
+                        battery_pause_pct: cfg.governor.battery_pause_pct,
+                        pause_on_metered: cfg.governor.pause_on_metered,
+                        active_hours: cfg.limits.active_hours.clone(),
+                    };
+                    gov_live.update_cfg(gov_cfg);
+
+                    // 3. Rebuild rules and enqueue rescan
+                    let r = rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
+                    let d = Arc::clone(&db_live);
+                    let g = gov_live.clone();
+                    let pairs = cfg.pairs.clone();
+                    tokio::spawn(async move {
+                        for pair in pairs.iter().filter(|p| p.enabled) {
+                            let _ = watcher::scan_pair(pair, Arc::clone(&d), &r, &g).await;
+                        }
+                    });
+                });
+            }
+
+            // Error toast monitor: max 1 notification per 10 min for persistent failures.
+            {
+                let handle_toast = handle.clone();
+                let db_toast = Arc::clone(&db_arc);
+                tokio::spawn(async move {
+                    use std::sync::atomic::{AtomicI64, Ordering};
+                    static LAST_TOAST_MS: AtomicI64 = AtomicI64::new(0);
+                    use tauri_plugin_notification::NotificationExt;
+
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+                        if let Ok(failed_count) = db_toast.count_jobs_by_status("failed") {
+                            if failed_count > 0 {
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as i64;
+                                let last = LAST_TOAST_MS.load(Ordering::Relaxed);
+                                if now - last >= 600_000 {
+                                    LAST_TOAST_MS.store(now, Ordering::Relaxed);
+                                    let _ = handle_toast
+                                        .notification()
+                                        .builder()
+                                        .title("Tether Sync Error")
+                                        .body(format!("{failed_count} sync job(s) failed after multiple retries."))
+                                        .show();
+                                }
+                            }
+                        }
+                    }
+                });
+            }
 
             // Hide window on startup if --hidden flag was passed.
             if start_hidden {
