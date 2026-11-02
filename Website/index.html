@@ -4,16 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Twin — Lightweight Google Drive Sync Client</title>
-  <meta name="description" content="A transparent, lightweight Google Drive desktop sync engine built in Rust. 28 MB RAM, zero background overhead, and advanced folder control.">
+  <meta name="description" content="A transparent, ultra-lightweight Google Drive sync client built in Rust. 28 MB RAM, zero background overhead, and advanced folder control.">
   <link rel="icon" type="image/png" href="assets/app-icon.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-  <!-- Navigation -->
+  <!-- Navigation Bar -->
   <header class="header">
     <div class="container header-inner">
-      <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 14px;">
         <a href="#" class="brand">
           <div class="brand-icon">
             <img src="assets/app-icon.png" alt="Twin Logo">
@@ -25,35 +25,35 @@
 
       <nav>
         <ul class="nav-links">
-          <li><a href="#architecture" class="nav-link">Architecture</a></li>
           <li><a href="#features" class="nav-link">Features</a></li>
           <li><a href="#comparison" class="nav-link">Comparison</a></li>
           <li><a href="#contribute" class="nav-link">GitHub</a></li>
+          <li><a href="#download" class="nav-link">Download</a></li>
         </ul>
       </nav>
 
-      <div style="display: flex; gap: 8px;">
+      <div>
         <a href="#download" class="btn btn-primary">Download v0.1.0</a>
       </div>
     </div>
   </header>
 
-  <!-- Hero Section (Strictly minimal text) -->
+  <!-- Hero Section -->
   <section class="hero">
     <div class="container">
       <div class="hero-tag">
         <span class="status-dot"></span>
-        <span>Twin 0.1.0 · Windows 10 & 11 (64-bit)</span>
+        <span>Twin 0.1.0 Release · Windows 10 & 11 (64-bit)</span>
       </div>
 
       <h1 class="hero-title">Google Drive, engineered in Rust.</h1>
       <p class="hero-subtitle">
-        28 MB RAM. Transparent file sync. Zero background bloat.
+        A lightweight desktop sync app with complete transfer visibility, more features than Google Drive for Desktop, and under 30 MB memory usage.
       </p>
 
       <div class="hero-actions">
         <a href="#download" class="btn btn-primary btn-lg">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -61,194 +61,89 @@
           <span>Download Installer (.msi)</span>
         </a>
         <a href="https://github.com/tether-app/twin" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-lg">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path>
           </svg>
-          <span>Source on GitHub</span>
+          <span>Star on GitHub</span>
         </a>
       </div>
 
-      <!-- Live Technical Metrics -->
+      <!-- Large, No-Brainer Performance Metrics -->
       <div class="metrics-grid">
         <div class="metric-box">
           <div class="metric-value green">28 MB</div>
-          <div class="metric-label">Idle RAM consumption</div>
+          <div class="metric-label">Memory usage (vs 620 MB in Google Drive Desktop)</div>
         </div>
         <div class="metric-box">
           <div class="metric-value cyan">0.01%</div>
-          <div class="metric-label">Idle CPU overhead</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-value">16 MiB</div>
-          <div class="metric-label">Resumable chunk size</div>
+          <div class="metric-label">Idle CPU overhead with zero background lag</div>
         </div>
         <div class="metric-box">
           <div class="metric-value green">8.4 MB</div>
-          <div class="metric-label">Total installer package</div>
+          <div class="metric-label">Total installer package vs ~350 MB official client</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 1: Visual Architecture Modules -->
-  <section id="architecture" class="section">
-    <div class="container">
-      <div class="section-head center">
-        <span class="section-tag">Architecture</span>
-        <h2 class="section-title">Engineered for absolute control.</h2>
-      </div>
-
-      <div class="specs-modules-grid">
-        <!-- Module 1: Transfer Engine Schematic -->
-        <div class="spec-module">
-          <div class="module-header">
-            <span class="module-title">Transfer Engine</span>
-            <span class="module-tag">4 Streams</span>
-          </div>
-
-          <div class="schematic-box">
-            <div class="schematic-row">
-              <span>Chunking</span>
-              <span>16 MiB Resumable</span>
-            </div>
-            <div class="schematic-row">
-              <span>Checksum</span>
-              <span style="color: var(--accent-cyan);">Blake3 + MD5</span>
-            </div>
-            <div class="schematic-row">
-              <span>Debounce</span>
-              <span>3 s priority queue</span>
-            </div>
-
-            <div class="chunk-stream-bars">
-              <div class="stream-col done">16M ✓</div>
-              <div class="stream-col done">16M ✓</div>
-              <div class="stream-col">12M / 16M</div>
-              <div class="stream-col">Queue</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Module 2: Hardware Governor Meter -->
-        <div class="spec-module">
-          <div class="module-header">
-            <span class="module-title">Hardware Governor</span>
-            <span class="module-tag green">Active</span>
-          </div>
-
-          <div class="governor-meter-box">
-            <div style="display: flex; justify-content: space-between; font-size: 11.5px; font-family: var(--font-mono);">
-              <span>Host CPU Load</span>
-              <span style="color: var(--success-light); font-weight: 600;">Normal (18%)</span>
-            </div>
-
-            <div class="threshold-track">
-              <div class="threshold-fill"></div>
-            </div>
-
-            <div class="threshold-markers">
-              <span>0%</span>
-              <span style="color: var(--warning);">20% Battery Pause</span>
-              <span style="color: var(--danger-light);">70% CPU Pause</span>
-              <span>100%</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Module 3: Comparative RAM Bars -->
-        <div class="spec-module">
-          <div class="module-header">
-            <span class="module-title">Memory Footprint</span>
-            <span class="module-tag green">-95% RAM</span>
-          </div>
-
-          <div class="ram-compare-box">
-            <div class="bar-row">
-              <div class="bar-meta">
-                <span>Google Drive Desktop</span>
-                <span style="color: var(--danger-light);">620 MB</span>
-              </div>
-              <div class="flat-bar-track">
-                <div class="flat-bar-gdrive"></div>
-              </div>
-            </div>
-
-            <div class="bar-row">
-              <div class="bar-meta">
-                <span style="color: #FFFFFF; font-weight: 500;">Twin</span>
-                <span style="color: var(--success-light); font-weight: 600;">28 MB</span>
-              </div>
-              <div class="flat-bar-track">
-                <div class="flat-bar-twin"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Section 2: Technical Feature Matrix -->
+  <!-- Section 1: The Three Core Pillars (Clear, spacious, zero mental effort) -->
   <section id="features" class="section">
     <div class="container">
       <div class="section-head center">
-        <span class="section-tag">Specifications</span>
-        <h2 class="section-title">Built for precision workflows.</h2>
+        <span class="section-tag">Why Twin</span>
+        <h2 class="section-title">Everything Google Drive should have been.</h2>
+        <p class="section-desc">Designed to replace the confusing, resource-heavy official client.</p>
       </div>
 
-      <div class="tech-grid">
-        <div class="tech-item">
-          <div class="tech-title">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-            <span>Arbitrary Folder Pairs</span>
+      <div class="pillars-grid">
+        <!-- 01 -->
+        <div class="pillar-card">
+          <div class="pillar-icon-box">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
           </div>
-          <div class="tech-desc">Map any local path to any Drive ID in Upload, Mirror, or Two-way modes.</div>
+          <h3 class="pillar-title">Complete Process Visibility</h3>
+          <p class="pillar-desc">
+            Know exactly what is syncing at every moment. Real byte progress bars, calculated transfer speeds, and plain error messages—no mysterious spinning wheels or stuck files.
+          </p>
+          <span class="pillar-badge">Byte Accurate · Zero Guesswork</span>
         </div>
 
-        <div class="tech-item">
-          <div class="tech-title">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-            <span>Revision History</span>
+        <!-- 02 -->
+        <div class="pillar-card">
+          <div class="pillar-icon-box">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
           </div>
-          <div class="tech-desc">Inspect revisions, pin "Keep forever", and restore lost versions directly.</div>
+          <h3 class="pillar-title">More Features & Freedom</h3>
+          <p class="pillar-desc">
+            Sync any folder on any drive (C:, D:, or external SSDs). Browse and restore past file versions, recover trash, and automatically export Google Docs into offline Word and Excel files.
+          </p>
+          <span class="pillar-badge">Any Folder · Revisions Vault</span>
         </div>
 
-        <div class="tech-item">
-          <div class="tech-title">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-            <span>Google Docs Export</span>
+        <!-- 03 -->
+        <div class="pillar-card">
+          <div class="pillar-icon-box">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
           </div>
-          <div class="tech-desc">Automatically converts Docs, Sheets, and Slides to offline .docx, .xlsx, and .pptx.</div>
-        </div>
-
-        <div class="tech-item">
-          <div class="tech-title">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-            <span>Windows Credential Store</span>
-          </div>
-          <div class="tech-desc">Hardware-backed token encryption. Zero plaintext secrets on disk.</div>
-        </div>
-
-        <div class="tech-item">
-          <div class="tech-title">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-            <span>Deterministic Sync</span>
-          </div>
-          <div class="tech-desc">True byte progress bars, smoothed EMA speeds, and plain error diagnostics.</div>
-        </div>
-
-        <div class="tech-item">
-          <div class="tech-title">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-            <span>Resource Governor</span>
-          </div>
-          <div class="tech-desc">Auto-pauses sync on high system CPU (>70%) or critical battery (&lt;20%).</div>
+          <h3 class="pillar-title">Ultra-Lightweight & Silent</h3>
+          <p class="pillar-desc">
+            Uses 95% less RAM than Google Drive. Built-in hardware governor pauses syncing when you're gaming or compiling (CPU > 70%) or on low battery (< 20%) so your PC stays fast.
+          </p>
+          <span class="pillar-badge">28 MB RAM · Auto CPU Pause</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 3: Semantic Comparison Table (WITH PRO COLOR BADGES) -->
+  <!-- Section 2: Head-to-Head Comparison (Spacious with Vibrant Emerald & Crimson Badges) -->
   <section id="comparison" class="section">
     <div class="container">
       <div class="section-head center">
@@ -274,7 +169,7 @@
             <tr>
               <td>Hardware CPU & Thermal Governor</td>
               <td class="col-twin-cell"><span class="badge-win">Auto-pause &gt;70%, resume &lt;50%</span></td>
-              <td><span class="badge-loss">None (causes background fan spin)</span></td>
+              <td><span class="badge-loss">None (causes continuous fan noise)</span></td>
             </tr>
             <tr>
               <td>Battery State Awareness</td>
@@ -312,7 +207,7 @@
               <td><span class="badge-neutral">Opaque %APPDATA% registry storage</span></td>
             </tr>
             <tr>
-              <td>Installer Package Size</td>
+              <td>Installer Download Size</td>
               <td class="col-twin-cell"><span class="badge-win">8.4 MB (Native Rust binary)</span></td>
               <td><span class="badge-loss">~350 MB (Bundled Python + Chromium)</span></td>
             </tr>
@@ -322,23 +217,23 @@
     </div>
   </section>
 
-  <!-- Section 4: GitHub Contribution Callout -->
+  <!-- Section 3: Contribute on GitHub -->
   <section id="contribute" class="section">
     <div class="container">
       <div class="github-banner">
         <div class="github-info">
           <div class="github-icon-box">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path>
             </svg>
           </div>
           <div class="github-text">
             <h3>Contribute on GitHub</h3>
-            <p>Twin is open source. Star the repo, propose features, or contribute pull requests.</p>
+            <p>Twin is free and open source. Star the repository, report issues, or contribute pull requests.</p>
           </div>
         </div>
 
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 10px;">
           <a href="https://github.com/tether-app/twin" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
             <span>Star Repository</span>
           </a>
@@ -350,30 +245,36 @@
     </div>
   </section>
 
-  <!-- Section 5: Download Section -->
-  <section id="download" class="section">
+  <!-- Section 4: Download Section (JioTV Max style clean card) -->
+  <section id="download" class="section download-section">
     <div class="container container-narrow">
       <div class="download-card">
-        <div class="brand-icon" style="width: 40px; height: 40px;">
+        <div class="brand-icon" style="width: 48px; height: 48px;">
           <img src="assets/app-icon.png" alt="Twin Icon">
         </div>
 
         <div>
           <h2>Download Twin for Windows</h2>
-          <p style="margin-top: 4px;">Version 0.1.0 · Windows 10 & 11 (64-bit)</p>
+          <p style="margin-top: 6px;">Version 0.1.0 · For Windows 10 & 11 (64-bit)</p>
+        </div>
+
+        <div class="download-meta-badges">
+          <span class="version-pill">Version 0.1.0</span>
+          <span class="version-pill">Windows 10 / 11 (64-bit)</span>
+          <span class="version-pill">8.4 MB</span>
         </div>
 
         <div class="download-btn-group">
           <button onclick="downloadRelease('msi')" class="btn btn-primary btn-lg">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
-            <span>Installer (.msi)</span>
+            <span>Windows Installer (.msi)</span>
           </button>
-          <button onclick="downloadRelease('exe')" class="btn btn-secondary btn-lg">Setup (.exe)</button>
-          <button onclick="downloadRelease('zip')" class="btn btn-secondary btn-lg">Portable (.zip)</button>
+          <button onclick="downloadRelease('exe')" class="btn btn-secondary btn-lg">Setup Executable (.exe)</button>
+          <button onclick="downloadRelease('zip')" class="btn btn-secondary btn-lg">Portable Zip (.zip)</button>
         </div>
 
         <div class="hash-pill">
@@ -387,12 +288,12 @@
   <!-- Footer -->
   <footer class="footer">
     <div class="container footer-inner">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <img src="assets/app-icon.png" width="16" height="16" alt="Twin Logo">
-        <span>Twin v0.1.0 · Rust Desktop Sync Client</span>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <img src="assets/app-icon.png" width="18" height="18" alt="Twin Logo">
+        <span>Twin v0.1.0 · Lightweight Google Drive Sync</span>
       </div>
 
-      <div style="display: flex; gap: 16px;">
+      <div style="display: flex; gap: 20px;">
         <a href="https://github.com/tether-app/twin" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
         <a href="../Prompts/SPEC.md" class="nav-link">Specifications</a>
         <a href="../LICENSE" class="nav-link">MIT License</a>
