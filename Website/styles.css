@@ -939,6 +939,12 @@ p { color: var(--text-muted); font-size: 1rem; }
   padding: 56px 0 80px;
 }
 
+.back-link-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
 .back-link {
   display: inline-flex;
   align-items: center;
@@ -947,7 +953,6 @@ p { color: var(--text-muted); font-size: 1rem; }
   color: var(--accent-cyan);
   text-decoration: none;
   font-weight: 500;
-  margin-bottom: 32px;
   transition: color 150ms ease;
 }
 
@@ -956,9 +961,13 @@ p { color: var(--text-muted); font-size: 1rem; }
 }
 
 .legal-header {
+  text-align: center;
   margin-bottom: 36px;
   padding-bottom: 24px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .legal-badge {
@@ -992,6 +1001,8 @@ p { color: var(--text-muted); font-size: 1rem; }
   flex-direction: column;
   gap: 32px;
   max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .legal-section {
