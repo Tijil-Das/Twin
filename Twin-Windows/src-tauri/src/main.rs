@@ -543,10 +543,13 @@ fn main() {
             // Start autonomous background updater (JioTV Max 15s delay, 20m interval).
             updater::init_updater(handle.clone());
 
-            // Hide window on startup if --hidden flag was passed.
-            if start_hidden {
-                if let Some(window) = app.get_webview_window("main") {
+            // Hide window on startup if --hidden flag was passed, otherwise ensure shown.
+            if let Some(window) = app.get_webview_window("main") {
+                if start_hidden {
                     let _ = window.hide();
+                } else {
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             }
 
