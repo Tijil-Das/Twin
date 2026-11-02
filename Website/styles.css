@@ -1,6 +1,6 @@
 /* Twin Website Stylesheet
-   Theme: Refined Developer Pro Dark (Linear / Raycast / Supabase standard)
-   Natural typographic scale, balanced component sizes, high-contrast badges */
+   Theme: High-End Modern SaaS (Linear / Raycast / Stripe standard)
+   Typography: Inter with tabular numerals for stats, sans-serif UI */
 
 :root {
   --bg: #090A0F;
@@ -32,8 +32,8 @@
   --danger-subtle: rgba(248, 113, 113, 0.12);
   --danger-border: rgba(248, 113, 113, 0.28);
 
-  --font-sans: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -74,7 +74,7 @@ body {
   padding: 0 24px;
 }
 
-/* Typography */
+/* Modern Typography Scale */
 h1, h2, h3, h4 {
   color: #FFFFFF;
   letter-spacing: -0.025em;
@@ -86,7 +86,6 @@ h2 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); font-weight: 600; }
 h3 { font-size: 1.25rem; font-weight: 600; }
 h4 { font-size: 1.05rem; font-weight: 600; }
 p { color: var(--text-muted); font-size: 1rem; }
-.mono { font-family: var(--font-mono); }
 
 /* Header */
 .header {
@@ -142,17 +141,18 @@ p { color: var(--text-muted); font-size: 1rem; }
   font-weight: 600;
   font-size: 16px;
   color: #FFFFFF;
+  letter-spacing: -0.01em;
 }
 
 .version-pill {
   font-size: 11.5px;
-  font-family: var(--font-mono);
+  font-weight: 600;
   color: var(--accent-cyan);
   background-color: var(--accent-subtle);
   border: 1px solid var(--accent-border);
-  padding: 3px 8px;
+  padding: 2px 8px;
   border-radius: var(--radius-sm);
-  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .nav-links {
@@ -237,10 +237,11 @@ p { color: var(--text-muted); font-size: 1rem; }
   background-color: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--text);
   margin-bottom: 22px;
+  font-variant-numeric: tabular-nums;
 }
 
 .status-dot {
@@ -272,7 +273,7 @@ p { color: var(--text-muted); font-size: 1rem; }
   flex-wrap: wrap;
 }
 
-/* Hero Metrics Strip */
+/* Hero Metrics Strip (Clean Sans-Serif Tabular Figures) */
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -296,10 +297,11 @@ p { color: var(--text-muted); font-size: 1rem; }
 }
 
 .metric-value {
-  font-size: 2.1rem;
-  font-family: var(--font-mono);
+  font-size: 2.2rem;
   font-weight: 700;
   line-height: 1.2;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }
 
 .metric-value.green {
@@ -332,14 +334,13 @@ p { color: var(--text-muted); font-size: 1rem; }
 }
 
 .section-tag {
-  font-size: 11px;
-  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
   color: var(--accent-cyan);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 8px;
   display: block;
-  font-weight: 600;
 }
 
 .section-title {
@@ -400,10 +401,10 @@ p { color: var(--text-muted); font-size: 1rem; }
 
 .bento-tag {
   font-size: 11px;
-  font-family: var(--font-mono);
+  font-weight: 700;
   color: var(--accent-cyan);
   letter-spacing: 0.08em;
-  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .bento-title {
@@ -420,7 +421,7 @@ p { color: var(--text-muted); font-size: 1rem; }
 }
 
 /* ========================================================
-   High-Fidelity Native UI Panels (Minimal & Spacious)
+   High-Fidelity Native UI Panels (Clean Sans Typography)
    ======================================================== */
 .ui-panel {
   background: linear-gradient(180deg, #131622 0%, #0C0E15 100%);
@@ -444,7 +445,7 @@ p { color: var(--text-muted); font-size: 1rem; }
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  font-family: var(--font-mono);
+  font-weight: 500;
   color: var(--text-muted);
 }
 
@@ -457,14 +458,14 @@ p { color: var(--text-muted); font-size: 1rem; }
 }
 
 .ui-badge-speed {
-  font-size: 11.5px;
-  font-family: var(--font-mono);
-  color: var(--success-light);
+  font-size: 12px;
   font-weight: 600;
+  color: var(--success-light);
   background-color: var(--success-subtle);
   border: 1px solid var(--success-border);
   padding: 2px 8px;
   border-radius: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 .ui-transfer-item {
@@ -480,17 +481,16 @@ p { color: var(--text-muted); font-size: 1rem; }
 }
 
 .ui-filename {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
   color: #FFFFFF;
-  font-family: var(--font-mono);
 }
 
 .ui-item-percent {
   font-size: 13px;
   font-weight: 700;
   color: var(--success-light);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .ui-progress-bar {
@@ -511,16 +511,18 @@ p { color: var(--text-muted); font-size: 1rem; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11.5px;
-  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
 }
 
 .ui-eta.green {
   color: var(--success-light);
+  font-weight: 600;
 }
 
-/* Governor Panel (Memory & CPU Governor) */
+/* Governor Panel (Memory & CPU Governor - Clean Sans) */
 .governor-panel {
   display: flex;
   flex-direction: column;
@@ -530,30 +532,35 @@ p { color: var(--text-muted); font-size: 1rem; }
 .mem-compare-row {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .mem-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12.5px;
-  font-family: var(--font-mono);
+  font-size: 13px;
 }
 
 .mem-name {
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.mem-val {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 .mem-val.win {
   color: var(--success-light);
-  font-weight: 700;
 }
 
 .mem-val.loss {
   color: var(--danger-light);
-  font-weight: 700;
 }
 
 .mem-bar-track {
@@ -580,8 +587,8 @@ p { color: var(--text-muted); font-size: 1rem; }
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
-  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--accent-cyan);
   background-color: rgba(56, 189, 248, 0.08);
   border: 1px solid rgba(56, 189, 248, 0.2);
@@ -589,6 +596,7 @@ p { color: var(--text-muted); font-size: 1rem; }
   border-radius: var(--radius-sm);
   width: fit-content;
   margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .gov-dot {
@@ -598,7 +606,7 @@ p { color: var(--text-muted); font-size: 1rem; }
   background-color: var(--accent-cyan);
 }
 
-/* Freedom Panel (Arbitrary Folder Pair) */
+/* Freedom Panel (Arbitrary Folder Pair - Clean Sans) */
 .freedom-panel {
   display: flex;
   flex-direction: column;
@@ -623,10 +631,9 @@ p { color: var(--text-muted); font-size: 1rem; }
 }
 
 .point-badge {
-  font-size: 9.5px;
-  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
   color: var(--accent-cyan);
-  font-weight: 600;
   letter-spacing: 0.05em;
 }
 
@@ -635,8 +642,8 @@ p { color: var(--text-muted); font-size: 1rem; }
 }
 
 .point-path {
-  font-size: 12.5px;
-  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
   color: #FFFFFF;
 }
 
@@ -652,13 +659,13 @@ p { color: var(--text-muted); font-size: 1rem; }
 }
 
 .vault-capsule {
-  font-size: 11.5px;
-  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-muted);
 }
 
 /* ========================================================
-   Comparison Table (High Contrast Green/Red Badges)
+   Comparison Table (Clean Inter Typography & Tabular Nums)
    ======================================================== */
 .table-wrap {
   width: 100%;
@@ -715,7 +722,7 @@ p { color: var(--text-muted); font-size: 1rem; }
   border-right: 1px solid var(--border);
 }
 
-/* Vibrant Status Badges */
+/* Vibrant Status Badges with Inter Font */
 .badge-win {
   display: inline-flex;
   align-items: center;
@@ -724,10 +731,11 @@ p { color: var(--text-muted); font-size: 1rem; }
   border: 1px solid var(--success-border);
   padding: 4px 10px;
   border-radius: 5px;
-  font-family: var(--font-mono);
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 .badge-loss {
@@ -738,10 +746,11 @@ p { color: var(--text-muted); font-size: 1rem; }
   border: 1px solid var(--danger-border);
   padding: 4px 10px;
   border-radius: 5px;
-  font-family: var(--font-mono);
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* GitHub Open Source Banner */
@@ -844,7 +853,6 @@ p { color: var(--text-muted); font-size: 1rem; }
 
 .hash-pill {
   font-size: 12px;
-  font-family: var(--font-mono);
   background-color: var(--surface-2);
   border: 1px solid var(--border);
   padding: 6px 14px;
@@ -857,11 +865,12 @@ p { color: var(--text-muted); font-size: 1rem; }
 
 .hash-label {
   color: var(--text-subtle);
-  font-weight: 500;
+  font-weight: 600;
   flex-shrink: 0;
 }
 
 .hash-code {
+  font-family: var(--font-mono);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -873,8 +882,7 @@ p { color: var(--text-muted); font-size: 1rem; }
   border: none;
   color: var(--accent-cyan);
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   flex-shrink: 0;
   padding-left: 4px;
