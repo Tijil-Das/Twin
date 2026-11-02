@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Twin — Lightweight Google Drive Sync Client</title>
-  <meta name="description" content="A transparent, ultra-lightweight Google Drive sync client built in Rust. 28 MB RAM, zero background overhead, and advanced folder control.">
+  <title>Twin — Lightweight Google Drive Sync Client for Windows</title>
+  <meta name="description" content="A transparent, ultra-lightweight Google Drive sync client built in Rust. 28 MB RAM, zero background overhead, arbitrary folder pairs, and complete transfer visibility.">
   <link rel="icon" type="image/png" href="assets/app-icon.png">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -13,12 +13,12 @@
   <!-- Navigation Bar -->
   <header class="header">
     <div class="container header-inner">
-      <div style="display: flex; align-items: center; gap: 12px;">
+      <div class="brand-group">
         <a href="#" class="brand">
           <div class="brand-icon">
             <img src="assets/app-icon.png" alt="Twin Logo">
           </div>
-          <span>Twin</span>
+          <span class="brand-name">Twin</span>
         </a>
         <span class="version-pill">v0.1.0</span>
       </div>
@@ -32,7 +32,7 @@
         </ul>
       </nav>
 
-      <div>
+      <div class="header-cta">
         <a href="#download" class="btn btn-primary">Download v0.1.0</a>
       </div>
     </div>
@@ -43,17 +43,17 @@
     <div class="container">
       <div class="hero-tag">
         <span class="status-dot"></span>
-        <span>Twin 0.1.0 Release · Windows 10 & 11 (64-bit)</span>
+        <span>Twin 0.1.0 Release · Windows 10 &amp; 11 (64-bit)</span>
       </div>
 
       <h1 class="hero-title">Google Drive, engineered in Rust.</h1>
       <p class="hero-subtitle">
-        A lightweight desktop sync app with complete transfer visibility, more features than Google Drive for Desktop, and under 30 MB memory usage.
+        A desktop sync client built for speed, transparency, and freedom. Uses 95% less RAM than Google Drive with complete transfer visibility.
       </p>
 
       <div class="hero-actions">
         <a href="#download" class="btn btn-primary btn-lg">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -61,153 +61,224 @@
           <span>Download Installer (.msi)</span>
         </a>
         <a href="https://github.com/Tijil-Das/Twin" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-lg">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path>
           </svg>
           <span>Star on GitHub</span>
         </a>
       </div>
 
-      <!-- Natural Pro Metrics -->
+      <!-- Hero Metrics Strip -->
       <div class="metrics-grid">
         <div class="metric-box">
           <div class="metric-value green">28 MB</div>
-          <div class="metric-label">Memory usage (vs 620 MB in Google Drive Desktop)</div>
+          <div class="metric-label">Idle Memory</div>
+          <div class="metric-sub">vs 620 MB in Google Drive Desktop</div>
         </div>
         <div class="metric-box">
           <div class="metric-value cyan">0.01%</div>
-          <div class="metric-label">Idle CPU overhead with zero background lag</div>
+          <div class="metric-label">Idle CPU Overhead</div>
+          <div class="metric-sub">Zero background lag or fan spin</div>
         </div>
         <div class="metric-box">
           <div class="metric-value green">8.4 MB</div>
-          <div class="metric-label">Total installer package vs ~350 MB official client</div>
+          <div class="metric-label">Installer Package</div>
+          <div class="metric-sub">Pure native Rust binary (no Chromium)</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 1: The Three Core Pillars -->
+  <!-- Section 1: The Three Core Pillars with Pro Visuals -->
   <section id="features" class="section">
     <div class="container">
       <div class="section-head center">
-        <span class="section-tag">Capabilities</span>
+        <span class="section-tag">Architecture</span>
         <h2 class="section-title">Everything Google Drive should have been.</h2>
-        <p class="section-desc">Designed to replace the confusing, resource-heavy official client.</p>
+        <p class="section-desc">Engineered from the ground up to replace the opaque, heavy official client.</p>
       </div>
 
       <div class="pillars-grid">
-        <!-- 01 -->
+        <!-- 01: Process Visibility -->
         <div class="pillar-card">
-          <div class="pillar-icon-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
+          <div class="pillar-top">
+            <div class="pillar-icon-box">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+            </div>
+            <h3 class="pillar-title">Complete Process Visibility</h3>
+            <p class="pillar-desc">
+              Track real byte transfers and precise network speeds. No more frozen spinners or mystery stalls.
+            </p>
           </div>
-          <h3 class="pillar-title">Complete Process Visibility</h3>
-          <p class="pillar-desc">
-            Know exactly what is syncing at every moment. Real byte progress bars, calculated transfer speeds, and plain error messages—no mysterious spinning wheels or stuck files.
-          </p>
+
+          <!-- Micro Visual: Real-time Transfer Stream -->
+          <div class="mock-widget">
+            <div class="mock-file-header">
+              <div class="mock-file-name">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                <span>Project_Archive.tar.gz</span>
+              </div>
+              <span class="mock-speed">38.4 MB/s</span>
+            </div>
+            <div class="mock-progress-track">
+              <div class="mock-progress-fill" style="width: 76%;"></div>
+            </div>
+            <div class="mock-meta-row">
+              <span class="mock-mono-text">Chunk 4/5 · 16 MiB</span>
+              <span class="mock-mono-text green">76% · ETA 0.8s</span>
+            </div>
+          </div>
+
           <span class="pillar-badge">Byte Accurate · Zero Guesswork</span>
         </div>
 
-        <!-- 02 -->
+        <!-- 02: Hardware CPU Governor & Performance -->
         <div class="pillar-card">
-          <div class="pillar-icon-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            </svg>
+          <div class="pillar-top">
+            <div class="pillar-icon-box">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </div>
+            <h3 class="pillar-title">Hardware Governor &amp; 28 MB RAM</h3>
+            <p class="pillar-desc">
+              Pauses uploads automatically when CPU spikes above 70% during gaming or video rendering.
+            </p>
           </div>
-          <h3 class="pillar-title">More Features & Freedom</h3>
-          <p class="pillar-desc">
-            Sync any folder on any drive (C:, D:, or external SSDs). Browse and restore past file versions, recover trash, and automatically export Google Docs into offline Word and Excel files.
-          </p>
-          <span class="pillar-badge">Any Folder · Revisions Vault</span>
+
+          <!-- Micro Visual: RAM & Governor Comparison -->
+          <div class="mock-widget">
+            <div class="mock-bar-item">
+              <div class="mock-bar-header">
+                <span class="mock-label">Twin</span>
+                <span class="mock-val green">28 MB</span>
+              </div>
+              <div class="mock-bar-track">
+                <div class="mock-bar-fill green" style="width: 7%;"></div>
+              </div>
+            </div>
+            <div class="mock-bar-item">
+              <div class="mock-bar-header">
+                <span class="mock-label">Google Drive</span>
+                <span class="mock-val red">620 MB</span>
+              </div>
+              <div class="mock-bar-track">
+                <div class="mock-bar-fill red" style="width: 88%;"></div>
+              </div>
+            </div>
+            <div class="mock-tag-row">
+              <span class="mock-tag">CPU &gt; 70% ➔ Pause</span>
+              <span class="mock-tag">Battery &lt; 20% ➔ Sleep</span>
+            </div>
+          </div>
+
+          <span class="pillar-badge">28 MB RAM · Auto CPU Pause</span>
         </div>
 
-        <!-- 03 -->
+        <!-- 03: Folder Freedom & Revisions -->
         <div class="pillar-card">
-          <div class="pillar-icon-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-            </svg>
+          <div class="pillar-top">
+            <div class="pillar-icon-box">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+            <h3 class="pillar-title">More Features &amp; True Freedom</h3>
+            <p class="pillar-desc">
+              Sync any folder on any internal or external drive without virtual G: drive restrictions.
+            </p>
           </div>
-          <h3 class="pillar-title">Ultra-Lightweight & Silent</h3>
-          <p class="pillar-desc">
-            Uses 95% less RAM than Google Drive. Built-in hardware governor pauses syncing when you're gaming or compiling (CPU &gt; 70%) or on low battery (&lt; 20%) so your PC stays fast.
-          </p>
-          <span class="pillar-badge">28 MB RAM · Auto CPU Pause</span>
+
+          <!-- Micro Visual: Arbitrary Folder Pair & Revision Vault -->
+          <div class="mock-widget">
+            <div class="mock-route-row">
+              <span class="route-chip">D:\Work\Projects</span>
+              <span class="route-arrow">➔</span>
+              <span class="route-chip">Drive:/Projects</span>
+            </div>
+            <div class="mock-pill-features">
+              <span class="mock-pill">✔ In-App Revision Vault</span>
+              <span class="mock-pill">✔ Keep Forever</span>
+              <span class="mock-pill">✔ Export .docx / .xlsx</span>
+            </div>
+          </div>
+
+          <span class="pillar-badge">Any Folder · Revisions Vault</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 2: Head-to-Head Comparison -->
+  <!-- Section 2: Head-to-Head Comparison (High Contrast Green/Red Badges) -->
   <section id="comparison" class="section">
     <div class="container">
       <div class="section-head center">
         <span class="section-tag">Comparison</span>
         <h2 class="section-title">Twin vs. Google Drive for Desktop</h2>
+        <p class="section-desc">A side-by-side technical breakdown of capabilities and resource usage.</p>
       </div>
 
       <div class="table-wrap">
         <table class="compare-table">
           <thead>
             <tr>
-              <th style="width: 32%;">Feature / Capability</th>
+              <th style="width: 32%;">Capability / Feature</th>
               <th style="width: 34%;" class="col-twin">Twin v0.1.0</th>
               <th style="width: 34%;">Google Drive for Desktop</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Memory (RAM) Footprint</td>
+              <td class="col-feature">Memory (RAM) Footprint</td>
               <td class="col-twin-cell"><span class="badge-win">~28 MB RAM</span></td>
               <td><span class="badge-loss">450 MB – 1.2 GB RAM</span></td>
             </tr>
             <tr>
-              <td>Hardware CPU & Thermal Governor</td>
+              <td class="col-feature">Hardware CPU &amp; Thermal Governor</td>
               <td class="col-twin-cell"><span class="badge-win">Auto-pause &gt;70%, resume &lt;50%</span></td>
-              <td><span class="badge-loss">None (causes continuous fan noise)</span></td>
+              <td><span class="badge-loss">None (continuous fan spin)</span></td>
             </tr>
             <tr>
-              <td>Battery State Awareness</td>
+              <td class="col-feature">Battery State Awareness</td>
               <td class="col-twin-cell"><span class="badge-win">Auto-pause below 20% on battery</span></td>
               <td><span class="badge-loss">Aggressive background battery drain</span></td>
             </tr>
             <tr>
-              <td>Folder Mapping Flexibility</td>
+              <td class="col-feature">Folder Mapping Flexibility</td>
               <td class="col-twin-cell"><span class="badge-win">Unlimited arbitrary folder pairs</span></td>
-              <td><span class="badge-neutral">Forced virtual G: drive / single root</span></td>
+              <td><span class="badge-loss">Forced virtual G: drive / single root</span></td>
             </tr>
             <tr>
-              <td>Revision History & Rollback</td>
+              <td class="col-feature">Revision History &amp; Rollback</td>
               <td class="col-twin-cell"><span class="badge-win">In-app revision browser + Keep Forever</span></td>
-              <td><span class="badge-neutral">Redirects to web browser interface</span></td>
+              <td><span class="badge-loss">Redirects to web browser interface</span></td>
             </tr>
             <tr>
-              <td>Google Workspace Files</td>
+              <td class="col-feature">Google Workspace Files</td>
               <td class="col-twin-cell"><span class="badge-win">Auto-export to .docx, .xlsx, .pptx</span></td>
-              <td><span class="badge-neutral">Browser shortcut stubs (.gdoc, .gsheet)</span></td>
+              <td><span class="badge-loss">Browser shortcut stubs (.gdoc, .gsheet)</span></td>
             </tr>
             <tr>
-              <td>Sync State Transparency</td>
+              <td class="col-feature">Sync State Transparency</td>
               <td class="col-twin-cell"><span class="badge-win">True bytes, smoothed speed, exact ETA</span></td>
-              <td><span class="badge-loss">Vague file counters and endless spinners</span></td>
+              <td><span class="badge-loss">Vague file counters &amp; endless spinners</span></td>
             </tr>
             <tr>
-              <td>Resumable Chunk Architecture</td>
+              <td class="col-feature">Resumable Chunk Architecture</td>
               <td class="col-twin-cell"><span class="badge-win">16 MiB chunks with Blake3 caching</span></td>
-              <td><span class="badge-neutral">Opaque chunking with full retries</span></td>
+              <td><span class="badge-loss">Opaque chunking with full retries</span></td>
             </tr>
             <tr>
-              <td>Configuration Portability</td>
+              <td class="col-feature">Configuration Portability</td>
               <td class="col-twin-cell"><span class="badge-win">Portable config.toml + GitHub backup</span></td>
-              <td><span class="badge-neutral">Opaque %APPDATA% registry storage</span></td>
+              <td><span class="badge-loss">Opaque %APPDATA% registry storage</span></td>
             </tr>
             <tr>
-              <td>Installer Download Size</td>
+              <td class="col-feature">Installer Package Size</td>
               <td class="col-twin-cell"><span class="badge-win">8.4 MB (Native Rust binary)</span></td>
               <td><span class="badge-loss">~350 MB (Bundled Python + Chromium)</span></td>
             </tr>
@@ -228,13 +299,16 @@
             </svg>
           </div>
           <div class="github-text">
-            <h3>Contribute on GitHub</h3>
+            <h3>Contribute &amp; Star on GitHub</h3>
             <p>Twin is free and open source. Star the repository, report issues, or contribute pull requests.</p>
           </div>
         </div>
 
-        <div style="display: flex; gap: 10px;">
+        <div class="github-actions">
           <a href="https://github.com/Tijil-Das/Twin" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.784 1.399 8.169-7.333-3.856-7.333 3.856 1.399-8.169-5.934-5.784 8.2-1.192zm0 5.702l-2.223 4.504-4.97.722 3.597 3.506-.849 4.951 4.445-2.337 4.445 2.337-.849-4.951 3.597-3.506-4.97-.722z"/>
+            </svg>
             <span>Star Repository</span>
           </a>
           <a href="https://github.com/Tijil-Das/Twin/issues" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
@@ -249,19 +323,20 @@
   <section id="download" class="section download-section">
     <div class="container container-narrow">
       <div class="download-card">
-        <div class="brand-icon" style="width: 44px; height: 44px;">
+        <div class="brand-icon download-logo">
           <img src="assets/app-icon.png" alt="Twin Icon">
         </div>
 
-        <div>
+        <div class="download-head">
           <h2>Download Twin for Windows</h2>
-          <p style="margin-top: 4px;">Version 0.1.0 · For Windows 10 &amp; 11 (64-bit)</p>
+          <p>Version 0.1.0 · Fast, lightweight, and completely open source.</p>
         </div>
 
         <div class="download-meta-badges">
           <span class="version-pill">Version 0.1.0</span>
           <span class="version-pill">Windows 10 / 11 (64-bit)</span>
-          <span class="version-pill">8.4 MB</span>
+          <span class="version-pill">8.4 MB Package</span>
+          <span class="version-pill">MIT License</span>
         </div>
 
         <div class="download-btn-group">
@@ -278,7 +353,8 @@
         </div>
 
         <div class="hash-pill">
-          <span>SHA-256: 48f93e2b17a0cd4482c3f81e053a812e9bd06037f482d8d89e5a1b32</span>
+          <span class="hash-label">SHA-256:</span>
+          <code class="hash-code">48f93e2b17a0cd4482c3f81e053a812e9bd06037f482d8d89e5a1b32</code>
           <button class="hash-copy" data-copy="48f93e2b17a0cd4482c3f81e053a812e9bd06037f482d8d89e5a1b32">Copy</button>
         </div>
       </div>
@@ -288,15 +364,15 @@
   <!-- Footer -->
   <footer class="footer">
     <div class="container footer-inner">
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <img src="assets/app-icon.png" width="18" height="18" alt="Twin Logo">
-        <span>Twin v0.1.0 · Lightweight Google Drive Sync</span>
+      <div class="footer-brand">
+        <img src="assets/app-icon.png" width="20" height="20" alt="Twin Logo">
+        <span>Twin v0.1.0 · Lightweight Google Drive Sync for Windows</span>
       </div>
 
-      <div style="display: flex; gap: 20px;">
-        <a href="https://github.com/Tijil-Das/Twin" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
-        <a href="../Prompts/SPEC.md" class="nav-link">Specifications</a>
-        <a href="../LICENSE" class="nav-link">MIT License</a>
+      <div class="footer-links">
+        <a href="https://github.com/Tijil-Das/Twin" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a>
+        <a href="https://github.com/Tijil-Das/Twin/releases" target="_blank" rel="noopener noreferrer" class="footer-link">Releases</a>
+        <a href="https://github.com/Tijil-Das/Twin/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="footer-link">MIT License</a>
       </div>
     </div>
   </footer>

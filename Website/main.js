@@ -11,38 +11,48 @@ function initCopyButtons() {
     btn.addEventListener('click', () => {
       const textToCopy = btn.getAttribute('data-copy');
       if (textToCopy) {
-        navigator.clipboard.writeText(textToCopy).then(() => {
+        const copySuccess = () => {
           const originalText = btn.textContent;
           btn.textContent = 'Copied!';
           setTimeout(() => {
             btn.textContent = originalText;
           }, 1800);
-        }).catch(() => {
-          const temp = document.createElement('textarea');
-          temp.value = textToCopy;
-          document.body.appendChild(temp);
-          temp.select();
-          document.execCommand('copy');
-          document.body.removeChild(temp);
-          const originalText = btn.textContent;
-          btn.textContent = 'Copied!';
-          setTimeout(() => {
-            btn.textContent = originalText;
-          }, 1800);
-        });
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(textToCopy).then(copySuccess).catch(() => {
+            fallbackCopy(textToCopy, copySuccess);
+          });
+        } else {
+          fallbackCopy(textToCopy, copySuccess);
+        }
       }
     });
   });
 }
 
+function fallbackCopy(text, callback) {
+  const temp = document.createElement('textarea');
+  temp.value = text;
+  temp.style.position = 'fixed';
+  temp.style.opacity = '0';
+  document.body.appendChild(temp);
+  temp.select();
+  document.execCommand('copy');
+  document.body.removeChild(temp);
+  if (callback) callback();
+}
+
 // Download action feedback
 window.downloadRelease = function(type) {
-  const btn = event?.currentTarget;
+  const evt = window.event;
+  const btn = evt ? evt.currentTarget : null;
   if (btn) {
     const originalHTML = btn.innerHTML;
-    btn.innerHTML = `<span>Starting ${type.toUpperCase()}...</span>`;
+    btn.innerHTML = `<span>Downloading ${type.toUpperCase()}...</span>`;
     setTimeout(() => {
       btn.innerHTML = originalHTML;
-    }, 2000);
+      window.open('https://github.com/Tijil-Das/Twin/releases', '_blank');
+    }, 450);
   }
 };
