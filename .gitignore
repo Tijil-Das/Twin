@@ -1,0 +1,30 @@
+# Node
+node_modules/
+dist/
+.pnpm-store/
+
+# Rust/Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# State DB (machine-local)
+data/state.db
+data/*.db-*
+
+# Local config overrides (may contain paths)
+config/config.local.toml
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
