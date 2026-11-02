@@ -26,8 +26,8 @@
       <nav>
         <ul class="nav-links">
           <li><a href="#pillars" class="nav-link">Pillars</a></li>
-          <li><a href="#features" class="nav-link">Features</a></li>
           <li><a href="#governor" class="nav-link">Governor</a></li>
+          <li><a href="#architecture" class="nav-link">Architecture</a></li>
           <li><a href="#comparison" class="nav-link">Comparison</a></li>
           <li><a href="#contribute" class="nav-link">Contribute</a></li>
         </ul>
@@ -50,7 +50,7 @@
   <section class="hero">
     <div class="container">
       <div class="hero-pill">
-        <span class="status-dot"></span>
+        <span class="status-dot active-pulse"></span>
         <span>Twin 0.1.0 Release · Windows 10 & 11 (64-bit)</span>
       </div>
 
@@ -117,182 +117,258 @@
     </div>
   </section>
 
-  <!-- Section 1: The Three Core Pillars (Clean, low density, punchy) -->
+  <!-- Section 1: The Three Core Pillars (With Rich Visual Components) -->
   <section id="pillars" class="section">
     <div class="container">
       <div class="section-head center">
-        <span class="section-tag">Core Value Proposition</span>
+        <span class="section-tag">Interactive Architecture</span>
         <h2 class="section-title">Engineered to eliminate sync frustration.</h2>
         <p class="section-desc">
-          Built around three simple promises: total transparency, deeper Drive controls, and zero system overhead.
+          Total transparency, deeper Drive controls, and zero system overhead—visualized in real time.
         </p>
       </div>
 
       <div class="pillars-grid">
-        <!-- Pillar 1 -->
+        <!-- Pillar 1: Visual Chunk Stream Widget -->
         <div class="pillar-card">
-          <div class="pillar-header-row">
-            <span class="pillar-badge">01</span>
-            <span class="mono" style="font-size: 11.5px; color: var(--text-muted);">Transparency</span>
+          <div class="pillar-top">
+            <div class="pillar-header-row">
+              <span class="pillar-badge">01</span>
+              <span class="mono" style="font-size: 11px; color: var(--text-muted);">Real-Time Pipeline</span>
+            </div>
+            <h3 class="pillar-title">Process Visibility</h3>
+            <p class="pillar-desc">
+              Every file is tracked at the byte level with calculated EMA speed curves—no mystery stalls or frozen spinners.
+            </p>
           </div>
-          <h3 class="pillar-title">Process Visibility</h3>
-          <p class="pillar-desc">
-            Know exactly what is uploading at every second. Real byte-accurate progress bars, calculated EMA speeds, and plain diagnostic logs—no black-box spinners or mystery stalls.
-          </p>
-          <div class="pillar-metric-tag">Byte Accurate · Smoothed EMA Speed</div>
+
+          <!-- PRO GRAPHIC: Live Parallel Streams -->
+          <div class="visual-chunk-widget">
+            <div class="widget-title-row">
+              <span style="color: #FFFFFF; font-weight: 500;">build_v0.1.0.tar (1.2 GB)</span>
+              <span style="color: var(--accent-cyan);">14.8 MB/s</span>
+            </div>
+
+            <div class="chunk-stream-item">
+              <div class="stream-label-row">
+                <span class="stream-id">Chunk #1 [16 MiB]</span>
+                <span class="stream-rate">Done ✓</span>
+              </div>
+              <div class="chunk-track">
+                <div class="chunk-fill" style="width: 100%; background: #10B981;"></div>
+              </div>
+            </div>
+
+            <div class="chunk-stream-item">
+              <div class="stream-label-row">
+                <span class="stream-id">Chunk #2 [16 MiB]</span>
+                <span class="stream-rate" id="stream-rate-2">78% · 4.2 MB/s</span>
+              </div>
+              <div class="chunk-track">
+                <div class="chunk-fill" id="stream-fill-2" style="width: 78%;"></div>
+              </div>
+            </div>
+
+            <div class="chunk-stream-item">
+              <div class="stream-label-row">
+                <span class="stream-id">Chunk #3 [16 MiB]</span>
+                <span class="stream-rate" id="stream-rate-3">44% · 5.1 MB/s</span>
+              </div>
+              <div class="chunk-track">
+                <div class="chunk-fill" id="stream-fill-3" style="width: 44%;"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Pillar 2 -->
+        <!-- Pillar 2: Visual Revisions & Office Conversion Widget -->
         <div class="pillar-card">
-          <div class="pillar-header-row">
-            <span class="pillar-badge">02</span>
-            <span class="mono" style="font-size: 11.5px; color: var(--text-muted);">Features</span>
+          <div class="pillar-top">
+            <div class="pillar-header-row">
+              <span class="pillar-badge">02</span>
+              <span class="mono" style="font-size: 11px; color: var(--text-muted);">Advanced Controls</span>
+            </div>
+            <h3 class="pillar-title">Extended Drive Freedom</h3>
+            <p class="pillar-desc">
+              Sync arbitrary folders on any drive, browse version rollbacks, and auto-export Google Docs into real Office files.
+            </p>
           </div>
-          <h3 class="pillar-title">Extended Drive Freedom</h3>
-          <p class="pillar-desc">
-            Map arbitrary folders on any drive without virtual G: restrictions. Browse past file revisions with instant rollback, restore trash, and auto-export Google Docs to offline .docx and .xlsx.
-          </p>
-          <div class="pillar-metric-tag">Arbitrary Pairs · Revision Vault</div>
+
+          <!-- PRO GRAPHIC: Revisions & Auto-Export -->
+          <div class="visual-revisions-widget">
+            <div class="rev-item">
+              <span class="rev-name">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                Financial_Model.xlsx
+              </span>
+              <span class="rev-badge green">v3 · Pinned</span>
+            </div>
+
+            <div class="rev-item">
+              <span class="rev-name">
+                <span style="opacity: 0.5;">└</span> Q4_Roadmap.docx
+              </span>
+              <span class="rev-badge">v2 · Auto-Saved</span>
+            </div>
+
+            <div class="export-flow-line">
+              <span>Google Docs</span>
+              <span>⟶</span>
+              <span style="color: #FFFFFF; font-weight: 600;">.docx / .xlsx (Offline)</span>
+            </div>
+          </div>
         </div>
 
-        <!-- Pillar 3 -->
+        <!-- Pillar 3: Visual RAM Comparison Bar Chart -->
         <div class="pillar-card">
-          <div class="pillar-header-row">
-            <span class="pillar-badge">03</span>
-            <span class="mono" style="font-size: 11.5px; color: var(--text-muted);">Efficiency</span>
+          <div class="pillar-top">
+            <div class="pillar-header-row">
+              <span class="pillar-badge">03</span>
+              <span class="mono" style="font-size: 11px; color: var(--text-muted);">Rust Tokio Engine</span>
+            </div>
+            <h3 class="pillar-title">Ultra-Lightweight Rust</h3>
+            <p class="pillar-desc">
+              Eliminates the multi-hundred-megabyte memory tax of Electron and Python. Zero background slowdown.
+            </p>
           </div>
-          <h3 class="pillar-title">Ultra-Lightweight Rust</h3>
-          <p class="pillar-desc">
-            Operates at ~28 MB memory using native Rust Tokio. An autonomous hardware governor automatically pauses transfers if CPU exceeds 70% or battery drops below 20%.
-          </p>
-          <div class="pillar-metric-tag">~28 MB RAM · Auto CPU Governor</div>
+
+          <!-- PRO GRAPHIC: Visual RAM Bar Comparison -->
+          <div class="visual-ram-widget">
+            <div class="ram-bar-group">
+              <div class="ram-bar-label">
+                <span>Google Drive for Desktop</span>
+                <span style="color: #F87171;">620 MB</span>
+              </div>
+              <div class="ram-bar-track">
+                <div class="ram-bar-fill-gdrive"></div>
+              </div>
+            </div>
+
+            <div class="ram-bar-group">
+              <div class="ram-bar-label">
+                <span style="color: #FFFFFF; font-weight: 600;">Twin Client</span>
+                <span style="color: var(--success-light); font-weight: 700;">28 MB</span>
+              </div>
+              <div class="ram-bar-track">
+                <div class="ram-bar-fill-twin"></div>
+              </div>
+            </div>
+
+            <div class="ram-metric-badge">
+              <span>Memory Footprint</span>
+              <span>-95% Less RAM</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 2: Hardware Resource Governor -->
+  <!-- Section 2: Interactive Hardware Resource Governor Dashboard -->
   <section id="governor" class="section">
     <div class="container">
       <div class="section-head">
         <span class="section-tag">System Protection</span>
         <h2 class="section-title">Autonomous Hardware Resource Governor</h2>
         <p class="section-desc">
-          Twin steps aside whenever your computer is under load, keeping your fans silent and laptop responsive.
+          Twin steps aside automatically whenever your PC is under heavy load, keeping your fans quiet and laptop cool.
         </p>
       </div>
 
-      <div class="governor-banner">
+      <!-- PRO GRAPHIC: Interactive Governor Monitor Widget -->
+      <div class="governor-interactive-box">
         <div class="governor-text">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="status-dot"></span>
-            <span class="mono" style="color: var(--accent-light); font-size: 12.5px; font-weight: 600;">ACTIVE SUPERVISION LOOP</span>
+            <span class="status-dot active-pulse"></span>
+            <span class="mono" style="color: var(--accent-cyan); font-size: 12.5px; font-weight: 600;">CONTINUOUS HARDWARE MONITORING</span>
           </div>
-          <h3>Zero impact on gaming, rendering, or compiling</h3>
+          <h3>Zero impact on gaming, compiling, or video rendering</h3>
           <p>
-            Twin integrates directly with Windows system APIs. When you launch a game or compile a project, Twin pauses background uploads to yield 100% CPU cycles to your foreground tasks.
+            Twin integrates directly with Windows performance counters. When your CPU spikes during heavy tasks, Twin immediately pauses background sync tasks to yield 100% processing headroom to your foreground apps.
+          </p>
+          <p style="font-size: 0.95rem; color: var(--text-muted);">
+            Test how the governor responds in real time using the interactive load simulation.
           </p>
         </div>
 
-        <div class="governor-rules-grid">
-          <div class="governor-rule-card">
-            <div class="rule-info">
-              <div class="rule-title">CPU High Load Pause</div>
-              <div class="rule-desc">Pauses when host CPU exceeds limit for 5s</div>
-            </div>
-            <div class="rule-metric">&gt; 70% CPU</div>
+        <div class="governor-visual-dashboard">
+          <div class="gauge-header-row">
+            <span>LIVE SYSTEM TELEMETRY</span>
+            <span class="mono" style="color: var(--accent-cyan);">POLL: 500ms</span>
           </div>
 
-          <div class="governor-rule-card">
-            <div class="rule-info">
-              <div class="rule-title">Cooldown Auto-Resume</div>
-              <div class="rule-desc">Resumes queued tasks once CPU cools down</div>
+          <div class="meter-display">
+            <div class="meter-stat-line">
+              <span class="meter-cpu-val" id="gov-cpu-val">18%</span>
+              <span class="meter-status-tag" id="gov-status-tag">ACTIVE · 14.8 MB/s</span>
             </div>
-            <div class="rule-metric">&lt; 50% CPU</div>
+
+            <div class="live-meter-bar">
+              <div class="governor-threshold-line" title="70% Auto-Pause Limit"></div>
+              <div class="live-meter-fill" id="gov-meter-fill"></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; font-size: 11px; font-family: var(--font-mono); color: var(--text-subtle);">
+              <span>0% IDLE</span>
+              <span style="color: #EF4444;">70% THRESHOLD</span>
+              <span>100% PEAK</span>
+            </div>
           </div>
 
-          <div class="governor-rule-card">
-            <div class="rule-info">
-              <div class="rule-title">Low Battery Guard</div>
-              <div class="rule-desc">Suspends transfers when unplugged on low power</div>
-            </div>
-            <div class="rule-metric">&lt; 20% Battery</div>
+          <div class="governor-simulator-controls">
+            <span style="font-size: 12px; font-family: var(--font-mono); color: var(--text-muted);">Simulate System Load:</span>
+            <button id="gov-sim-btn" class="btn btn-secondary btn-sm">
+              <span>Simulate Spike (&gt;70% CPU)</span>
+            </button>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 3: Feature Grid -->
-  <section id="features" class="section">
+  <!-- Section 3: Visual Architectural Schematic Flow -->
+  <section id="architecture" class="section">
     <div class="container">
       <div class="section-head center">
-        <span class="section-tag">Key Features</span>
-        <h2 class="section-title">Designed for power users, developers, and professionals.</h2>
+        <span class="section-tag">System Design</span>
+        <h2 class="section-title">The End-to-End Sync Pipeline</h2>
         <p class="section-desc">
-          Every subsystem is purpose-built to give you complete sovereignty over your data and local storage.
+          How data flows from your local drives to Google's cloud with cryptographic verification.
         </p>
       </div>
 
-      <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon-box">
+      <div class="visual-pipeline-schematic">
+        <div class="schematic-node">
+          <div class="schematic-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          </div>
+          <span class="schematic-tag">Input Source</span>
+          <h4 class="schematic-title">Arbitrary Local Folders</h4>
+          <p class="schematic-sub">
+            Sync any directory across internal SSDs, secondary drives, or USB media. Real-time filesystem watcher with 3-second smart debounce.
+          </p>
+        </div>
+
+        <div class="schematic-node">
+          <div class="schematic-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
           </div>
-          <div class="feature-body">
-            <h4 class="feature-title">Multi-Pair Arbitrary Routing</h4>
-            <p class="feature-desc">Bind any SSD or external folder directly to any Google Drive folder with Upload, Mirror, or Two-way policies.</p>
-          </div>
+          <span class="schematic-tag">Processing Core</span>
+          <h4 class="schematic-title">Rust Tokio Engine</h4>
+          <p class="schematic-sub">
+            Resumable 16 MiB chunking with MD5 & Blake3 deduplication. Hardware credential encryption via Windows Credential Manager.
+          </p>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-icon-box">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+        <div class="schematic-node">
+          <div class="schematic-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>
           </div>
-          <div class="feature-body">
-            <h4 class="feature-title">Debounced Priority Queue</h4>
-            <p class="feature-desc">Rapid file changes are debounced by 3 seconds, with exponential retry backoffs (1s up to 5 min) for failed transfers.</p>
-          </div>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon-box">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-          </div>
-          <div class="feature-body">
-            <h4 class="feature-title">16 MiB Resumable Chunks</h4>
-            <p class="feature-desc">Interrupted uploads resume instantly without re-uploading bytes. Large files download over 4 parallel streams.</p>
-          </div>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon-box">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-          </div>
-          <div class="feature-body">
-            <h4 class="feature-title">Windows Credential Security</h4>
-            <p class="feature-desc">OAuth 2.0 PKCE loopback authentication with hardware-backed encryption in Windows Credential Manager.</p>
-          </div>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon-box">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-          </div>
-          <div class="feature-body">
-            <h4 class="feature-title">Google Workspace Exporter</h4>
-            <p class="feature-desc">Automatically exports online Google Docs, Sheets, and Slides into standard .docx, .xlsx, and .pptx files.</p>
-          </div>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon-box">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
-          </div>
-          <div class="feature-body">
-            <h4 class="feature-title">GitHub Sync-State Backup</h4>
-            <p class="feature-desc">Serializes sync metadata and pushes it to your private GitHub repo every 30 minutes for instant disaster recovery.</p>
-          </div>
+          <span class="schematic-tag">Cloud Destination</span>
+          <h4 class="schematic-title">Google Drive Cloud</h4>
+          <p class="schematic-sub">
+            Native revision vault with rollback, trash recovery, shared drive support, and automated Google Workspace doc export.
+          </p>
         </div>
       </div>
     </div>
@@ -375,7 +451,7 @@
     </div>
   </section>
 
-  <!-- Section 5: Contribute to the App on GitHub (NEW!) -->
+  <!-- Section 5: Contribute to the App on GitHub -->
   <section id="contribute" class="section">
     <div class="container container-narrow">
       <div class="contribute-card">
@@ -534,8 +610,8 @@
           <div class="footer-col">
             <span class="footer-col-title">Navigation</span>
             <a href="#pillars" class="footer-link">Pillars</a>
-            <a href="#features" class="footer-link">Features</a>
             <a href="#governor" class="footer-link">Governor</a>
+            <a href="#architecture" class="footer-link">Architecture</a>
             <a href="#comparison" class="footer-link">Comparison</a>
           </div>
 
