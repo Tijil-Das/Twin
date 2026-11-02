@@ -23,6 +23,11 @@ use tracing::info;
 
 pub use error::AppError;
 
+const ICON_IDLE: &[u8] = include_bytes!("../icons/tray/idle.png");
+const ICON_SYNCING: &[u8] = include_bytes!("../icons/tray/syncing.png");
+const ICON_PAUSED: &[u8] = include_bytes!("../icons/tray/paused.png");
+const ICON_ERROR: &[u8] = include_bytes!("../icons/tray/error.png");
+
 /// The four visual states the tray icon can represent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayState {
@@ -33,12 +38,12 @@ pub enum TrayState {
 }
 
 impl TrayState {
-    fn icon_path(self) -> &'static str {
+    fn icon_bytes(self) -> &'static [u8] {
         match self {
-            TrayState::Idle => "icons/tray/idle.png",
-            TrayState::Syncing => "icons/tray/syncing.png",
-            TrayState::Paused => "icons/tray/paused.png",
-            TrayState::Error => "icons/tray/error.png",
+            TrayState::Idle => ICON_IDLE,
+            TrayState::Syncing => ICON_SYNCING,
+            TrayState::Paused => ICON_PAUSED,
+            TrayState::Error => ICON_ERROR,
         }
     }
 
@@ -54,13 +59,7 @@ impl TrayState {
 
 /// Update the tray icon to reflect the current application state.
 pub fn set_tray_state<R: Runtime>(app: &AppHandle<R>, state: TrayState) {
-    let resource_path = app
-        .path()
-        .resource_dir()
-        .unwrap_or_default()
-        .join(state.icon_path());
-
-    match Image::from_path(&resource_path) {
+    match Image::from_bytes(state.icon_bytes()) {
         Ok(icon) => {
             if let Some(tray) = app.tray_by_id("main") {
                 let _ = tray.set_icon(Some(icon));
@@ -68,7 +67,7 @@ pub fn set_tray_state<R: Runtime>(app: &AppHandle<R>, state: TrayState) {
             }
         }
         Err(e) => {
-            tracing::warn!("Could not load tray icon {:?}: {e}", state.icon_path());
+            tracing::warn!("Could not load tray icon for {state:?}: {e}");
         }
     }
 }
@@ -84,16 +83,13 @@ fn build_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
 /// Register the tray icon. Called once from `setup`.
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    let resource_path = app
-        .path()
-        .resource_dir()
-        .unwrap_or_default()
-        .join("icons/tray/idle.png");
-
-    let icon = Image::from_path(&resource_path).map_err(|e| {
-        tracing::error!("Failed to load idle tray icon: {e}");
-        e
-    })?;
+    let icon = match Image::from_bytes(ICON_IDLE) {
+        Ok(img) => img,
+        Err(e) => {
+            tracing::error!("Failed to parse idle tray icon bytes: {e}");
+            return Err(e);
+        }
+    };
 
     let menu = build_tray_menu(app)?;
 
