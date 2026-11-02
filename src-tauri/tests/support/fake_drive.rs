@@ -767,7 +767,7 @@ async fn handle_resumable_chunk(
     if content_range.starts_with("bytes */") {
         let received_len = session.received.len();
         if received_len == 0 {
-            let resp = "HTTP/1.1 308 Resume Incomplete\r\nRange: bytes=0-0\r\nContent-Length: 0\r\n\r\n";
+            let resp = "HTTP/1.1 308 Resume Incomplete\r\nContent-Length: 0\r\n\r\n";
             out.extend_from_slice(resp.as_bytes());
         } else {
             let range_hdr = format!("bytes=0-{}", received_len - 1);
@@ -1086,7 +1086,6 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 fn parse_multipart_body(body: &[u8]) -> (serde_json::Value, Vec<u8>) {
-    // Looks for JSON part and binary part delimited by \r\n\r\n
     let mut meta = serde_json::Value::Null;
     let mut file_bytes = Vec::new();
 
@@ -1095,8 +1094,7 @@ fn parse_multipart_body(body: &[u8]) -> (serde_json::Value, Vec<u8>) {
         let rest = &body[first_header + 4..];
         if let Some(second_header) = find_subsequence(rest, sep) {
             let json_slice = &rest[..second_header];
-            // Find end of json before boundary
-            if let Some(bound_idx) = json_slice.windows(2).position(|w| w == b"\r\n") {
+            if let Some(bound_idx) = find_subsequence(json_slice, b"\r\n--") {
                 if let Ok(j) = serde_json::from_slice(&json_slice[..bound_idx]) {
                     meta = j;
                 }
@@ -1105,7 +1103,7 @@ fn parse_multipart_body(body: &[u8]) -> (serde_json::Value, Vec<u8>) {
             }
 
             let file_slice = &rest[second_header + 4..];
-            if let Some(bound_idx) = file_slice.windows(2).position(|w| w == b"\r\n") {
+            if let Some(bound_idx) = find_subsequence(file_slice, b"\r\n--") {
                 file_bytes = file_slice[..bound_idx].to_vec();
             } else {
                 file_bytes = file_slice.to_vec();

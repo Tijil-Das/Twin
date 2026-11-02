@@ -40,6 +40,11 @@ pub enum FaultAction {
         n: usize,
         fault: Box<FaultAction>,
     },
+    /// Fails on all calls >= n (1-based index).
+    FailFromNth {
+        n: usize,
+        fault: Box<FaultAction>,
+    },
     /// Fails with probability `p` (0.0 to 1.0) using a seeded RNG.
     FailProbability {
         p: f64,
@@ -172,6 +177,13 @@ impl FaultInjector {
         match fault {
             FaultAction::FailNth { n, fault } => {
                 if call_num == n {
+                    *fault
+                } else {
+                    FaultAction::Ok
+                }
+            }
+            FaultAction::FailFromNth { n, fault } => {
+                if call_num >= n {
                     *fault
                 } else {
                     FaultAction::Ok

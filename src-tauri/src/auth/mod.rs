@@ -316,7 +316,7 @@ pub fn is_logged_in() -> bool {
     cred_get(KEY_REFRESH_TOKEN).is_ok()
 }
 
-#[cfg(test)]
+#[doc(hidden)]
 pub async fn set_token_for_test(token: &str) {
     let expires_at = Instant::now() + Duration::from_secs(3600);
     *auth_state().lock().await = Some(TokenState {

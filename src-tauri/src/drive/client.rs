@@ -57,6 +57,16 @@ impl DriveClient {
         })
     }
 
+    /// Build a client with a custom reqwest::Client and base URL (useful for testing against in-process fakes).
+    pub fn new_with_client(http: Client, base_url: String) -> Self {
+        DriveClient {
+            http,
+            upload_base_url: base_url.clone(),
+            base_url,
+            path_cache: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
     pub fn with_base_url(mut self, base_url: String) -> Self {
         self.upload_base_url = base_url.clone();
         self.base_url = base_url;

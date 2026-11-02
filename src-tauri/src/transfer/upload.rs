@@ -268,15 +268,22 @@ async fn resumable_upload(
         let remaining = total_size - offset;
         let this_chunk = remaining.min(chunk_size) as usize;
         let mut buf = vec![0u8; this_chunk];
-        let n = file.read(&mut buf)
-            .map_err(|e| AppError::Io(format!("read chunk: {e}")))?;
+        let mut read_bytes = 0;
+        while read_bytes < this_chunk {
+            let n = file.read(&mut buf[read_bytes..])
+                .map_err(|e| AppError::Io(format!("read chunk: {e}")))?;
+            if n == 0 {
+                break;
+            }
+            read_bytes += n;
+        }
 
-        if n == 0 {
+        if read_bytes == 0 {
             break;
         }
-        buf.truncate(n);
+        buf.truncate(read_bytes);
 
-        limiter.acquire(n as u64).await;
+        limiter.acquire(read_bytes as u64).await;
 
         let _ = progress.send(ProgressUpdate {
             job_id: job.id,
@@ -286,18 +293,21 @@ async fn resumable_upload(
             bytes_total: total_size,
         });
 
-        // Retry individual chunk on transient error.
+        // Retry individual chunk on transient error (up to 3 retries).
         let mut chunk_delay = Duration::from_millis(500);
+        let mut chunk_attempts = 0;
         let chunk_result = loop {
+            chunk_attempts += 1;
             match drive.upload_chunk(&session_uri, buf.clone(), offset, total_size).await {
                 Ok(r) => break Ok(r),
                 Err(e) => {
-                    // If session gone, bubble up to fail_job for re-queue.
-                    if e.to_string().contains("expired") || e.to_string().contains("404") {
-                        let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
+                    if chunk_attempts > 3 || e.to_string().contains("expired") || e.to_string().contains("404") {
+                        if e.to_string().contains("expired") || e.to_string().contains("404") {
+                            let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
+                        }
                         break Err(e);
                     }
-                    warn!("chunk error, retrying: {e}");
+                    warn!("chunk error (attempt {chunk_attempts}), retrying: {e}");
                     sleep(chunk_delay).await;
                     chunk_delay = (chunk_delay * 2).min(Duration::from_secs(30));
                     // Re-query offset in case partial data was received.
@@ -323,7 +333,7 @@ async fn resumable_upload(
                 return Ok(meta);
             }
             None => {
-                offset += n as u64;
+                offset += read_bytes as u64;
             }
         }
     }

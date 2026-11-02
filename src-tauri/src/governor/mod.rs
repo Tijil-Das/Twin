@@ -42,6 +42,18 @@ impl Default for GovernorCfg {
     }
 }
 
+impl From<&crate::config::GovernorSection> for GovernorCfg {
+    fn from(s: &crate::config::GovernorSection) -> Self {
+        Self {
+            cpu_pause_pct: s.cpu_pause_pct,
+            cpu_resume_pct: s.cpu_resume_pct,
+            battery_pause_pct: s.battery_pause_pct,
+            pause_on_metered: s.pause_on_metered,
+            active_hours: String::new(),
+        }
+    }
+}
+
 // ── GovState / Reason ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -154,9 +154,11 @@ async fn run_download(
         return download_export(&job, &drive, &drive_id, &export_m, &dest, &db, &gov).await;
     }
 
-    let size: u64 = meta.size.as_deref()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
+    let size: u64 = match meta.size {
+        Some(serde_json::Value::String(ref s)) => s.parse().unwrap_or(0),
+        Some(serde_json::Value::Number(ref n)) => n.as_u64().unwrap_or(0),
+        _ => 0,
+    };
     let drive_md5 = meta.md5_checksum.clone();
     let drive_mtime = meta.modified_time.clone();
     let drive_mtime_ms = drive_mtime.as_deref().and_then(rfc3339_to_ms).unwrap_or(0);
@@ -542,9 +544,11 @@ async fn run_restore(
         return download_export(&job, &drive, &drive_id, &export_m, &dest, &db, &gov).await;
     }
 
-    let size: u64 = meta.size.as_deref()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
+    let size: u64 = match meta.size {
+        Some(serde_json::Value::String(ref s)) => s.parse().unwrap_or(0),
+        Some(serde_json::Value::Number(ref n)) => n.as_u64().unwrap_or(0),
+        _ => 0,
+    };
 
     let part = part_path(&dest);
     let sidecar = sidecar_path(&dest);
@@ -609,7 +613,11 @@ pub async fn restore_file(
     let sidecar = sidecar_path(&dest);
 
     let meta = fetch_file_meta(drive, file_id).await?;
-    let size: u64 = meta.size.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let size: u64 = match meta.size {
+        Some(serde_json::Value::String(ref s)) => s.parse().unwrap_or(0),
+        Some(serde_json::Value::Number(ref n)) => n.as_u64().unwrap_or(0),
+        _ => 0,
+    };
 
     if let Some(rid) = rev_id {
         // Download via revisions endpoint.
@@ -822,7 +830,7 @@ struct NamedFileMeta {
     #[serde(default)] pub mime_type: Option<String>,
     #[serde(default)] pub md5_checksum: Option<String>,
     #[serde(default)] pub modified_time: Option<String>,
-    #[serde(default)] pub size: Option<String>,
+    #[serde(default)] pub size: Option<serde_json::Value>,
 }
 
 fn part_path(dest: &Path) -> PathBuf {
