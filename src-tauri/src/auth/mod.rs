@@ -82,7 +82,40 @@ fn auth_state() -> &'static Arc<Mutex<Option<TokenState>>> {
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
+const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.appdata";
+
+/// Built-in Twin Google OAuth client credentials.
+/// Replace placeholder below with your Twin Google Cloud Console credentials.
+pub const DEFAULT_CLIENT_ID: &str = "YOUR_TWIN_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+pub const DEFAULT_CLIENT_SECRET: &str = "YOUR_TWIN_GOOGLE_CLIENT_SECRET";
+
+/// Read client_id from env, Credential Manager, or built-in default.
+pub fn get_client_id() -> String {
+    if let Ok(v) = std::env::var("TWIN_CLIENT_ID") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    match cred_get(KEY_CLIENT_ID) {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => DEFAULT_CLIENT_ID.to_string(),
+    }
+}
+
+/// Read client_secret from env, Credential Manager, or built-in default.
+pub fn get_client_secret() -> String {
+    if let Ok(v) = std::env::var("TWIN_CLIENT_SECRET") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    match cred_get(KEY_CLIENT_SECRET) {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => DEFAULT_CLIENT_SECRET.to_string(),
+    }
+}
 
 // ── Token exchange / refresh helpers ──────────────────────────────────────
 
@@ -181,8 +214,8 @@ pub async fn login_with_urls(
     auth_url: &str,
     token_url: &str,
 ) -> Result<(), AppError> {
-    let client_id = cred_get(KEY_CLIENT_ID)?;
-    let client_secret = cred_get(KEY_CLIENT_SECRET)?;
+    let client_id = get_client_id();
+    let client_secret = get_client_secret();
 
     // Bind to a random port on loopback.
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -288,8 +321,8 @@ pub async fn access_token_with_url(token_url: &str) -> Result<String, AppError> 
     }
 
     // Need to refresh.
-    let client_id = cred_get(KEY_CLIENT_ID)?;
-    let client_secret = cred_get(KEY_CLIENT_SECRET)?;
+    let client_id = get_client_id();
+    let client_secret = get_client_secret();
     let refresh_token = cred_get(KEY_REFRESH_TOKEN)?;
 
     let http = build_client()?;
@@ -368,10 +401,12 @@ pub async fn auth_logout() -> Result<(), AppError> {
 
 #[tauri::command]
 pub fn auth_status() -> AuthStatus {
+    let cid = get_client_id();
+    let is_configured = !cid.is_empty() && cid != "YOUR_TWIN_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
     AuthStatus {
         logged_in: is_logged_in(),
-        client_id_set: cred_get(KEY_CLIENT_ID).is_ok(),
-        client_secret_set: cred_get(KEY_CLIENT_SECRET).is_ok(),
+        client_id_set: is_configured || cred_get(KEY_CLIENT_ID).is_ok(),
+        client_secret_set: is_configured || cred_get(KEY_CLIENT_SECRET).is_ok(),
     }
 }
 

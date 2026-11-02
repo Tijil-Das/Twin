@@ -7,7 +7,7 @@ import { useStore } from "@/store";
 import {
   getConfig, updateConfig,
   authLogin, authLogout, authStatus,
-  authSetClientId, authSetClientSecret, authClearCredentials,
+  appdataSyncNow,
 } from "@/lib/tauri";
 import type { Config } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
@@ -33,8 +33,7 @@ export function SettingsScreen() {
   const [local, setLocal] = useState<Config | null>(config);
   const [saving, setSaving] = useState(false);
   const [advOpen, setAdvOpen] = useState(false);
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
+  const [syncingAppData, setSyncingAppData] = useState(false);
   const [quota, setQuota] = useState<StorageQuota | null>(null);
   const [autostart, setAutostart] = useState(false);
 
@@ -96,29 +95,15 @@ export function SettingsScreen() {
     }
   }
 
-  async function handleSetClientId() {
+  async function handleAppDataSync() {
+    setSyncingAppData(true);
     try {
-      await authSetClientId(clientId.trim());
-      toast.error(""); // clear errors
+      await appdataSyncNow();
+      toast.success("Settings synchronized with Google Drive AppData.");
     } catch (e) {
-      toast.error(`Failed: ${String(e)}`);
-    }
-  }
-
-  async function handleSetClientSecret() {
-    try {
-      await authSetClientSecret(clientSecret.trim());
-    } catch (e) {
-      toast.error(`Failed: ${String(e)}`);
-    }
-  }
-
-  async function handleClearCreds() {
-    try {
-      await authClearCredentials();
-      toast.error("Credentials cleared.");
-    } catch (e) {
-      toast.error(`Failed: ${String(e)}`);
+      toast.error(`Sync failed: ${String(e)}`);
+    } finally {
+      setSyncingAppData(false);
     }
   }
 
@@ -148,45 +133,21 @@ export function SettingsScreen() {
         <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Account</h2>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 13 }}>
-              {authed ? "Signed in to Google" : "Not signed in"}
-            </span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }}>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 500, display: "block" }}>
+                {authed ? "Google Account Connected" : "Connect Google Account"}
+              </span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {authed ? "Twin is actively synchronizing with your Google Drive" : "Sign in to synchronize files and folders"}
+              </span>
+            </div>
             {authed ? (
-              <div style={{ display: "flex", gap: 8 }}>
-                <Button variant="secondary" size="sm" onClick={handleLogout}>Sign out</Button>
-                <Button variant="secondary" size="sm" onClick={handleClearCreds}>Clear credentials</Button>
-              </div>
+              <Button variant="secondary" size="sm" onClick={handleLogout}>Sign out</Button>
             ) : (
-              <Button size="sm" onClick={handleLogin}>Sign in</Button>
+              <Button size="sm" onClick={handleLogin}>Sign in with Google</Button>
             )}
           </div>
-
-          <FieldGroup label="OAuth Client ID">
-            <div style={{ display: "flex", gap: 8 }}>
-              <Input
-                type="password"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                placeholder="Paste client ID"
-                style={{ flex: 1 }}
-              />
-              <Button variant="secondary" size="sm" onClick={handleSetClientId}>Save</Button>
-            </div>
-          </FieldGroup>
-
-          <FieldGroup label="OAuth Client Secret">
-            <div style={{ display: "flex", gap: 8 }}>
-              <Input
-                type="password"
-                value={clientSecret}
-                onChange={(e) => setClientSecret(e.target.value)}
-                placeholder="Paste client secret"
-                style={{ flex: 1 }}
-              />
-              <Button variant="secondary" size="sm" onClick={handleSetClientSecret}>Save</Button>
-            </div>
-          </FieldGroup>
         </div>
       </section>
 
@@ -448,21 +409,21 @@ export function SettingsScreen() {
 
             {divider}
 
-            <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>GitHub sync</h3>
-            <FieldGroup label="Repository (owner/repo)">
-              <Input
-                value={local.github.repo}
-                onChange={(e) => patchLocal((c) => ({ ...c, github: { ...c.github, repo: e.target.value } }))}
-                placeholder="you/repo"
-              />
-            </FieldGroup>
-            <FieldGroup label="Branch">
-              <Input
-                value={local.github.branch}
-                onChange={(e) => patchLocal((c) => ({ ...c, github: { ...c.github, branch: e.target.value } }))}
-                placeholder="main"
-              />
-            </FieldGroup>
+            <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Cloud Settings Sync</h3>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6 }}>
+              <div>
+                <span style={{ fontSize: 13, display: "block" }}>Google Drive AppData</span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Settings and device states sync automatically & privately to your Google Drive</span>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={syncingAppData || !authed}
+                onClick={handleAppDataSync}
+              >
+                {syncingAppData ? "Syncing…" : "Sync Now"}
+              </Button>
+            </div>
           </div>
         )}
       </section>

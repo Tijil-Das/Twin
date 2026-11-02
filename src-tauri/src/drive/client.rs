@@ -457,6 +457,122 @@ impl DriveClient {
             Err(AppError::Drive(format!("query_offset HTTP {status}: {body}")))
         }
     }
+
+    // ── AppData Folder (Application Data) ──────────────────────────────────────
+
+    /// List all files in the hidden application data folder (`appDataFolder`).
+    pub async fn list_appdata(&self) -> Result<Vec<DriveFile>, AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{}/files", self.base_url);
+
+        let resp = self
+            .execute_with_retry(|| {
+                self.http
+                    .get(&url)
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .query(&[
+                        ("spaces", "appDataFolder"),
+                        ("fields", "files(id, name, modifiedTime, size, md5Checksum, trashed)"),
+                    ])
+            })
+            .await?;
+
+        let list: FileList = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Drive(format!("parse list_appdata: {e}")))?;
+
+        Ok(list.files.into_iter().filter(|f| f.trashed != Some(true)).collect())
+    }
+
+    /// Find a file in `appDataFolder` by filename.
+    pub async fn get_appdata_file(&self, filename: &str) -> Result<Option<DriveFile>, AppError> {
+        let files = self.list_appdata().await?;
+        Ok(files.into_iter().find(|f| f.name.as_deref() == Some(filename)))
+    }
+
+    /// Upload or update a file in the hidden `appDataFolder`.
+    pub async fn upload_appdata(
+        &self,
+        filename: &str,
+        content: &[u8],
+    ) -> Result<DriveFileMeta, AppError> {
+        let token = auth::access_token().await?;
+        let existing = self.get_appdata_file(filename).await?;
+
+        if let Some(file) = existing {
+            // Update existing file content via PATCH /upload/drive/v3/files/{id}?uploadType=media
+            let url = format!("{}/files/{}?uploadType=media", self.upload_base_url, file.id);
+            let body = content.to_vec();
+            let resp = self
+                .execute_with_retry(|| {
+                    self.http
+                        .patch(&url)
+                        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                        .header(header::CONTENT_TYPE, "application/octet-stream")
+                        .body(body.clone())
+                })
+                .await?;
+
+            resp.json::<DriveFileMeta>()
+                .await
+                .map_err(|e| AppError::Drive(format!("parse update_appdata response: {e}")))
+        } else {
+            // Create new file with parents: ["appDataFolder"]
+            let boundary = "BOUNDARY_TWIN_APPDATA";
+            let metadata = serde_json::json!({
+                "name": filename,
+                "parents": ["appDataFolder"]
+            });
+            let meta_json = serde_json::to_string(&metadata)
+                .map_err(|e| AppError::Drive(format!("metadata json: {e}")))?;
+
+            let mut body = Vec::new();
+            body.extend_from_slice(format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta_json}\r\n").as_bytes());
+            body.extend_from_slice(format!("--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n").as_bytes());
+            body.extend_from_slice(content);
+            body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+            let url = format!("{}/files?uploadType=multipart", self.upload_base_url);
+            let resp = self
+                .execute_with_retry(|| {
+                    self.http
+                        .post(&url)
+                        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                        .header(
+                            header::CONTENT_TYPE,
+                            format!("multipart/related; boundary={boundary}"),
+                        )
+                        .body(body.clone())
+                })
+                .await?;
+
+            resp.json::<DriveFileMeta>()
+                .await
+                .map_err(|e| AppError::Drive(format!("parse create_appdata response: {e}")))
+        }
+    }
+
+    /// Download content of a file in `appDataFolder` by file ID.
+    pub async fn download_appdata(&self, file_id: &str) -> Result<Vec<u8>, AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{}/files/{}?alt=media", self.base_url, file_id);
+
+        let resp = self
+            .execute_with_retry(|| {
+                self.http
+                    .get(&url)
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            })
+            .await?;
+
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| AppError::Drive(format!("download_appdata bytes: {e}")))?;
+
+        Ok(bytes.to_vec())
+    }
 }
 
 impl Default for DriveClient {
@@ -485,6 +601,8 @@ pub struct DriveFile {
     pub description: Option<String>,
     #[serde(default)]
     pub starred: Option<bool>,
+    #[serde(default)]
+    pub trashed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

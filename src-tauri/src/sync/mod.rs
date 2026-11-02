@@ -6,6 +6,7 @@
 //! 3. Polls remote changes every 60 s while governor is Running.
 //! 4. For each change, applies the decision table.
 
+pub mod appdata;
 pub mod changes;
 pub mod reconcile;
 

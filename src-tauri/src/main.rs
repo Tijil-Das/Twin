@@ -297,6 +297,16 @@ async fn gh_pull_now(db_s: tauri::State<'_, db::DbState>) -> Result<(), String> 
         .await.map_err(|e| e.to_string())
 }
 
+/// Manually sync configuration and device state with Google Drive appDataFolder.
+#[tauri::command]
+async fn appdata_sync_now() -> Result<(), String> {
+    let drive = drive::DriveClient::new().map_err(|e| e.to_string())?;
+    let cfg = config::load().unwrap_or_default();
+    sync::appdata::push_to_appdata(&drive, &cfg).await.map_err(|e| e.to_string())?;
+    sync::appdata::pull_from_appdata(&drive).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 fn main() {
     // Set process priority first -- before any heavy work starts.
     set_below_normal_priority();
@@ -369,6 +379,7 @@ fn main() {
             commands::set_description,
             commands::set_starred,
             commands::drive_search,
+            appdata_sync_now,
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -426,6 +437,14 @@ fn main() {
             let app_handle = handle.clone();
             tokio::spawn(transfer::relay_progress(prog_rx, app_handle));
             app.manage(queue::QueueState(q));
+
+            // Spawn Google Drive AppData config sync loop (zero-config cloud sync).
+            {
+                if let Ok(drive_client) = drive::DriveClient::new() {
+                    let gov_appdata = gov.clone();
+                    tokio::spawn(sync::appdata::appdata_sync_loop(drive_client, gov_appdata, 15));
+                }
+            }
 
             // Spawn GitHub push loop (P11).
             {

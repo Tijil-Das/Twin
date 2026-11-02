@@ -160,4 +160,5 @@ export const resolveConflict = (pairId: string, relPath: string, choice: string)
   invoke<void>("resolve_conflict", { pairId, relPath, choice });
 export const validatePath = (path: string) =>
   invoke<boolean>("validate_path", { path }).catch(() => false);
+export const appdataSyncNow = () => invoke<void>("appdata_sync_now");
 
