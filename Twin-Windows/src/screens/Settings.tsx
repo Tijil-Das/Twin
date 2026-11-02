@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ShieldCheck, LogOut } from "lucide-react";
 import { formatBytes } from "@/lib/format";
 
 interface StorageQuota {
@@ -28,6 +28,8 @@ export function SettingsScreen() {
   const setConfig = useStore((s) => s.setConfig);
   const setAuthed = useStore((s) => s.setAuthed);
   const authed = useStore((s) => s.authed);
+  const userProfile = useStore((s) => s.userProfile);
+  const setUserProfile = useStore((s) => s.setUserProfile);
   const config = useStore((s) => s.config);
 
   const [local, setLocal] = useState<Config | null>(config);
@@ -41,9 +43,10 @@ export function SettingsScreen() {
     const [cfg, a] = await Promise.all([getConfig(), authStatus()]);
     setConfig(cfg);
     setLocal(cfg);
-    setAuthed(a);
+    setAuthed(a.logged_in);
+    setUserProfile(a.user ?? null);
 
-    if (a) {
+    if (a.logged_in) {
       try {
         const q = await invoke<StorageQuota>("get_storage_quota");
         setQuota(q);
@@ -58,7 +61,7 @@ export function SettingsScreen() {
     } catch {
       // Ignore autostart query error
     }
-  }, [setConfig, setAuthed]);
+  }, [setConfig, setAuthed, setUserProfile]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -80,7 +83,10 @@ export function SettingsScreen() {
   async function handleLogin() {
     try {
       await authLogin();
-      setAuthed(true);
+      const a = await authStatus();
+      setAuthed(a.logged_in);
+      setUserProfile(a.user ?? null);
+      toast.success("Signed in with Google");
     } catch (e) {
       toast.error(`Login failed: ${String(e)}`);
     }
@@ -90,6 +96,9 @@ export function SettingsScreen() {
     try {
       await authLogout();
       setAuthed(false);
+      setUserProfile(null);
+      setQuota(null);
+      toast.success("Signed out");
     } catch (e) {
       toast.error(`Logout failed: ${String(e)}`);
     }
@@ -133,17 +142,97 @@ export function SettingsScreen() {
         <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Account</h2>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }}>
-            <div>
-              <span style={{ fontSize: 13, fontWeight: 500, display: "block" }}>
-                {authed ? "Google Account Connected" : "Connect Google Account"}
-              </span>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {authed ? "Twin is actively synchronizing with your Google Drive" : "Sign in to synchronize files and folders"}
-              </span>
-            </div>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "16px 18px",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            gap: 16,
+          }}>
             {authed ? (
-              <Button variant="secondary" size="sm" onClick={handleLogout}>Sign out</Button>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+                {userProfile?.picture ? (
+                  <img
+                    src={userProfile.picture}
+                    alt={userProfile.name ?? "User"}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      border: "1px solid var(--border)",
+                      flexShrink: 0,
+                    }}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 600,
+                    fontSize: 16,
+                    color: "var(--accent)",
+                    flexShrink: 0,
+                  }}>
+                    {userProfile?.name ? userProfile.name[0].toUpperCase() : (userProfile?.email ? userProfile.email[0].toUpperCase() : "G")}
+                  </div>
+                )}
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "#FFFFFF" }}>
+                      {userProfile?.name ?? "Google Account"}
+                    </span>
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      background: "rgba(34, 197, 94, 0.14)",
+                      color: "#4ADE80",
+                      border: "1px solid rgba(34, 197, 94, 0.35)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ADE80" }} />
+                      Connected
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {userProfile?.email ?? "Signed in"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-subtle)", marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                    <ShieldCheck size={12} color="#4ADE80" />
+                    <span>Privacy-first scopes: <code>drive.file</code> + <code>drive.appdata</code></span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <span style={{ fontSize: 14, fontWeight: 600, display: "block" }}>
+                  Connect Google Account
+                </span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, display: "block" }}>
+                  Sign in to synchronize files securely using restricted <code>drive.file</code> permissions
+                </span>
+              </div>
+            )}
+
+            {authed ? (
+              <Button variant="secondary" size="sm" onClick={handleLogout}>
+                <LogOut size={13} style={{ marginRight: 6 }} />
+                Sign out
+              </Button>
             ) : (
               <Button size="sm" onClick={handleLogin}>Sign in with Google</Button>
             )}

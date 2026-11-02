@@ -347,6 +347,7 @@ fn main() {
             auth::auth_login,
             auth::auth_logout,
             auth::auth_status,
+            auth::auth_get_user,
             auth::auth_set_client_id,
             auth::auth_set_client_secret,
             auth::auth_clear_credentials,

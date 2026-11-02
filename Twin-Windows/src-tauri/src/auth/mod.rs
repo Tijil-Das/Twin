@@ -14,6 +14,7 @@ const KEYRING_SERVICE: &str = "twin";
 const KEY_CLIENT_ID: &str = "client_id";
 const KEY_CLIENT_SECRET: &str = "client_secret";
 const KEY_REFRESH_TOKEN: &str = "refresh_token";
+const KEY_USER_PROFILE: &str = "user_profile";
 const KEY_GITHUB_TOKEN: &str = "github_token";
 
 // ── GitHub PAT helpers ────────────────────────────────────────────────────
@@ -78,11 +79,85 @@ fn auth_state() -> &'static Arc<Mutex<Option<TokenState>>> {
     AUTH_STATE.get_or_init(|| Arc::new(Mutex::new(None)))
 }
 
+// ── User profile state ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct GoogleUserProfile {
+    pub email: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub picture: Option<String>,
+}
+
+/// Global in-memory user profile cache.
+static PROFILE_STATE: std::sync::OnceLock<Arc<Mutex<Option<GoogleUserProfile>>>> =
+    std::sync::OnceLock::new();
+
+fn profile_state() -> &'static Arc<Mutex<Option<GoogleUserProfile>>> {
+    PROFILE_STATE.get_or_init(|| Arc::new(Mutex::new(None)))
+}
+
+/// Fetch user profile from Google's OpenID userinfo endpoint.
+pub async fn fetch_user_profile(access_token: &str) -> Option<GoogleUserProfile> {
+    fetch_user_profile_with_url("https://www.googleapis.com/oauth2/v3/userinfo", access_token).await
+}
+
+/// Injectable userinfo fetcher for testing.
+pub async fn fetch_user_profile_with_url(url: &str, access_token: &str) -> Option<GoogleUserProfile> {
+    let http = build_client().ok()?;
+    let resp = http
+        .get(url)
+        .header(reqwest::header::AUTHORIZATION, format!("Bearer {access_token}"))
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        warn!("Failed to fetch userinfo from {url}: status {}", resp.status());
+        return None;
+    }
+
+    resp.json::<GoogleUserProfile>().await.ok()
+}
+
+/// Get user profile: in-memory -> Credential Manager -> network fetch if logged in.
+pub async fn get_user_profile() -> Option<GoogleUserProfile> {
+    // 1. Check in-memory state
+    {
+        let guard = profile_state().lock().await;
+        if let Some(p) = &*guard {
+            return Some(p.clone());
+        }
+    }
+
+    // 2. Check Credential Manager cache
+    if let Ok(json_str) = cred_get(KEY_USER_PROFILE) {
+        if let Ok(p) = serde_json::from_str::<GoogleUserProfile>(&json_str) {
+            *profile_state().lock().await = Some(p.clone());
+            return Some(p);
+        }
+    }
+
+    // 3. Network fetch if logged in
+    if is_logged_in() {
+        if let Ok(token) = access_token().await {
+            if let Some(profile) = fetch_user_profile(&token).await {
+                let _ = cred_set(KEY_USER_PROFILE, &serde_json::to_string(&profile).unwrap_or_default());
+                *profile_state().lock().await = Some(profile.clone());
+                return Some(profile);
+            }
+        }
+    }
+
+    None
+}
+
 // ── OAuth endpoints (overridable in tests) ─────────────────────────────────
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.appdata";
+const DRIVE_SCOPE: &str = "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata";
 
 /// Built-in Twin Google OAuth client credentials.
 /// Replace placeholder below with your Twin Google Cloud Console credentials.
@@ -233,7 +308,8 @@ pub async fn login_with_urls(
     // Build the auth URL.
     let url = format!(
         "{auth_url}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code\
-         &scope={DRIVE_SCOPE}&access_type=offline&prompt=consent&state={state}",
+         &scope={scope}&access_type=offline&prompt=consent&state={state}",
+        scope = urlencoding_simple(DRIVE_SCOPE),
         redirect_uri = urlencoding_simple(&redirect_uri),
         client_id = urlencoding_simple(&client_id),
     );
@@ -286,9 +362,15 @@ pub async fn login_with_urls(
     // Cache access token in memory.
     let expires_at = Instant::now() + Duration::from_secs(token_resp.expires_in);
     *auth_state().lock().await = Some(TokenState {
-        access_token: token_resp.access_token,
+        access_token: token_resp.access_token.clone(),
         expires_at,
     });
+
+    // Fetch and cache user profile
+    if let Some(profile) = fetch_user_profile(&token_resp.access_token).await {
+        let _ = cred_set(KEY_USER_PROFILE, &serde_json::to_string(&profile).unwrap_or_default());
+        *profile_state().lock().await = Some(profile);
+    }
 
     app.emit("auth://changed", true)
         .map_err(|e| AppError::Other(format!("emit: {e}")))?;
@@ -299,7 +381,9 @@ pub async fn login_with_urls(
 /// Clear tokens from memory and Credential Manager.
 pub async fn logout() -> Result<(), AppError> {
     *auth_state().lock().await = None;
+    *profile_state().lock().await = None;
     cred_delete(KEY_REFRESH_TOKEN);
+    cred_delete(KEY_USER_PROFILE);
     info!("Logged out");
     Ok(())
 }
@@ -382,11 +466,12 @@ pub fn clear_client_secret() {
 
 // ── Tauri commands ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthStatus {
     pub logged_in: bool,
     pub client_id_set: bool,
     pub client_secret_set: bool,
+    pub user: Option<GoogleUserProfile>,
 }
 
 #[tauri::command]
@@ -403,11 +488,36 @@ pub async fn auth_logout() -> Result<(), AppError> {
 pub fn auth_status() -> AuthStatus {
     let cid = get_client_id();
     let is_configured = !cid.is_empty() && cid != "YOUR_TWIN_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+    let logged = is_logged_in();
+    let user = if logged {
+        if let Ok(guard) = profile_state().try_lock() {
+            if let Some(p) = &*guard {
+                Some(p.clone())
+            } else if let Ok(json_str) = cred_get(KEY_USER_PROFILE) {
+                serde_json::from_str::<GoogleUserProfile>(&json_str).ok()
+            } else {
+                None
+            }
+        } else if let Ok(json_str) = cred_get(KEY_USER_PROFILE) {
+            serde_json::from_str::<GoogleUserProfile>(&json_str).ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     AuthStatus {
-        logged_in: is_logged_in(),
+        logged_in: logged,
         client_id_set: is_configured || cred_get(KEY_CLIENT_ID).is_ok(),
         client_secret_set: is_configured || cred_get(KEY_CLIENT_SECRET).is_ok(),
+        user,
     }
+}
+
+#[tauri::command]
+pub async fn auth_get_user() -> Option<GoogleUserProfile> {
+    get_user_profile().await
 }
 
 #[tauri::command]
@@ -425,6 +535,10 @@ pub fn auth_clear_credentials() {
     clear_client_id();
     clear_client_secret();
     cred_delete(KEY_REFRESH_TOKEN);
+    cred_delete(KEY_USER_PROFILE);
+    if let Ok(mut guard) = profile_state().try_lock() {
+        *guard = None;
+    }
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────────
@@ -595,6 +709,26 @@ mod tests {
             matches!(&err, AppError::Auth(msg) if msg == "relogin"),
             "expected relogin, got: {err:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn fetch_user_profile_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/userinfo"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "email": "user@example.com",
+                "name": "Twin User",
+                "picture": "https://example.com/avatar.png"
+            })))
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/userinfo", server.uri());
+        let profile = fetch_user_profile_with_url(&url, "dummy_token").await.unwrap();
+        assert_eq!(profile.email, "user@example.com");
+        assert_eq!(profile.name.as_deref(), Some("Twin User"));
+        assert_eq!(profile.picture.as_deref(), Some("https://example.com/avatar.png"));
     }
 
     #[test]

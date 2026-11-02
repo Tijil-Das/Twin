@@ -3,7 +3,7 @@
  * Holds all shared UI state: pairs, activity, progress, gov, auth, conflicts.
  */
 import { create } from "zustand";
-import type { Activity, Config, GovStatePayload, QueueStatus, PairEntry } from "@/lib/tauri";
+import type { Activity, Config, GovStatePayload, QueueStatus, PairEntry, GoogleUserProfile } from "@/lib/tauri";
 
 // ── Progress event payload ─────────────────────────────────────────────────────
 
@@ -33,6 +33,8 @@ interface AppState {
   // Auth
   authed: boolean;
   setAuthed: (v: boolean) => void;
+  userProfile: GoogleUserProfile | null;
+  setUserProfile: (u: GoogleUserProfile | null) => void;
 
   // Activity
   activity: Activity[];
@@ -72,6 +74,8 @@ export const useStore = create<AppState>((set) => ({
 
   authed: false,
   setAuthed: (authed) => set({ authed }),
+  userProfile: null,
+  setUserProfile: (userProfile) => set({ userProfile }),
 
   activity: [],
   setActivity: (activity) => set({ activity }),

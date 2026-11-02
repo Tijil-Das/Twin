@@ -1,6 +1,7 @@
 /** Left sidebar navigation. */
 import { Home, Activity, ArchiveRestore, Settings, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useStore } from "@/store";
 
 export type Screen = "home" | "activity" | "restore" | "settings";
 
@@ -17,6 +18,9 @@ const items: { id: Screen; label: string; Icon: LucideIcon }[] = [
 ];
 
 export function Sidebar({ active, onNavigate }: SidebarProps) {
+  const authed = useStore((s) => s.authed);
+  const userProfile = useStore((s) => s.userProfile);
+
   return (
     <nav
       style={{
@@ -49,6 +53,66 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
           {label}
         </button>
       ))}
+
+      {authed && (
+        <div
+          onClick={() => onNavigate("settings")}
+          style={{
+            marginTop: "auto",
+            padding: "12px 14px",
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            cursor: "pointer",
+          }}
+          className="hover:bg-[var(--surface-2)] transition-colors"
+          title="Account Settings"
+        >
+          {userProfile?.picture ? (
+            <img
+              src={userProfile.picture}
+              alt={userProfile.name ?? "User"}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "1px solid var(--border)",
+                flexShrink: 0,
+              }}
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--accent)",
+                flexShrink: 0,
+              }}
+            >
+              {userProfile?.name ? userProfile.name[0].toUpperCase() : (userProfile?.email ? userProfile.email[0].toUpperCase() : "G")}
+            </div>
+          )}
+          <div style={{ minWidth: 0, overflow: "hidden", lineHeight: 1.2 }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {userProfile?.name ?? "Google Account"}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {userProfile?.email ?? "Connected"}
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

@@ -125,9 +125,23 @@ export const updateConfig = (cfg: Config) => invoke<void>("update_config", { cfg
 export const addPair = (pair: PairEntry) => invoke<void>("add_pair", { pair });
 export const removePair = (id: string) => invoke<void>("remove_pair", { id });
 
+export interface GoogleUserProfile {
+  email: string;
+  name?: string | null;
+  picture?: string | null;
+}
+
+export interface AuthStatus {
+  logged_in: boolean;
+  client_id_set: boolean;
+  client_secret_set: boolean;
+  user?: GoogleUserProfile | null;
+}
+
 export const authLogin = () => invoke<void>("auth_login");
 export const authLogout = () => invoke<void>("auth_logout");
-export const authStatus = () => invoke<boolean>("auth_status");
+export const authStatus = () => invoke<AuthStatus>("auth_status");
+export const authGetUser = () => invoke<GoogleUserProfile | null>("auth_get_user");
 export const authSetClientId = (id: string) => invoke<void>("auth_set_client_id", { id });
 export const authSetClientSecret = (secret: string) => invoke<void>("auth_set_client_secret", { secret });
 export const authClearCredentials = () => invoke<void>("auth_clear_credentials");

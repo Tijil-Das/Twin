@@ -18,9 +18,10 @@ import { SettingsScreen } from "@/screens/Settings";
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
 
-  const { setConfig, setAuthed, setProgress, setGov, setQueueStatus, conflicts } = useStore((s) => ({
+  const { setConfig, setAuthed, setUserProfile, setProgress, setGov, setQueueStatus, conflicts } = useStore((s) => ({
     setConfig:      s.setConfig,
     setAuthed:      s.setAuthed,
+    setUserProfile: s.setUserProfile,
     setProgress:    s.setProgress,
     setGov:         s.setGov,
     setQueueStatus: s.setQueueStatus,
@@ -53,7 +54,8 @@ export default function App() {
           queueStatus(),
         ]);
         setConfig(cfg);
-        setAuthed(a);
+        setAuthed(a.logged_in);
+        setUserProfile(a.user ?? null);
         setGov(g);
         setQueueStatus(qs);
       } catch {
@@ -87,6 +89,11 @@ export default function App() {
       // Auth changed
       listen<boolean>("auth://changed", (ev) => {
         setAuthed(ev.payload);
+        if (ev.payload) {
+          void authStatus().then((s) => setUserProfile(s.user ?? null)).catch(() => undefined);
+        } else {
+          setUserProfile(null);
+        }
       }),
 
       // Sync conflict
