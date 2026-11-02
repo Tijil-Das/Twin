@@ -932,6 +932,144 @@ p { color: var(--text-muted); font-size: 1rem; }
   color: #FFFFFF;
 }
 
+/* ========================================================
+   Legal & Documentation Pages (Privacy & Terms)
+   ======================================================== */
+.legal-page {
+  padding: 56px 0 80px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--accent-cyan);
+  text-decoration: none;
+  font-weight: 500;
+  margin-bottom: 32px;
+  transition: color 150ms ease;
+}
+
+.back-link:hover {
+  color: #FFFFFF;
+}
+
+.legal-header {
+  margin-bottom: 36px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.legal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+.legal-title {
+  font-size: clamp(2rem, 3.5vw, 2.6rem);
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.025em;
+  margin-bottom: 8px;
+}
+
+.legal-meta {
+  font-size: 13px;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.legal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  max-width: 760px;
+}
+
+.legal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.legal-section h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #FFFFFF;
+  margin-top: 4px;
+}
+
+.legal-section p {
+  font-size: 0.98rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+
+.legal-section strong {
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.legal-section ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.legal-section li {
+  position: relative;
+  padding-left: 20px;
+  font-size: 0.96rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.legal-section li::before {
+  content: "•";
+  position: absolute;
+  left: 4px;
+  color: var(--accent-cyan);
+  font-weight: bold;
+}
+
+.legal-callout {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-cyan);
+  border-radius: var(--radius-sm);
+  padding: 16px 20px;
+  margin: 6px 0;
+}
+
+.legal-callout p {
+  color: #FFFFFF;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.legal-code-block {
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Responsive Media Queries */
 @media (max-width: 900px) {
   .bento-card.bento-wide {

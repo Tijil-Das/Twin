@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Twin</title>
+  <meta name="description" content="Privacy Policy for Twin — a free, open-source Google Drive sync client. Zero telemetry, zero tracking, and local-only credential storage.">
+  <link rel="icon" type="image/png" href="assets/app-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="header">
+    <div class="container header-inner">
+      <div class="brand-group">
+        <a href="index.html" class="brand">
+          <div class="brand-icon">
+            <img src="assets/app-icon.png" alt="Twin Logo">
+          </div>
+          <span class="brand-name">Twin</span>
+        </a>
+        <span class="version-pill">v0.1.0</span>
+      </div>
+
+      <nav>
+        <ul class="nav-links">
+          <li><a href="index.html#features" class="nav-link">Features</a></li>
+          <li><a href="index.html#comparison" class="nav-link">Comparison</a></li>
+          <li><a href="https://github.com/Tijil-Das/Twin" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a></li>
+          <li><a href="index.html#download" class="nav-link">Download</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-cta">
+        <a href="index.html#download" class="btn btn-primary">Download v0.1.0</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Privacy Policy Content -->
+  <main class="legal-page">
+    <div class="container">
+      <a href="index.html" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        <span>Back to Home</span>
+      </a>
+
+      <div class="legal-header">
+        <span class="legal-badge">Legal</span>
+        <h1 class="legal-title">Privacy Policy</h1>
+        <p class="legal-meta">Effective Date: November 3, 2026 · Open Source &amp; MIT Licensed</p>
+      </div>
+
+      <div class="legal-content">
+        <div class="legal-callout">
+          <p>
+            <strong>Summary:</strong> Twin is a 100% free, open-source desktop client. We operate zero intermediary servers, collect zero telemetry, employ zero analytics or trackers, and never sell, share, or store your personal data.
+          </p>
+        </div>
+
+        <section class="legal-section">
+          <h2>1. Introduction &amp; Architecture</h2>
+          <p>
+            Twin ("the Application") is an open-source Windows desktop client for Google Drive, created by Tijil Das. Twin operates solely as a local tool on your computer. All processing, hashing, chunking, and file synchronization happen directly on your local device.
+          </p>
+        </section>
+
+        <section class="legal-section">
+          <h2>2. How Your Google Data Is Handled</h2>
+          <p>
+            When you connect Twin to your Google Drive account, the Application interacts directly with Google APIs:
+          </p>
+          <ul>
+            <li><strong>Direct Communication:</strong> All data transmissions occur strictly between your computer and Google's official endpoints (<code>googleapis.com</code>). Twin has no back-end server, relay proxy, or cloud database.</li>
+            <li><strong>OAuth 2.0 PKCE Authentication:</strong> Sign-in uses standard OAuth 2.0 with Proof Key for Code Exchange (PKCE) over a temporary local loopback server. Twin never sees or handles your Google password.</li>
+            <li><strong>Encrypted Local Storage:</strong> OAuth access tokens and refresh tokens are encrypted using Windows Credential Manager (<code>wincred</code>) on your local machine. They are never transmitted to third parties or remote servers.</li>
+            <li><strong>File Content:</strong> Your files, filenames, folder hierarchies, and revision histories are accessed solely to execute the sync operations you configure.</li>
+          </ul>
+        </section>
+
+        <section class="legal-section">
+          <h2>3. Zero Telemetry &amp; Zero Tracking</h2>
+          <p>
+            Twin respects your right to complete privacy:
+          </p>
+          <ul>
+            <li>No analytics SDKs, trackers, or telemetry probes are bundled in the binary.</li>
+            <li>No user behavior, usage metrics, device fingerprints, or crash reports are transmitted.</li>
+            <li>No advertising cookies, profiling, or tracking mechanisms are used on the Application or website.</li>
+          </ul>
+        </section>
+
+        <section class="legal-section">
+          <h2>4. Google API Services User Data Policy</h2>
+          <p>
+            Twin's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" style="color: var(--accent-cyan);">Google API Services User Data Policy</a>, including the Limited Use requirements.
+          </p>
+          <p>
+            Specifically, user data obtained through Google Drive scopes is used exclusively to provide user-facing file synchronization and management features and is not used for any other purpose.
+          </p>
+        </section>
+
+        <section class="legal-section">
+          <h2>5. Local Diagnostics &amp; Logging</h2>
+          <p>
+            Any sync diagnostic logs produced by the application are written exclusively to your local storage. You maintain complete control over these log files and may review, inspect, or delete them at any time.
+          </p>
+        </section>
+
+        <section class="legal-section">
+          <h2>6. Open Source Transparency &amp; Auditing</h2>
+          <p>
+            Because Twin is distributed under the open-source MIT License, the complete source code is public and verifiable on GitHub. You are free to inspect, audit, and build the software directly from source:
+          </p>
+          <p>
+            Repository: <a href="https://github.com/Tijil-Das/Twin" target="_blank" rel="noopener noreferrer" style="color: var(--accent-cyan); font-weight: 500;">https://github.com/Tijil-Das/Twin</a>
+          </p>
+        </section>
+
+        <section class="legal-section">
+          <h2>7. Contact &amp; Questions</h2>
+          <p>
+            If you have questions or concerns regarding this Privacy Policy, you can open an issue or inquiry on our official GitHub repository at <a href="https://github.com/Tijil-Das/Twin/issues" target="_blank" rel="noopener noreferrer" style="color: var(--accent-cyan);">github.com/Tijil-Das/Twin/issues</a>.
+          </p>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="assets/app-icon.png" width="20" height="20" alt="Twin Logo">
+        <span>Twin · Lightweight Google Drive Sync</span>
+      </div>
+
+      <div class="footer-links">
+        <a href="https://github.com/Tijil-Das/Twin" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a>
+        <a href="https://github.com/Tijil-Das/Twin/releases" target="_blank" rel="noopener noreferrer" class="footer-link">Releases</a>
+        <a href="privacy.html" class="footer-link" style="color: #FFFFFF;">Privacy Policy</a>
+        <a href="terms.html" class="footer-link">Terms of Service</a>
+        <a href="https://github.com/Tijil-Das/Twin/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="footer-link">MIT License</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
