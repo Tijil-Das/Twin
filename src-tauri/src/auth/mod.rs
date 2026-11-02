@@ -10,7 +10,7 @@ use crate::error::AppError;
 
 // ── Credential Manager keys ────────────────────────────────────────────────
 
-const KEYRING_SERVICE: &str = "tether";
+const KEYRING_SERVICE: &str = "twin";
 const KEY_CLIENT_ID: &str = "client_id";
 const KEY_CLIENT_SECRET: &str = "client_secret";
 const KEY_REFRESH_TOKEN: &str = "refresh_token";
@@ -467,7 +467,7 @@ fn parse_redirect_params(request_line: &str) -> Result<(String, String), AppErro
 /// Send a minimal HTTP 200 response with a "you can close this tab" body.
 async fn write_http_ok(stream: &mut tokio::net::TcpStream) {
     use tokio::io::AsyncWriteExt;
-    let body = "<html><body><h2>Tether: authentication successful. You can close this tab.</h2></body></html>";
+    let body = "<html><body><h2>Twin: authentication successful. You can close this tab.</h2></body></html>";
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         body.len(),

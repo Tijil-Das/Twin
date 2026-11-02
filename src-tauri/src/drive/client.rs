@@ -300,7 +300,7 @@ impl DriveClient {
         let meta_str = meta.to_string();
 
         // Build multipart body manually.
-        let boundary = "tether_boundary_42";
+        let boundary = "twin_boundary_42";
         let mut body = Vec::new();
         body.extend_from_slice(format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n").as_bytes());
         body.extend_from_slice(meta_str.as_bytes());

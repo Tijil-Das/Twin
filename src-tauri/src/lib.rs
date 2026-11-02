@@ -43,10 +43,10 @@ impl TrayState {
 
     fn tooltip(self) -> &'static str {
         match self {
-            TrayState::Idle => "Tether \u{2013} Idle",
-            TrayState::Syncing => "Tether \u{2013} Syncing",
-            TrayState::Paused => "Tether \u{2013} Paused",
-            TrayState::Error => "Tether \u{2013} Error",
+            TrayState::Idle => "Twin \u{2013} Idle",
+            TrayState::Syncing => "Twin \u{2013} Syncing",
+            TrayState::Paused => "Twin \u{2013} Paused",
+            TrayState::Error => "Twin \u{2013} Error",
         }
     }
 }
@@ -74,7 +74,7 @@ pub fn set_tray_state<R: Runtime>(app: &AppHandle<R>, state: TrayState) {
 
 /// Build the system-tray menu and return it.
 fn build_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let open = MenuItem::with_id(app, "open", "Open Tether", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Twin", true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", "Pause / Resume", true, None::<&str>)?;
     let sync_now = MenuItem::with_id(app, "sync_now", "Sync now", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -98,7 +98,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
     TrayIconBuilder::with_id("main")
         .icon(icon)
-        .tooltip("Tether \u{2013} Idle")
+        .tooltip("Twin \u{2013} Idle")
         .menu(&menu)
         .on_menu_event({
             let app_handle = app.clone();

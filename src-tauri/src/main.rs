@@ -9,12 +9,12 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 use tracing::info;
-use tether_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, watcher, setup_tray};
-use tether_lib::drive::revisions::Revision;
-use tether_lib::drive::client::DriveFile;
-use tether_lib::drive::trash::TrashedFile;
+use twin_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, watcher, setup_tray};
+use twin_lib::drive::revisions::Revision;
+use twin_lib::drive::client::DriveFile;
+use twin_lib::drive::trash::TrashedFile;
 
-// ── Rotating logger for data/tether.log (Item 11) ─────────────────────────────
+// ── Rotating logger for data/twin.log (Item 11) ─────────────────────────────
 
 struct RotatingLogger {
     path: PathBuf,
@@ -301,8 +301,8 @@ fn main() {
     // Set process priority first -- before any heavy work starts.
     set_below_normal_priority();
 
-    // Initialise tracing: stdout + data/tether.log with 2 MB rotation, keeping 2 files.
-    let log_path = std::path::PathBuf::from(".").join("data").join("tether.log");
+    // Initialise tracing: stdout + data/twin.log with 2 MB rotation, keeping 2 files.
+    let log_path = std::path::PathBuf::from(".").join("data").join("twin.log");
     let rotating_logger = Arc::new(Mutex::new(RotatingLogger::new(log_path, 2 * 1024 * 1024)));
     let combined_writer = CombinedWriter { file_logger: rotating_logger };
 
@@ -312,7 +312,7 @@ fn main() {
         .with_writer(combined_writer)
         .init();
 
-    info!("Tether starting");
+    info!("Twin starting");
 
     let start_hidden = std::env::args().any(|a| a == "--hidden");
 
@@ -503,7 +503,7 @@ fn main() {
                                     let _ = handle_toast
                                         .notification()
                                         .builder()
-                                        .title("Tether Sync Error")
+                                        .title("Twin Sync Error")
                                         .body(format!("{failed_count} sync job(s) failed after multiple retries."))
                                         .show();
                                 }
@@ -520,7 +520,7 @@ fn main() {
                 }
             }
 
-            info!("Tether setup complete");
+            info!("Twin setup complete");
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -532,5 +532,5 @@ fn main() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running Tether");
+        .expect("error while running Twin");
 }

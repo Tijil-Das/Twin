@@ -9,7 +9,7 @@
 //! | no  | yes | download                                       |
 //! | yes | yes | md5 equal → mark synced; else conflict policy  |
 //! | del L | no R | per policy.deletion                        |
-//! | no L | del R | move to .tether-trash/yyyy-mm-dd/          |
+//! | no L | del R | move to .twin-trash/yyyy-mm-dd/          |
 //!
 //! Mode `upload`:  only L actions.
 //! Mode `mirror`:  R changes reverted by re-upload; extra remote trashed.
@@ -250,8 +250,8 @@ pub async fn apply_remote_change(
         if let Some(row) = db.get_file_by_drive_id(&pair.id, &change.file_id)? {
             let local_path = PathBuf::from(&pair.local).join(&row.rel_path);
             if local_path.exists() {
-                // Move to .tether-trash.
-                move_to_tether_trash(pair, &local_path, &row.rel_path)?;
+                // Move to .twin-trash.
+                move_to_twin_trash(pair, &local_path, &row.rel_path)?;
             }
             db.mark_state(&pair.id, &row.rel_path, "remote_deleted")?;
         }
@@ -527,18 +527,18 @@ fn apply_local_delete(db: &Db, pair: &PairEntry, rel_path: &str, now: i64) -> Re
     Ok(())
 }
 
-/// Move a local file to `<pair.local>/.tether-trash/yyyy-mm-dd/`.
-fn move_to_tether_trash(
+/// Move a local file to `<pair.local>/.twin-trash/yyyy-mm-dd/`.
+fn move_to_twin_trash(
     pair:       &PairEntry,
     local_path: &PathBuf,
     rel_path:   &str,
 ) -> Result<(), AppError> {
     let date = date_str();
     let trash_dir = PathBuf::from(&pair.local)
-        .join(".tether-trash")
+        .join(".twin-trash")
         .join(&date);
     std::fs::create_dir_all(&trash_dir)
-        .map_err(|e| AppError::Io(format!("tether-trash mkdir: {e}")))?;
+        .map_err(|e| AppError::Io(format!("twin-trash mkdir: {e}")))?;
 
     let file_name = local_path.file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -546,9 +546,9 @@ fn move_to_tether_trash(
 
     let dest = trash_dir.join(&file_name);
     std::fs::rename(local_path, &dest)
-        .map_err(|e| AppError::Io(format!("tether-trash move: {e}")))?;
+        .map_err(|e| AppError::Io(format!("twin-trash move: {e}")))?;
 
-    info!("moved to tether-trash: {rel_path} -> {}", dest.display());
+    info!("moved to twin-trash: {rel_path} -> {}", dest.display());
     Ok(())
 }
 

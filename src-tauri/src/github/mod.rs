@@ -3,7 +3,7 @@
 //! Pushes `config/sync-state.json` (and optionally `config/config.toml`) to a
 //! GitHub repo via the Contents API.  Pull merges remote state into local DB.
 //!
-//! Token: Credential Manager service `tether`, key `github_token` (never logged).
+//! Token: Credential Manager service `twin`, key `github_token` (never logged).
 //! Timer: runs every `github_push_mins` minutes when governor is Running.
 
 pub mod client;

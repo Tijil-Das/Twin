@@ -9,7 +9,7 @@ use crate::error::AppError;
 
 const API_BASE: &str = "https://api.github.com";
 const GITHUB_API_VERSION: &str = "2022-11-28";
-const USER_AGENT: &str = "tether";
+const USER_AGENT: &str = "twin";
 
 pub struct GitHubClient {
     http:     Client,
@@ -115,7 +115,7 @@ impl GitHubClient {
             .or_else(|_| std::env::var("HOSTNAME"))
             .unwrap_or_else(|_| "local".into());
         let now = chrono_now_iso();
-        let message = format!("tether state {machine} {now}");
+        let message = format!("twin state {machine} {now}");
 
         let body = PutBody {
             message,
@@ -179,7 +179,7 @@ impl GitHubClient {
         };
         let machine = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".into());
         let body = DeleteBody {
-            message: format!("tether: remove {path} ({machine})"),
+            message: format!("twin: remove {path} ({machine})"),
             sha,
             branch: self.branch.clone(),
         };

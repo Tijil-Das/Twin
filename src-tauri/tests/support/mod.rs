@@ -1,4 +1,4 @@
-//! Test harness & support fakes for Tether stress testing.
+//! Test harness & support fakes for Twin stress testing.
 #![allow(unused_imports)]
 #![allow(dead_code)]
 

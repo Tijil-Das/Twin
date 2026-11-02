@@ -94,7 +94,7 @@ if (Test-Path "src") {
 $ratio = if ($prodLoc -gt 0) { [math]::Round($testLoc / $prodLoc, 2) } else { 0 }
 
 Write-Host "=========================================="
-Write-Host " Tether Test-to-Code Ratio Report"
+Write-Host " Twin Test-to-Code Ratio Report"
 Write-Host "=========================================="
 Write-Host "Production LOC: $prodLoc"
 Write-Host "Test LOC:       $testLoc"

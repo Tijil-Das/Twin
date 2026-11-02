@@ -4,14 +4,14 @@
 //!
 //! Download strategy:
 //! - Files > 32 MiB: 4 parallel ranged requests, each range written at its own
-//!   offset into a pre-sized `.tether-part` file.  Ranges never buffer more than
+//!   offset into a pre-sized `.twin-part` file.  Ranges never buffer more than
 //!   4 MiB at a time.
 //! - Smaller files: single streaming download.
 //! - Google-native files (application/vnd.google-apps.*): files.export API.
 //! - Shortcuts: skip, record in activity.
 //!
 //! After finish: verify md5, set mtime, atomic rename over target.
-//! A sidecar `.tether-part.json` records completed ranges for crash-resume.
+//! A sidecar `.twin-part.json` records completed ranges for crash-resume.
 //!
 //! Restore:
 //! - `restore_file`: download a specific file (optionally at a specific revision).
@@ -828,8 +828,8 @@ struct NamedFileMeta {
 fn part_path(dest: &Path) -> PathBuf {
     let mut p = dest.to_path_buf();
     let ext = p.extension()
-        .map(|e| format!("{}.tether-part", e.to_string_lossy()))
-        .unwrap_or_else(|| "tether-part".into());
+        .map(|e| format!("{}.twin-part", e.to_string_lossy()))
+        .unwrap_or_else(|| "twin-part".into());
     p.set_extension(&ext);
     p
 }

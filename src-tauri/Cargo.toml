@@ -1,13 +1,13 @@
 [package]
-name = "tether"
+name = "twin"
 version = "0.1.0"
-description = "Tether – Windows Google Drive sync"
+description = "Twin – Windows Google Drive sync"
 authors = []
 edition = "2021"
 rust-version = "1.77.2"
 
 [lib]
-name = "tether_lib"
+name = "twin_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
