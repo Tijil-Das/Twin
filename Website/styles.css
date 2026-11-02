@@ -6,10 +6,10 @@
   --bg: #090A0F;
   --surface: #11131B;
   --surface-2: #161924;
-  --surface-hover: #1D2130;
+  --surface-hover: #1C202E;
 
-  --border: #202432;
-  --border-hover: #2E3547;
+  --border: #1E2332;
+  --border-hover: #2B3347;
   --border-focus: #3B82F6;
 
   --text: #F3F4F6;
@@ -63,7 +63,7 @@ body {
 
 /* Layout Containers */
 .container {
-  max-width: 1020px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 0 24px;
 }
@@ -83,7 +83,7 @@ h1, h2, h3, h4 {
 
 h1 { font-size: clamp(2.3rem, 4.2vw, 3.2rem); font-weight: 700; }
 h2 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); font-weight: 600; }
-h3 { font-size: 1.2rem; font-weight: 600; }
+h3 { font-size: 1.25rem; font-weight: 600; }
 h4 { font-size: 1.05rem; font-weight: 600; }
 p { color: var(--text-muted); font-size: 1rem; }
 .mono { font-family: var(--font-mono); }
@@ -287,6 +287,7 @@ p { color: var(--text-muted); font-size: 1rem; }
   padding: 20px 22px;
   text-align: left;
   transition: all 150ms ease;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
 }
 
 .metric-box:hover {
@@ -324,12 +325,12 @@ p { color: var(--text-muted); font-size: 1rem; }
 
 /* Sections */
 .section {
-  padding: 76px 0;
+  padding: 80px 0;
   border-top: 1px solid var(--border);
 }
 
 .section-head {
-  margin-bottom: 40px;
+  margin-bottom: 44px;
 }
 
 .section-head.center {
@@ -358,253 +359,421 @@ p { color: var(--text-muted); font-size: 1rem; }
   color: var(--text-muted);
 }
 
-/* Three Pillars (Grid with Pro Visuals) */
-.pillars-grid {
+/* ========================================================
+   Modern Bento Grid Showcase
+   ======================================================== */
+.bento-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
 }
 
-.pillar-card {
+.bento-card {
   background-color: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 24px;
+  border-radius: var(--radius-lg);
+  padding: 30px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 18px;
+  gap: 22px;
+  position: relative;
+  overflow: hidden;
   transition: all 180ms ease;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
 }
 
-.pillar-card:hover {
+.bento-card:hover {
   border-color: var(--border-hover);
-  background-color: var(--surface-2);
+  background-color: #131622;
 }
 
-.pillar-top {
+/* Wide Spotlight Card */
+.bento-card.bento-wide {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  align-items: center;
+  gap: 36px;
+  padding: 36px 36px;
+}
+
+.bento-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bento-top {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.pillar-icon-box {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-sm);
-  background-color: var(--surface-2);
-  border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent-cyan);
-}
-
-.pillar-title {
-  font-size: 1.15rem;
-  color: #FFFFFF;
-  line-height: 1.35;
-}
-
-.pillar-desc {
-  font-size: 0.92rem;
-  color: var(--text-muted);
-  line-height: 1.55;
-}
-
-/* Clean Micro Visual Widgets */
-.mock-widget {
-  background-color: #0C0E14;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Widget 1: Real-time file transfer */
-.mock-file-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.mock-file-name {
-  display: flex;
+.bento-badge {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+  background-color: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  width: fit-content;
+}
+
+.bento-badge .badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--accent-cyan);
+}
+
+.bento-badge .badge-dot.green {
+  background-color: var(--success-light);
+}
+
+.bento-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #FFFFFF;
+  line-height: 1.3;
+}
+
+.bento-desc {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.bento-features-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.bento-pill {
+  font-size: 11.5px;
   font-family: var(--font-mono);
   color: #FFFFFF;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
 }
 
-.mock-file-name svg {
-  color: var(--accent-cyan);
-  flex-shrink: 0;
+/* ========================================================
+   High-Fidelity Native UI Panels
+   ======================================================== */
+.ui-panel {
+  background: linear-gradient(180deg, #131622 0%, #0C0E15 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
 }
 
-.mock-speed {
-  font-size: 11.5px;
+.ui-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 14px;
+}
+
+.ui-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.ui-status-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--success-light);
+  display: inline-block;
+}
+
+.ui-badge-speed {
+  font-size: 12px;
   font-family: var(--font-mono);
   color: var(--success-light);
   font-weight: 600;
+  background-color: var(--success-subtle);
+  border: 1px solid var(--success-border);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.ui-transfer-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ui-transfer-item.queued {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.07);
+}
+
+.ui-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ui-item-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ui-file-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--accent-cyan);
   flex-shrink: 0;
 }
 
-.mock-progress-track {
+.ui-file-icon.dim {
+  color: var(--text-subtle);
+}
+
+.ui-filename-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-filename {
+  font-size: 13px;
+  font-weight: 600;
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+}
+
+.ui-filename.dim {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.ui-filesize {
+  font-size: 11.5px;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+}
+
+.ui-item-percent {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--success-light);
+  font-family: var(--font-mono);
+}
+
+.ui-status-label {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-subtle);
+  background-color: rgba(255, 255, 255, 0.04);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.ui-progress-bar {
   width: 100%;
   height: 6px;
-  background-color: var(--surface-2);
+  background-color: rgba(255, 255, 255, 0.06);
   border-radius: 3px;
   overflow: hidden;
 }
 
-.mock-progress-fill {
+.ui-progress-fill {
   height: 100%;
   background-color: var(--success-light);
   border-radius: 3px;
 }
 
-.mock-meta-row {
+.ui-item-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.mock-mono-text {
-  font-size: 11px;
+  font-size: 11.5px;
   font-family: var(--font-mono);
   color: var(--text-subtle);
 }
 
-.mock-mono-text.green {
-  color: var(--success-light);
-}
-
-/* Widget 2: RAM & Governor */
-.mock-bar-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.mock-bar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11.5px;
-  font-family: var(--font-mono);
-}
-
-.mock-label {
+.ui-eta {
   color: var(--text-muted);
 }
 
-.mock-val.green {
+/* Governor Panel (Memory & CPU Governor) */
+.governor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mem-compare-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mem-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+}
+
+.mem-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.mem-val.win {
   color: var(--success-light);
-  font-weight: 600;
+  font-weight: 700;
 }
 
-.mock-val.red {
+.mem-val.loss {
   color: var(--danger-light);
-  font-weight: 600;
+  font-weight: 700;
 }
 
-.mock-bar-track {
+.mem-bar-track {
   width: 100%;
-  height: 5px;
-  background-color: var(--surface-2);
+  height: 6px;
+  background-color: rgba(255, 255, 255, 0.06);
   border-radius: 3px;
   overflow: hidden;
 }
 
-.mock-bar-fill.green {
+.mem-bar-fill.win {
   height: 100%;
   background-color: var(--success-light);
   border-radius: 3px;
 }
 
-.mock-bar-fill.red {
+.mem-bar-fill.loss {
   height: 100%;
   background-color: var(--danger-light);
   border-radius: 3px;
 }
 
-.mock-tag-row {
+.gov-trigger-row {
   display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.gov-rule {
+  flex: 1;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 2px;
 }
 
-.mock-tag {
-  font-size: 10.5px;
+.gov-rule-icon {
+  font-size: 12px;
+}
+
+.gov-rule-text {
+  font-size: 11.5px;
   font-family: var(--font-mono);
-  background-color: var(--surface-2);
-  border: 1px solid var(--border);
   color: var(--accent-cyan);
-  padding: 2px 7px;
-  border-radius: 4px;
 }
 
-/* Widget 3: Folder Route & Features */
-.mock-route-row {
+/* Freedom Panel (Arbitrary Folder Pair) */
+.freedom-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sync-route-box {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 14px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 4px 0;
+  gap: 10px;
 }
 
-.route-chip {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: #FFFFFF;
-  background-color: var(--surface-2);
-  border: 1px solid var(--border);
-  padding: 3px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.route-arrow {
-  color: var(--accent-cyan);
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.mock-pill-features {
+.route-point {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
-.mock-pill {
-  font-size: 11px;
+.point-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.point-badge.drive {
+  color: var(--success-light);
+}
+
+.point-path {
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+  color: #FFFFFF;
+}
+
+.route-line-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.connector-arrow {
+  color: var(--accent-cyan);
+  font-size: 14px;
+}
+
+.connector-label {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
+.vault-capsules {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vault-capsule {
+  font-size: 12px;
   font-family: var(--font-mono);
   color: var(--text-muted);
 }
 
-.pillar-badge {
-  font-size: 11.5px;
-  font-family: var(--font-mono);
-  color: var(--success-light);
-  background-color: var(--success-subtle);
-  border: 1px solid var(--success-border);
-  padding: 3px 9px;
-  border-radius: 4px;
-  align-self: flex-start;
-  font-weight: 500;
-}
-
-/* Comparison Table (High Contrast Green/Red Badges) */
+/* ========================================================
+   Comparison Table (High Contrast Green/Red Badges)
+   ======================================================== */
 .table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -612,6 +781,7 @@ p { color: var(--text-muted); font-size: 1rem; }
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background-color: var(--surface);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
 }
 
 .compare-table {
@@ -699,6 +869,7 @@ p { color: var(--text-muted); font-size: 1rem; }
   justify-content: space-between;
   gap: 20px;
   flex-wrap: wrap;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
 }
 
 .github-info {
@@ -746,17 +917,18 @@ p { color: var(--text-muted); font-size: 1rem; }
 .download-card {
   background-color: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 42px 32px;
+  border-radius: var(--radius-lg);
+  padding: 44px 32px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 20px;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
 }
 
 .download-logo {
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
 }
 
 .download-head h2 {
@@ -866,10 +1038,17 @@ p { color: var(--text-muted); font-size: 1rem; }
   color: #FFFFFF;
 }
 
-/* Responsive */
+/* Responsive Media Queries */
 @media (max-width: 900px) {
-  .pillars-grid {
+  .bento-card.bento-wide {
     grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .bento-card.bento-wide {
+    grid-column: span 1;
   }
   .metrics-grid {
     grid-template-columns: 1fr;
@@ -882,6 +1061,12 @@ p { color: var(--text-muted); font-size: 1rem; }
   }
   .header-cta {
     display: none;
+  }
+  .bento-card {
+    padding: 24px 20px;
+  }
+  .bento-card.bento-wide {
+    padding: 24px 20px;
   }
 }
 

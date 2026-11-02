@@ -89,7 +89,7 @@
     </div>
   </section>
 
-  <!-- Section 1: The Three Core Pillars with Pro Visuals -->
+  <!-- Section 1: The Modern Bento Architecture Showcase -->
   <section id="features" class="section">
     <div class="container">
       <div class="section-head center">
@@ -98,116 +98,163 @@
         <p class="section-desc">Engineered from the ground up to replace the opaque, heavy official client.</p>
       </div>
 
-      <div class="pillars-grid">
-        <!-- 01: Process Visibility -->
-        <div class="pillar-card">
-          <div class="pillar-top">
-            <div class="pillar-icon-box">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="16" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-              </svg>
+      <div class="bento-grid">
+        <!-- Card 1: Wide Spotlight (Full Width) -->
+        <div class="bento-card bento-wide">
+          <div class="bento-content">
+            <div class="bento-badge">
+              <span class="badge-dot"></span>
+              <span>Real-Time Transfer Engine</span>
             </div>
-            <h3 class="pillar-title">Complete Process Visibility</h3>
-            <p class="pillar-desc">
-              Track real byte transfers and precise network speeds. No more frozen spinners or mystery stalls.
+            <h3 class="bento-title">Complete Process Visibility</h3>
+            <p class="bento-desc">
+              Track active uploads at the byte level with smoothed EMA throughput, exact ETA countdowns, and real chunk confirmation. Never wonder why a file is stuck.
             </p>
+            <div class="bento-features-list">
+              <span class="bento-pill">Resumable 16 MiB Chunks</span>
+              <span class="bento-pill">Blake3 + MD5 Checksums</span>
+              <span class="bento-pill">4 Parallel Streams</span>
+            </div>
           </div>
 
-          <!-- Micro Visual: Real-time Transfer Stream -->
-          <div class="mock-widget">
-            <div class="mock-file-header">
-              <div class="mock-file-name">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                <span>Project_Archive.tar.gz</span>
+          <!-- Right Side: High-Fidelity Sync Engine Inspector -->
+          <div class="bento-visual">
+            <div class="ui-panel">
+              <div class="ui-panel-head">
+                <div class="ui-panel-title">
+                  <span class="ui-status-pulse"></span>
+                  <span>Sync Queue · Active</span>
+                </div>
+                <span class="ui-badge-speed">48.2 MB/s</span>
               </div>
-              <span class="mock-speed">38.4 MB/s</span>
-            </div>
-            <div class="mock-progress-track">
-              <div class="mock-progress-fill" style="width: 76%;"></div>
-            </div>
-            <div class="mock-meta-row">
-              <span class="mock-mono-text">Chunk 4/5 · 16 MiB</span>
-              <span class="mock-mono-text green">76% · ETA 0.8s</span>
+
+              <div class="ui-transfer-item">
+                <div class="ui-item-header">
+                  <div class="ui-item-info">
+                    <svg class="ui-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                    </svg>
+                    <div class="ui-filename-group">
+                      <span class="ui-filename">Project_Assets_2026.tar.gz</span>
+                      <span class="ui-filesize">1.2 GB of 1.6 GB</span>
+                    </div>
+                  </div>
+                  <span class="ui-item-percent">76%</span>
+                </div>
+
+                <div class="ui-progress-bar">
+                  <div class="ui-progress-fill" style="width: 76%;"></div>
+                </div>
+
+                <div class="ui-item-footer">
+                  <span class="ui-chunk-info">Chunk 4/5 · 16 MiB blocks</span>
+                  <span class="ui-eta">ETA 0.8s</span>
+                </div>
+              </div>
+
+              <div class="ui-transfer-item queued">
+                <div class="ui-item-header">
+                  <div class="ui-item-info">
+                    <svg class="ui-file-icon dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                    </svg>
+                    <div class="ui-filename-group">
+                      <span class="ui-filename dim">Q4_Financial_Model.xlsx</span>
+                      <span class="ui-filesize">Auto-export from Google Sheets</span>
+                    </div>
+                  </div>
+                  <span class="ui-status-label">Next in queue</span>
+                </div>
+              </div>
             </div>
           </div>
-
-          <span class="pillar-badge">Byte Accurate · Zero Guesswork</span>
         </div>
 
-        <!-- 02: Hardware CPU Governor & Performance -->
-        <div class="pillar-card">
-          <div class="pillar-top">
-            <div class="pillar-icon-box">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-              </svg>
+        <!-- Card 2: Hardware Governor & 28 MB RAM (Half Width) -->
+        <div class="bento-card">
+          <div class="bento-top">
+            <div class="bento-badge">
+              <span class="badge-dot green"></span>
+              <span>Hardware Efficiency</span>
             </div>
-            <h3 class="pillar-title">Hardware Governor &amp; 28 MB RAM</h3>
-            <p class="pillar-desc">
-              Pauses uploads automatically when CPU spikes above 70% during gaming or video rendering.
+            <h3 class="bento-title">Governor &amp; 28 MB RAM</h3>
+            <p class="bento-desc">
+              Native Rust Tokio engine. Automatically pauses transfers when host CPU spikes above 70% during gaming or rendering, or when battery drops below 20%.
             </p>
           </div>
 
-          <!-- Micro Visual: RAM & Governor Comparison -->
-          <div class="mock-widget">
-            <div class="mock-bar-item">
-              <div class="mock-bar-header">
-                <span class="mock-label">Twin</span>
-                <span class="mock-val green">28 MB</span>
+          <!-- Visual: Clean RAM & Thermal Governor -->
+          <div class="ui-panel governor-panel">
+            <div class="mem-compare-row">
+              <div class="mem-meta">
+                <span class="mem-name">Twin</span>
+                <span class="mem-val win">28 MB</span>
               </div>
-              <div class="mock-bar-track">
-                <div class="mock-bar-fill green" style="width: 7%;"></div>
-              </div>
-            </div>
-            <div class="mock-bar-item">
-              <div class="mock-bar-header">
-                <span class="mock-label">Google Drive</span>
-                <span class="mock-val red">620 MB</span>
-              </div>
-              <div class="mock-bar-track">
-                <div class="mock-bar-fill red" style="width: 88%;"></div>
+              <div class="mem-bar-track">
+                <div class="mem-bar-fill win" style="width: 6%;"></div>
               </div>
             </div>
-            <div class="mock-tag-row">
-              <span class="mock-tag">CPU &gt; 70% ➔ Pause</span>
-              <span class="mock-tag">Battery &lt; 20% ➔ Sleep</span>
+
+            <div class="mem-compare-row">
+              <div class="mem-meta">
+                <span class="mem-name">Google Drive Desktop</span>
+                <span class="mem-val loss">620 MB</span>
+              </div>
+              <div class="mem-bar-track">
+                <div class="mem-bar-fill loss" style="width: 86%;"></div>
+              </div>
+            </div>
+
+            <div class="gov-trigger-row">
+              <div class="gov-rule">
+                <span class="gov-rule-icon">⏸</span>
+                <span class="gov-rule-text">CPU &gt; 70% ➔ Pause Sync</span>
+              </div>
+              <div class="gov-rule">
+                <span class="gov-rule-icon">🔋</span>
+                <span class="gov-rule-text">Battery &lt; 20% ➔ Sleep</span>
+              </div>
             </div>
           </div>
-
-          <span class="pillar-badge">28 MB RAM · Auto CPU Pause</span>
         </div>
 
-        <!-- 03: Folder Freedom & Revisions -->
-        <div class="pillar-card">
-          <div class="pillar-top">
-            <div class="pillar-icon-box">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-              </svg>
+        <!-- Card 3: Arbitrary Folder Mapping & Revisions (Half Width) -->
+        <div class="bento-card">
+          <div class="bento-top">
+            <div class="bento-badge">
+              <span class="badge-dot green"></span>
+              <span>Drive Freedom</span>
             </div>
-            <h3 class="pillar-title">More Features &amp; True Freedom</h3>
-            <p class="pillar-desc">
-              Sync any folder on any internal or external drive without virtual G: drive restrictions.
+            <h3 class="bento-title">Any Folder. Any Drive.</h3>
+            <p class="bento-desc">
+              Map arbitrary folders on internal SSDs or external drives without virtual G: drive restrictions. Access in-app revision history and offline doc export.
             </p>
           </div>
 
-          <!-- Micro Visual: Arbitrary Folder Pair & Revision Vault -->
-          <div class="mock-widget">
-            <div class="mock-route-row">
-              <span class="route-chip">D:\Work\Projects</span>
-              <span class="route-arrow">➔</span>
-              <span class="route-chip">Drive:/Projects</span>
+          <!-- Visual: Clean Folder Route & Vault -->
+          <div class="ui-panel freedom-panel">
+            <div class="sync-route-box">
+              <div class="route-point">
+                <span class="point-badge">LOCAL</span>
+                <span class="point-path">D:\Design\Assets</span>
+              </div>
+              <div class="route-line-connector">
+                <span class="connector-arrow">⇄</span>
+                <span class="connector-label">2-Way Sync</span>
+              </div>
+              <div class="route-point">
+                <span class="point-badge drive">DRIVE</span>
+                <span class="point-path">Drive:/Assets</span>
+              </div>
             </div>
-            <div class="mock-pill-features">
-              <span class="mock-pill">✔ In-App Revision Vault</span>
-              <span class="mock-pill">✔ Keep Forever</span>
-              <span class="mock-pill">✔ Export .docx / .xlsx</span>
+
+            <div class="vault-capsules">
+              <span class="vault-capsule">✔ In-App Revision Vault + Keep Forever</span>
+              <span class="vault-capsule">✔ Offline .docx, .xlsx, and .pptx Export</span>
             </div>
           </div>
-
-          <span class="pillar-badge">Any Folder · Revisions Vault</span>
         </div>
       </div>
     </div>
