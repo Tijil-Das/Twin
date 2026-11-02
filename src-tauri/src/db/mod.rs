@@ -134,6 +134,8 @@ pub struct Activity {
 
 pub struct Db {
     conn: Mutex<Connection>,
+    #[allow(dead_code)]
+    path: std::path::PathBuf,
 }
 
 impl Db {
@@ -153,7 +155,7 @@ impl Db {
             .map_err(|e| AppError::Db(format!("pragma: {e}")))?;
 
         // Run migrations.
-        let db = Db { conn: Mutex::new(conn) };
+        let db = Db { conn: Mutex::new(conn), path: path.to_path_buf() };
         db.migrate()?;
 
         Ok(db)
@@ -476,6 +478,38 @@ impl Db {
         .map_err(|e| AppError::Db(format!("delete_upload_session: {e}")))?;
         Ok(())
     }
+
+    /// List all file rows for a pair (all states).
+    pub fn list_all_files(&self, pair: &str) -> Result<Vec<FileRow>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state
+                 FROM files WHERE pair_id=?1",
+            )
+            .map_err(|e| AppError::Db(format!("list_all_files prepare: {e}")))?;
+
+        let rows = stmt
+            .query_map(params![pair], row_to_file)
+            .map_err(|e| AppError::Db(format!("list_all_files query: {e}")))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Db(format!("list_all_files collect: {e}")))?;
+
+        Ok(rows)
+    }
+
+    /// Look up a file row by Drive file id (for remote-delete handling).
+    pub fn get_file_by_drive_id(&self, pair: &str, drive_id: &str) -> Result<Option<FileRow>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.query_row(
+            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state
+             FROM files WHERE pair_id=?1 AND drive_id=?2",
+            params![pair, drive_id],
+            row_to_file,
+        )
+        .optional()
+        .map_err(|e| AppError::Db(format!("get_file_by_drive_id: {e}")))
+    }
 }
 
 // ── row mapping helpers ───────────────────────────────────────────────────────
@@ -550,7 +584,13 @@ pub fn retry_job(state: tauri::State<'_, DbState>, id: i64) -> Result<(), String
 }
 
 /// Tauri managed state wrapper.
-pub struct DbState(pub Db);
+pub struct DbState(pub Db, pub std::path::PathBuf);
+
+impl DbState {
+    pub fn db_path(&self) -> std::path::PathBuf {
+        self.1.clone()
+    }
+}
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 

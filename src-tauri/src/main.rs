@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 use tracing::info;
-use tether_lib::{auth, config, db, drive, governor, queue, transfer, setup_tray};
+use tether_lib::{auth, config, db, drive, governor, queue, sync, transfer, setup_tray};
 use tether_lib::drive::revisions::Revision;
 use tether_lib::drive::client::DriveFile;
 use tether_lib::drive::trash::TrashedFile;
@@ -108,6 +108,49 @@ async fn keep_revision(file_id: String, rev_id: String, keep: bool) -> Result<()
         .map_err(|e| e.to_string())
 }
 
+// P09 Commands
+
+/// Manually trigger one sync cycle for a pair.
+#[tauri::command]
+async fn run_sync_cycle(
+    pair_id:  String,
+    gov_s:    tauri::State<'_, governor::GovState2>,
+    db_s:     tauri::State<'_, db::DbState>,
+) -> Result<sync::CycleReport, String> {
+    let cfg = config::load().unwrap_or_default();
+    let pair = cfg.pairs.iter()
+        .find(|p| p.id == pair_id)
+        .ok_or_else(|| format!("pair {pair_id} not found"))?
+        .clone();
+
+    let db_path = db_s.db_path();
+    let db_arc  = Arc::new(db::Db::open(&db_path).map_err(|e| e.to_string())?);
+    let drive   = drive::DriveClient::new().map_err(|e| e.to_string())?;
+    let gov     = gov_s.0.clone();
+    let echo    = Arc::new(sync::SelfWritten::new());
+
+    let ctx = sync::Ctx { db: db_arc, drive, gov, echo };
+    sync::run_pair_cycle(&pair, &ctx).await.map_err(|e| e.to_string())
+}
+
+/// Resolve a pending conflict.
+#[tauri::command]
+fn resolve_conflict(
+    pair_id:  String,
+    rel_path: String,
+    choice:   String,
+    db_s:     tauri::State<'_, db::DbState>,
+) -> Result<(), String> {
+    let cfg  = config::load().unwrap_or_default();
+    let pair = cfg.pairs.iter()
+        .find(|p| p.id == pair_id)
+        .ok_or_else(|| format!("pair {pair_id} not found"))?
+        .clone();
+
+    sync::reconcile::resolve_conflict(&db_s.0, &pair, &rel_path, &choice)
+        .map_err(|e| e.to_string())
+}
+
 fn main() {
     // Set process priority first -- before any heavy work starts.
     set_below_normal_priority();
@@ -160,6 +203,8 @@ fn main() {
             list_trash,
             untrash,
             keep_revision,
+            run_sync_cycle,
+            resolve_conflict,
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -176,7 +221,7 @@ fn main() {
                 .join("state.db");
             let state_db = db::Db::open(&db_path)
                 .map_err(|e| format!("Failed to open state DB: {e}"))?;
-            app.manage(db::DbState(state_db));
+            app.manage(db::DbState(state_db, db_path.clone()));
 
             // Start the resource governor.
             let cfg = config::load().unwrap_or_default();

@@ -6,6 +6,7 @@ pub mod error;
 pub mod governor;
 pub mod queue;
 pub mod rules;
+pub mod sync;
 pub mod transfer;
 pub mod watcher;
 
