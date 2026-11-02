@@ -27,9 +27,9 @@
         <ul class="nav-links">
           <li><a href="#pillars" class="nav-link">Pillars</a></li>
           <li><a href="#features" class="nav-link">Features</a></li>
-          <li><a href="#governor" class="nav-link">Resource Governor</a></li>
+          <li><a href="#governor" class="nav-link">Governor</a></li>
           <li><a href="#comparison" class="nav-link">Comparison</a></li>
-          <li><a href="#faq" class="nav-link">FAQ</a></li>
+          <li><a href="#contribute" class="nav-link">Contribute</a></li>
         </ul>
       </nav>
 
@@ -46,17 +46,17 @@
     </div>
   </header>
 
-  <!-- Hero Section (No app mockup, spacious & punchy) -->
+  <!-- Hero Section -->
   <section class="hero">
     <div class="container">
       <div class="hero-pill">
         <span class="status-dot"></span>
-        <span>Twin 0.1.0 Production Release · Windows 10 & 11 (64-bit)</span>
+        <span>Twin 0.1.0 Release · Windows 10 & 11 (64-bit)</span>
       </div>
 
       <h1 class="hero-title">Google Drive sync. Lean, fast, and completely transparent.</h1>
       <p class="hero-subtitle">
-        Created to replace the opaque black box of cloud storage. Packed with more features than Google Drive for Desktop, backed by an ultra-lightweight Rust architecture that consumes under 30 MB of memory with zero background resource hogging.
+        Created to replace the opaque black box of cloud storage. Packed with more features than Google Drive for Desktop, backed by an ultra-lightweight Rust engine that consumes under 30 MB RAM with zero background resource hogging.
       </p>
 
       <div class="hero-actions">
@@ -86,12 +86,12 @@
         <span style="color: var(--border);">·</span>
         <span class="hero-meta-item">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          <span>Hardware CPU Governor</span>
+          <span>Auto CPU Governor</span>
         </span>
         <span style="color: var(--border);">·</span>
         <span class="hero-meta-item">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          <span>Encrypted Windows Credentials</span>
+          <span>Open Source</span>
         </span>
       </div>
 
@@ -99,7 +99,7 @@
       <div class="stats-strip">
         <div class="stat-card">
           <div class="stat-number accent">28 MB</div>
-          <div class="stat-label">Idle RAM usage (95% less than Google Drive's 600 MB)</div>
+          <div class="stat-label">Idle RAM usage (vs 600 MB in Google Drive)</div>
         </div>
         <div class="stat-card">
           <div class="stat-number">0.01%</div>
@@ -107,95 +107,65 @@
         </div>
         <div class="stat-card">
           <div class="stat-number accent">16 MiB</div>
-          <div class="stat-label">Chunked resumable uploads with Blake3 & MD5 hashing</div>
+          <div class="stat-label">Resumable chunked uploads with Blake3 hashing</div>
         </div>
         <div class="stat-card">
           <div class="stat-number">8.4 MB</div>
-          <div class="stat-label">Total installer package size vs ~350 MB official client</div>
+          <div class="stat-label">Total installer package vs ~350 MB official client</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 1: The Three Core Pillars -->
+  <!-- Section 1: The Three Core Pillars (Clean, low density, punchy) -->
   <section id="pillars" class="section">
     <div class="container">
       <div class="section-head center">
         <span class="section-tag">Core Value Proposition</span>
         <h2 class="section-title">Engineered to eliminate sync frustration.</h2>
         <p class="section-desc">
-          Most cloud sync utilities conceal what they do behind vague spinners while hogging laptop memory and spinning up fans. Twin was built with three uncompromising goals.
+          Built around three simple promises: total transparency, deeper Drive controls, and zero system overhead.
         </p>
       </div>
 
       <div class="pillars-grid">
         <!-- Pillar 1 -->
         <div class="pillar-card">
-          <div class="pillar-badge">01</div>
-          <h3 class="pillar-title">Simplified Process Understanding</h3>
+          <div class="pillar-header-row">
+            <span class="pillar-badge">01</span>
+            <span class="mono" style="font-size: 11.5px; color: var(--text-muted);">Transparency</span>
+          </div>
+          <h3 class="pillar-title">Process Visibility</h3>
           <p class="pillar-desc">
-            No more wondering why a file is stuck or what is being uploaded. Twin provides 100% visibility into every transfer state, retry backoff, and chunk completion.
+            Know exactly what is uploading at every second. Real byte-accurate progress bars, calculated EMA speeds, and plain diagnostic logs—no black-box spinners or mystery stalls.
           </p>
-          <ul class="pillar-points">
-            <li class="pillar-point">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Byte-Accurate Progress:</strong> Real bytes done and total bytes, never fake jumpy percentages.</span>
-            </li>
-            <li class="pillar-point">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Smoothed EMA Speed:</strong> Accurate network throughput and reliable ETA countdowns.</span>
-            </li>
-            <li class="pillar-point">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Transparent Error Log:</strong> Plain-text diagnostic messages with automated exponential backoff counters.</span>
-            </li>
-          </ul>
+          <div class="pillar-metric-tag">Byte Accurate · Smoothed EMA Speed</div>
         </div>
 
         <!-- Pillar 2 -->
         <div class="pillar-card">
-          <div class="pillar-badge">02</div>
-          <h3 class="pillar-title">More Features Than Google Drive</h3>
+          <div class="pillar-header-row">
+            <span class="pillar-badge">02</span>
+            <span class="mono" style="font-size: 11.5px; color: var(--text-muted);">Features</span>
+          </div>
+          <h3 class="pillar-title">Extended Drive Freedom</h3>
           <p class="pillar-desc">
-            Break free from Google's virtual drive restrictions. Enjoy arbitrary folder pairing, in-app revisions browsing, and native office document exports.
+            Map arbitrary folders on any drive without virtual G: restrictions. Browse past file revisions with instant rollback, restore trash, and auto-export Google Docs to offline .docx and .xlsx.
           </p>
-          <ul class="pillar-points">
-            <li class="pillar-point">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Arbitrary Multi-Folder Pairs:</strong> Map any local directory on any drive to any remote Google Drive folder ID.</span>
-            </li>
-            <li class="pillar-point">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>In-App Revisions Vault:</strong> Browse past versions, pin "Keep Forever" flags, and restore directly to any folder.</span>
-            </li>
-            <li class="pillar-point">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Docs/Sheets/Slides Export:</strong> Convert online Google Docs automatically into offline .docx, .xlsx, and .pptx files.</span>
-            </li>
-          </ul>
+          <div class="pillar-metric-tag">Arbitrary Pairs · Revision Vault</div>
         </div>
 
         <!-- Pillar 3 -->
         <div class="pillar-card">
-          <div class="pillar-badge">03</div>
-          <h3 class="pillar-title">Ultra-Lightweight Rust Performance</h3>
+          <div class="pillar-header-row">
+            <span class="pillar-badge">03</span>
+            <span class="mono" style="font-size: 11.5px; color: var(--text-muted);">Efficiency</span>
+          </div>
+          <h3 class="pillar-title">Ultra-Lightweight Rust</h3>
           <p class="pillar-desc">
-            Crafted with Rust Tokio and Tauri 2. No heavy Python processes or bundled Chromium web engines running in the background while you work or game.
+            Operates at ~28 MB memory using native Rust Tokio. An autonomous hardware governor automatically pauses transfers if CPU exceeds 70% or battery drops below 20%.
           </p>
-          <ul class="pillar-points">
-            <li class="pillar-point">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>~28 MB RAM:</strong> Consumes 95% less system memory than Google Drive for Desktop.</span>
-            </li>
-            <li class="pillar-point">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Hardware CPU Governor:</strong> Automatically pauses transfers when host CPU &gt; 70%, keeping fans silent.</span>
-            </li>
-            <li class="pillar-point">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Battery Aware:</strong> Suspends heavy background syncing when laptop battery drops below 20% on DC power.</span>
-            </li>
-          </ul>
+          <div class="pillar-metric-tag">~28 MB RAM · Auto CPU Governor</div>
         </div>
       </div>
     </div>
@@ -208,7 +178,7 @@
         <span class="section-tag">System Protection</span>
         <h2 class="section-title">Autonomous Hardware Resource Governor</h2>
         <p class="section-desc">
-          Unlike Google Drive which pushes transfers aggressively regardless of your system load, Twin actively watches host CPU load and battery levels to ensure your computer never lags.
+          Twin steps aside whenever your computer is under load, keeping your fans silent and laptop responsive.
         </p>
       </div>
 
@@ -216,29 +186,26 @@
         <div class="governor-text">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span class="status-dot"></span>
-            <span class="mono" style="color: var(--accent-light); font-size: 13px; font-weight: 600;">ACTIVE SUPERVISION LOOP</span>
+            <span class="mono" style="color: var(--accent-light); font-size: 12.5px; font-weight: 600;">ACTIVE SUPERVISION LOOP</span>
           </div>
           <h3>Zero impact on gaming, rendering, or compiling</h3>
           <p>
-            Twin integrates directly with native Windows performance APIs. When you launch a game, compile a build, or render a video, Twin steps aside instantly so your foreground apps get 100% of available resources.
-          </p>
-          <p>
-            When running on battery, it prevents unexpected battery drain by suspending transfers before your laptop enters critical power state.
+            Twin integrates directly with Windows system APIs. When you launch a game or compile a project, Twin pauses background uploads to yield 100% CPU cycles to your foreground tasks.
           </p>
         </div>
 
         <div class="governor-rules-grid">
           <div class="governor-rule-card">
             <div class="rule-info">
-              <div class="rule-title">System CPU High Load Pause</div>
-              <div class="rule-desc">Pauses sync when host CPU exceeds limit for 5s</div>
+              <div class="rule-title">CPU High Load Pause</div>
+              <div class="rule-desc">Pauses when host CPU exceeds limit for 5s</div>
             </div>
             <div class="rule-metric">&gt; 70% CPU</div>
           </div>
 
           <div class="governor-rule-card">
             <div class="rule-info">
-              <div class="rule-title">System CPU Cooldown Resume</div>
+              <div class="rule-title">Cooldown Auto-Resume</div>
               <div class="rule-desc">Resumes queued tasks once CPU cools down</div>
             </div>
             <div class="rule-metric">&lt; 50% CPU</div>
@@ -246,18 +213,10 @@
 
           <div class="governor-rule-card">
             <div class="rule-info">
-              <div class="rule-title">Low Battery Power Guard</div>
-              <div class="rule-desc">Automatically pauses transfers on DC battery power</div>
+              <div class="rule-title">Low Battery Guard</div>
+              <div class="rule-desc">Suspends transfers when unplugged on low power</div>
             </div>
             <div class="rule-metric">&lt; 20% Battery</div>
-          </div>
-
-          <div class="governor-rule-card">
-            <div class="rule-info">
-              <div class="rule-title">Metered Network Protection</div>
-              <div class="rule-desc">Optional toggle to pause on mobile hotspots</div>
-            </div>
-            <div class="rule-metric">User Config</div>
           </div>
         </div>
       </div>
@@ -268,83 +227,71 @@
   <section id="features" class="section">
     <div class="container">
       <div class="section-head center">
-        <span class="section-tag">Comprehensive Capabilities</span>
+        <span class="section-tag">Key Features</span>
         <h2 class="section-title">Designed for power users, developers, and professionals.</h2>
         <p class="section-desc">
-          Every subsystem was purpose-built to give you complete sovereignty over your data and local storage.
+          Every subsystem is purpose-built to give you complete sovereignty over your data and local storage.
         </p>
       </div>
 
       <div class="features-grid">
         <div class="feature-card">
           <div class="feature-icon-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
           </div>
           <div class="feature-body">
             <h4 class="feature-title">Multi-Pair Arbitrary Routing</h4>
-            <p class="feature-desc">
-              Bind any directory across internal SSDs or external drives directly to any Google Drive folder ID. Assign distinct sync policies: Upload only, Mirror (with deletion sync), or Two-way.
-            </p>
+            <p class="feature-desc">Bind any SSD or external folder directly to any Google Drive folder with Upload, Mirror, or Two-way policies.</p>
           </div>
         </div>
 
         <div class="feature-card">
           <div class="feature-icon-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
           </div>
           <div class="feature-body">
             <h4 class="feature-title">Debounced Priority Queue</h4>
-            <p class="feature-desc">
-              Rapid file modifications (like code saves or exports) are debounced by 3 seconds. Transfer queues feature exponential retry backoffs (1s, 2s, 4s, 8s, up to 5 min) with auto-retry.
-            </p>
+            <p class="feature-desc">Rapid file changes are debounced by 3 seconds, with exponential retry backoffs (1s up to 5 min) for failed transfers.</p>
           </div>
         </div>
 
         <div class="feature-card">
           <div class="feature-icon-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
           </div>
           <div class="feature-body">
-            <h4 class="feature-title">16 MiB Resumable Chunks & Parallel Fetch</h4>
-            <p class="feature-desc">
-              Large uploads are sliced into resumable 16 MiB chunks so interrupted transfers resume seamlessly. Downloads larger than 32 MB utilize 4 parallel ranged streams simultaneously.
-            </p>
+            <h4 class="feature-title">16 MiB Resumable Chunks</h4>
+            <p class="feature-desc">Interrupted uploads resume instantly without re-uploading bytes. Large files download over 4 parallel streams.</p>
           </div>
         </div>
 
         <div class="feature-card">
           <div class="feature-icon-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
           </div>
           <div class="feature-body">
-            <h4 class="feature-title">Windows Credential Manager Security</h4>
-            <p class="feature-desc">
-              Hand-crafted OAuth 2.0 PKCE loopback authentication. Tokens are stored encrypted in the native hardware-backed Windows Credential Manager—never saved in unencrypted config files.
-            </p>
+            <h4 class="feature-title">Windows Credential Security</h4>
+            <p class="feature-desc">OAuth 2.0 PKCE loopback authentication with hardware-backed encryption in Windows Credential Manager.</p>
           </div>
         </div>
 
         <div class="feature-card">
           <div class="feature-icon-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
           </div>
           <div class="feature-body">
-            <h4 class="feature-title">Google Workspace Office Exporter</h4>
-            <p class="feature-desc">
-              Google Drive only leaves useless .gdoc link stubs. Twin automatically exports Google Docs into .docx, Sheets into .xlsx, and Slides into .pptx so you can view and edit your documents anywhere.
-            </p>
+            <h4 class="feature-title">Google Workspace Exporter</h4>
+            <p class="feature-desc">Automatically exports online Google Docs, Sheets, and Slides into standard .docx, .xlsx, and .pptx files.</p>
           </div>
         </div>
 
         <div class="feature-card">
           <div class="feature-icon-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
           </div>
           <div class="feature-body">
-            <h4 class="feature-title">GitHub Sync-State Auto-Backup</h4>
-            <p class="feature-desc">
-              Twin periodically serializes your sync state metadata and pushes it to your private GitHub repository every 30 minutes, giving you instantaneous disaster recovery if a local drive fails.
-            </p>
+            <h4 class="feature-title">GitHub Sync-State Backup</h4>
+            <p class="feature-desc">Serializes sync metadata and pushes it to your private GitHub repo every 30 minutes for instant disaster recovery.</p>
           </div>
         </div>
       </div>
@@ -358,7 +305,7 @@
         <span class="section-tag">Direct Comparison</span>
         <h2 class="section-title">Twin vs. Google Drive for Desktop</h2>
         <p class="section-desc">
-          Compare the engineering choices and everyday desktop performance side-by-side.
+          Compare engineering choices and everyday desktop performance side-by-side.
         </p>
       </div>
 
@@ -428,7 +375,41 @@
     </div>
   </section>
 
-  <!-- Section 5: Download Center (JioTV Max style focused card) -->
+  <!-- Section 5: Contribute to the App on GitHub (NEW!) -->
+  <section id="contribute" class="section">
+    <div class="container container-narrow">
+      <div class="contribute-card">
+        <div class="contribute-icon-wrap">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path>
+          </svg>
+        </div>
+        <div class="contribute-body">
+          <span class="section-tag" style="margin-bottom: 0;">Open Source Community</span>
+          <h2 style="font-size: 1.55rem; color: #FFFFFF;">Built in the open. Contribute on GitHub.</h2>
+          <p style="font-size: 0.96rem; color: var(--text-muted); line-height: 1.6;">
+            Twin is open source and community-driven. Help shape the future of lightweight, transparent cloud sync—star the repository, report issues, propose enhancements, or submit pull requests.
+          </p>
+          <div class="contribute-actions">
+            <a href="https://github.com/tether-app/twin" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.784 1.399 8.164-7.333-3.856-7.333 3.856 1.399-8.164-5.934-5.784 8.2-1.192zm0 5.702l-2.232 4.522-4.991.725 3.612 3.521-.852 4.97 4.463-2.347 4.463 2.347-.852-4.97 3.612-3.521-4.991-.725z"></path>
+              </svg>
+              <span>Star on GitHub</span>
+            </a>
+            <a href="https://github.com/tether-app/twin" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+              <span>View Repository</span>
+            </a>
+            <a href="https://github.com/tether-app/twin/issues" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+              <span>Submit Issue / PR</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6: Download Center (JioTV Max style focused card) -->
   <section id="download" class="section download-section">
     <div class="container container-narrow">
       <div class="download-card">
@@ -443,7 +424,7 @@
 
         <div class="download-meta-badges">
           <span class="version-tag">Production v0.1.0</span>
-          <span class="version-tag">Windows 10 (1809+) & Windows 11</span>
+          <span class="version-tag">Windows 10 & 11</span>
           <span class="version-tag">x64 / ARM64</span>
           <span class="version-tag">8.4 MB</span>
         </div>
@@ -481,7 +462,7 @@
     </div>
   </section>
 
-  <!-- Section 6: FAQ -->
+  <!-- Section 7: FAQ -->
   <section id="faq" class="section">
     <div class="container container-narrow">
       <div class="section-head center">
@@ -554,7 +535,7 @@
             <span class="footer-col-title">Navigation</span>
             <a href="#pillars" class="footer-link">Pillars</a>
             <a href="#features" class="footer-link">Features</a>
-            <a href="#governor" class="footer-link">Resource Governor</a>
+            <a href="#governor" class="footer-link">Governor</a>
             <a href="#comparison" class="footer-link">Comparison</a>
           </div>
 
@@ -567,9 +548,10 @@
           </div>
 
           <div class="footer-col">
-            <span class="footer-col-title">Specifications</span>
-            <a href="../Prompts/SPEC.md" class="footer-link">System Architecture</a>
-            <a href="../Prompts/UI_GUIDE.md" class="footer-link">UI Design Guide</a>
+            <span class="footer-col-title">Open Source</span>
+            <a href="https://github.com/tether-app/twin" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub Repository</a>
+            <a href="https://github.com/tether-app/twin/issues" target="_blank" rel="noopener noreferrer" class="footer-link">Issue Tracker</a>
+            <a href="../Prompts/SPEC.md" class="footer-link">System Specification</a>
             <a href="../LICENSE" class="footer-link">MIT License</a>
           </div>
         </div>
