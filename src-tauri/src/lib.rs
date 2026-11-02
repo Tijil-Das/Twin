@@ -3,6 +3,9 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod governor;
+pub mod queue;
+pub mod rules;
+pub mod watcher;
 
 use tauri::{
     image::Image,

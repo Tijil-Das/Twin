@@ -278,7 +278,9 @@ impl Db {
     /// Return the highest-priority job whose `next_try_ms <= now_ms` and status='queued'.
     pub fn next_due_job(&self, now_ms: i64) -> Result<Option<Job>, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
-        conn.query_row(
+        // Fetch the next queued job and atomically mark it 'running' so the
+        // dispatcher never double-picks the same row.
+        let job = conn.query_row(
             "SELECT id,pair_id,kind,rel_path,priority,attempts,next_try_ms,status,last_error,created_ms
              FROM jobs WHERE status='queued' AND next_try_ms<=?1
              ORDER BY priority DESC, id ASC LIMIT 1",
@@ -286,7 +288,17 @@ impl Db {
             row_to_job,
         )
         .optional()
-        .map_err(|e| AppError::Db(format!("next_due_job: {e}")))
+        .map_err(|e| AppError::Db(format!("next_due_job: {e}")))?;
+
+        if let Some(ref j) = job {
+            conn.execute(
+                "UPDATE jobs SET status='running' WHERE id=?1",
+                params![j.id],
+            )
+            .map_err(|e| AppError::Db(format!("next_due_job mark running: {e}")))?;
+        }
+
+        Ok(job)
     }
 
     pub fn complete_job(&self, id: i64) -> Result<(), AppError> {
@@ -335,6 +347,17 @@ impl Db {
         }
 
         Ok(())
+    }
+
+    /// Count jobs with the given status string.
+    pub fn count_jobs_by_status(&self, status: &str) -> Result<i64, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.query_row(
+            "SELECT COUNT(*) FROM jobs WHERE status=?1",
+            params![status],
+            |r| r.get(0),
+        )
+        .map_err(|e| AppError::Db(format!("count_jobs: {e}")))
     }
 
     // ── activity ─────────────────────────────────────────────────────────────

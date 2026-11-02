@@ -476,7 +476,7 @@ mod tests {
         GovernorCfg {
             cpu_pause_pct: 70,
             cpu_resume_pct: 50,
-            battery_pause_pct: 20,
+            battery_pause_pct: 0, // 0 = never throttle on battery in tests
             pause_on_metered: false,
             active_hours: String::new(),
         }

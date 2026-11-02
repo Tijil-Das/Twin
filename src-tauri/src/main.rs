@@ -3,7 +3,7 @@
 
 use tauri::Manager;
 use tracing::info;
-use tether_lib::{auth, config, db, governor, setup_tray};
+use tether_lib::{auth, config, db, governor, queue, setup_tray};
 
 #[cfg(windows)]
 fn set_below_normal_priority() {
@@ -65,6 +65,8 @@ fn main() {
             governor::gov_state,
             governor::gov_pause,
             governor::gov_resume,
+            queue::sync_now,
+            queue::queue_status,
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -94,7 +96,23 @@ fn main() {
             };
             let gov = governor::Governor::new(gov_cfg);
             gov.start(governor::SysinfoCpuSource::new(), Some(handle.clone()));
-            app.manage(governor::GovState2(gov));
+            app.manage(governor::GovState2(gov.clone()));
+
+            // Start queue dispatcher with no-op runner (P07 wires the real one).
+            let db_arc = {
+                let _s = app.state::<db::DbState>();
+                std::sync::Arc::new(
+                    db::Db::open(&db_path)
+                        .map_err(|e| format!("db arc: {e}"))?,
+                )
+            };
+            let (q, _prog_rx) = queue::Queue::new(
+                db_arc,
+                gov,
+                cfg.clone(),
+                std::sync::Arc::new(queue::NoopRunner),
+            );
+            app.manage(queue::QueueState(q));
 
             // Register tray icon and menu.
             setup_tray(handle)?;
