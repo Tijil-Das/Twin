@@ -2,7 +2,7 @@
 //!
 //! One shared `reqwest::Client` per process (passed as Arc).
 //! Every request adds `Authorization: Bearer <token>`.
-//! Retries: 429/5xx/network → exponential backoff with jitter, max 5 retries,
+//! Retries: 429/5xx/network -> exponential backoff with jitter, max 5 retries,
 //! honors `Retry-After` header.
 
 use std::collections::HashMap;
@@ -18,25 +18,25 @@ use tracing::{debug, warn};
 use crate::auth;
 use crate::error::AppError;
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// Constants
 
 const API_BASE: &str = "https://www.googleapis.com/drive/v3";
 const UPLOAD_BASE: &str = "https://www.googleapis.com/upload/drive/v3";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_RETRIES: u32 = 5;
 
-// ── DriveClient ───────────────────────────────────────────────────────────────
+// DriveClient
 
 /// Shared Drive API client. Clone-friendly (Arc inside).
 #[derive(Clone)]
 pub struct DriveClient {
-    http: Client,
-    /// Cache: Drive folder path → folder id, keyed by (pair_id, rel_dir).
+    pub(crate) http: Client,
+    /// Cache: Drive folder path -> folder id, keyed by (pair_id, rel_dir).
     path_cache: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl DriveClient {
-    /// Build the shared client — call once at startup.
+    /// Build the shared client -- call once at startup.
     pub fn new() -> Result<Self, AppError> {
         let http = Client::builder()
             .use_rustls_tls()
@@ -44,7 +44,7 @@ impl DriveClient {
             .pool_max_idle_per_host(8)
             .tcp_keepalive(Duration::from_secs(30))
             .connect_timeout(CONNECT_TIMEOUT)
-            // No overall timeout — bodies can be large.
+            // No overall timeout -- bodies can be large.
             .build()
             .map_err(|e| AppError::Other(format!("build http client: {e}")))?;
         Ok(DriveClient {
@@ -53,10 +53,10 @@ impl DriveClient {
         })
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // Helpers
 
     /// Execute with retry on 429/5xx.
-    async fn execute_with_retry(&self, build: impl Fn() -> RequestBuilder) -> Result<Response, AppError> {
+    pub(crate) async fn execute_with_retry(&self, build: impl Fn() -> RequestBuilder) -> Result<Response, AppError> {
         let mut delay = Duration::from_millis(500);
         for attempt in 0..=MAX_RETRIES {
             let resp = build()
@@ -70,7 +70,7 @@ impl DriveClient {
                 return Ok(resp);
             }
 
-            // 429 or 5xx → retry.
+            // 429 or 5xx -> retry.
             let should_retry = status == StatusCode::TOO_MANY_REQUESTS
                 || status.is_server_error();
 
@@ -98,7 +98,7 @@ impl DriveClient {
         Err(AppError::Drive("max retries exceeded".into()))
     }
 
-    // ── Files API ─────────────────────────────────────────────────────────────
+    // Files API
 
     /// Find a child by name inside a parent folder.
     /// Returns the file metadata if found.
@@ -124,6 +124,29 @@ impl DriveClient {
         let mut list: FileList = resp.json().await
             .map_err(|e| AppError::Drive(format!("find_child parse: {e}")))?;
         Ok(list.files.pop())
+    }
+
+    /// List all non-trashed children of a Drive folder (non-recursive, pageSize=1000).
+    pub async fn list_folder(
+        &self,
+        parent_id: &str,
+    ) -> Result<Vec<DriveFile>, AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{API_BASE}/files");
+        let q = format!("'{parent_id}' in parents and trashed=false");
+        let resp = self.execute_with_retry(|| {
+            self.http.get(&url)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .query(&[
+                    ("q",                 q.as_str()),
+                    ("fields",            "files(id,mimeType,md5Checksum,modifiedTime,size)"),
+                    ("pageSize",          "1000"),
+                    ("supportsAllDrives", "true"),
+                ])
+        }).await?;
+        let list: FileList = resp.json().await
+            .map_err(|e| AppError::Drive(format!("list_folder parse: {e}")))?;
+        Ok(list.files)
     }
 
     /// Create a folder in Drive.
@@ -231,7 +254,7 @@ impl DriveClient {
         Ok(())
     }
 
-    // ── Multipart upload (<5 MiB) ─────────────────────────────────────────────
+    // Multipart upload (<5 MiB)
 
     /// Multipart upload for files < 5 MiB.
     /// Creates or updates the file (update avoids duplicates).
@@ -280,7 +303,7 @@ impl DriveClient {
             .map_err(|e| AppError::Drive(format!("multipart parse: {e}")))
     }
 
-    // ── Resumable upload (>= 5 MiB) ──────────────────────────────────────────
+    // Resumable upload (>= 5 MiB)
 
     /// Initiate a resumable upload session. Returns the upload URI.
     pub async fn init_resumable(
@@ -382,7 +405,7 @@ impl DriveClient {
 
         let status = resp.status();
         if status.as_u16() == 308 {
-            // Range header: "bytes=0-N" → next = N+1
+            // Range header: "bytes=0-N" -> next = N+1
             let next = resp.headers()
                 .get("Range")
                 .and_then(|v| v.to_str().ok())
@@ -408,7 +431,7 @@ impl Default for DriveClient {
     }
 }
 
-// ── Drive data types ──────────────────────────────────────────────────────────
+// Drive data types
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -437,12 +460,12 @@ pub struct DriveFileMeta {
 }
 
 #[derive(Debug, Deserialize)]
-struct FileList {
+pub(crate) struct FileList {
     #[serde(default)]
-    files: Vec<DriveFile>,
+    pub(crate) files: Vec<DriveFile>,
 }
 
-// ── Tiny pseudo-random jitter (no rand crate) ─────────────────────────────────
+// Tiny pseudo-random jitter (no rand crate)
 
 fn rand_millis(min: u64, max: u64) -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -452,4 +475,3 @@ fn rand_millis(min: u64, max: u64) -> u64 {
         .subsec_nanos() as u64;
     min + (seed % (max - min + 1))
 }
-

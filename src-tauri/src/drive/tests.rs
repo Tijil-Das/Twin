@@ -143,3 +143,4 @@ mod tests {
         assert!(matches!(result, Err(AppError::Other(_))));
     }
 }
+
