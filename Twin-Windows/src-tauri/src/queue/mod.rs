@@ -82,7 +82,7 @@ impl Queue {
         let gov2 = gov.clone();
         let notify2 = Arc::clone(&notify);
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             dispatcher(db2, gov2, cfg, runner, notify2, prog_tx).await;
         });
 
@@ -130,7 +130,7 @@ async fn dispatcher<R: JobRunner>(
                 let prog = prog_tx.clone();
                 let job_id = job.id;
 
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     let _permit = permit; // held for duration
                     match runner2.run(job, prog).await {
                         Ok(()) => {

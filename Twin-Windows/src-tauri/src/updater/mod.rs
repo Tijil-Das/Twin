@@ -477,7 +477,7 @@ pub async fn install_now(app: &tauri::AppHandle) -> Result<(), AppError> {
 /// Initializes the background update timer (15s first check, 20m interval).
 /// Checks `is_deferred`: skips check if active transfers are running.
 pub fn init_updater(app: tauri::AppHandle) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         // Wait initial delay (15s)
         tokio::time::sleep(FIRST_CHECK_DELAY).await;
 

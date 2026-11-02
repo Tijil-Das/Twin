@@ -440,14 +440,14 @@ fn main() {
             );
             // Spawn progress relay -- emits transfer://progress events.
             let app_handle = handle.clone();
-            tokio::spawn(transfer::relay_progress(prog_rx, app_handle));
+            tauri::async_runtime::spawn(transfer::relay_progress(prog_rx, app_handle));
             app.manage(queue::QueueState(q));
 
             // Spawn Google Drive AppData config sync loop (zero-config cloud sync).
             {
                 if let Ok(drive_client) = drive::DriveClient::new() {
                     let gov_appdata = gov.clone();
-                    tokio::spawn(sync::appdata::appdata_sync_loop(drive_client, gov_appdata, 15));
+                    tauri::async_runtime::spawn(sync::appdata::appdata_sync_loop(drive_client, gov_appdata, 15));
                 }
             }
 
@@ -460,7 +460,7 @@ fn main() {
                     .and_then(|p| p.parent())
                     .unwrap_or(std::path::Path::new("."))
                     .to_path_buf();
-                tokio::spawn(github::push_loop(db_arc2, gov2, data_dir, repo_root));
+                tauri::async_runtime::spawn(github::push_loop(db_arc2, gov2, data_dir, repo_root));
             }
 
             // Register tray icon and menu.
@@ -477,7 +477,7 @@ fn main() {
                     // 1. Live bandwidth limit update (no restart)
                     let limiter = Arc::clone(&up_limiter_live);
                     let up_kbps = cfg.limits.upload_kbps;
-                    tokio::spawn(async move {
+                    tauri::async_runtime::spawn(async move {
                         limiter.set_rate(up_kbps).await;
                     });
 
@@ -496,7 +496,7 @@ fn main() {
                     let d = Arc::clone(&db_live);
                     let g = gov_live.clone();
                     let pairs = cfg.pairs.clone();
-                    tokio::spawn(async move {
+                    tauri::async_runtime::spawn(async move {
                         for pair in pairs.iter().filter(|p| p.enabled) {
                             let _ = watcher::scan_pair(pair, Arc::clone(&d), &r, &g).await;
                         }
@@ -508,7 +508,7 @@ fn main() {
             {
                 let handle_toast = handle.clone();
                 let db_toast = Arc::clone(&db_arc);
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     use std::sync::atomic::{AtomicI64, Ordering};
                     static LAST_TOAST_MS: AtomicI64 = AtomicI64::new(0);
                     use tauri_plugin_notification::NotificationExt;

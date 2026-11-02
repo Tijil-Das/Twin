@@ -284,7 +284,7 @@ impl Governor {
     /// `app_handle` is optional – if present, emits `governor://state` events.
     pub fn start<S: CpuSource>(&self, mut source: S, app_handle: Option<tauri::AppHandle>) {
         let gov = self.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let mut last_state = GovState::Running;
             // Initial sample delay so sysinfo can warm up.
             tokio::time::sleep(Duration::from_secs(1)).await;

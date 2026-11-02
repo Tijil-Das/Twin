@@ -355,7 +355,7 @@ async fn download_parallel(
         let progress = progress.clone();
         let gov_c = gov.clone();
 
-        let handle = tokio::spawn(async move {
+        let handle = tauri::async_runtime::spawn(async move {
             let _permit = permit.acquire_owned().await
                 .map_err(|_| AppError::Other("semaphore closed".into()))?;
 
