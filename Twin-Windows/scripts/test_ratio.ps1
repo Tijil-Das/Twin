@@ -62,9 +62,11 @@ function Count-Lines($path, $isTestFile = $false) {
     return @{ Prod = $prod; Test = $test }
 }
 
+$baseDir = if (Test-Path "Twin-Windows/src-tauri") { "Twin-Windows" } else { "." }
+
 # Scan src-tauri/src
-if (Test-Path "src-tauri/src") {
-    $rsFiles = Get-ChildItem -Path "src-tauri/src" -Filter "*.rs" -Recurse
+if (Test-Path "$baseDir/src-tauri/src") {
+    $rsFiles = Get-ChildItem -Path "$baseDir/src-tauri/src" -Filter "*.rs" -Recurse
     foreach ($f in $rsFiles) {
         $isTest = $f.Name -eq "tests.rs" -or $f.Name.EndsWith("_test.rs")
         $counts = Count-Lines $f.FullName $isTest
@@ -74,8 +76,8 @@ if (Test-Path "src-tauri/src") {
 }
 
 # Scan src-tauri/tests
-if (Test-Path "src-tauri/tests") {
-    $testFiles = Get-ChildItem -Path "src-tauri/tests" -Filter "*.rs" -Recurse
+if (Test-Path "$baseDir/src-tauri/tests") {
+    $testFiles = Get-ChildItem -Path "$baseDir/src-tauri/tests" -Filter "*.rs" -Recurse
     foreach ($f in $testFiles) {
         $counts = Count-Lines $f.FullName $true
         $testLoc += $counts.Test
@@ -83,8 +85,8 @@ if (Test-Path "src-tauri/tests") {
 }
 
 # Scan src/**/*.test.ts and .tsx
-if (Test-Path "src") {
-    $tsTestFiles = Get-ChildItem -Path "src" -Recurse | Where-Object { $_.Name -match '\.test\.(ts|tsx)$' }
+if (Test-Path "$baseDir/src") {
+    $tsTestFiles = Get-ChildItem -Path "$baseDir/src" -Recurse | Where-Object { $_.Name -match '\.test\.(ts|tsx)$' }
     foreach ($f in $tsTestFiles) {
         $counts = Count-Lines $f.FullName $true
         $testLoc += $counts.Test
@@ -108,4 +110,3 @@ if ($ratio -ge 8.0) {
     Write-Host "Gate PENDING (Under 8.0:1 target)" -ForegroundColor Yellow
     exit 0
 }
-

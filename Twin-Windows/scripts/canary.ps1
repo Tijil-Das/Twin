@@ -12,7 +12,9 @@ Write-Host "Testing mutant verification: if a test suite never fails on mutation
 $env:CARGO_HOME = "T:\DevLibs\cargo"
 $cargo = "$env:USERPROFILE\.cargo\bin\cargo.exe"
 
-& $cargo test --manifest-path src-tauri/Cargo.toml --test t1_harness_selftest -- --quiet
+$manifest = if (Test-Path "Twin-Windows/src-tauri/Cargo.toml") { "Twin-Windows/src-tauri/Cargo.toml" } else { "src-tauri/Cargo.toml" }
+
+& $cargo test --manifest-path $manifest --test t1_harness_selftest -- --quiet
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Canary baseline failed!"
     exit 1

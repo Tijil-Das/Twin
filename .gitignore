@@ -1,21 +1,31 @@
 # Node
 node_modules/
+**/node_modules/
 dist/
+**/dist/
 .pnpm-store/
+**/.pnpm-store/
 
-# Rust/Tauri
+# Rust / Tauri
 src-tauri/target/
+**/target/
 src-tauri/gen/
+**/gen/
 
 # State DB (machine-local)
+data/
+**/data/*.db*
+**/data/*.log*
 data/state.db
 data/*.db-*
 
 # Local config overrides (may contain paths, never committed)
 config/config.local.toml
+**/config/config.local.toml
 
 # Logs
 *.log
+**/*.log
 
 # OS
 .DS_Store
