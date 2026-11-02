@@ -3,7 +3,7 @@
 
 use tauri::Manager;
 use tracing::info;
-use tether_lib::{auth, config, setup_tray};
+use tether_lib::{auth, config, db, setup_tray};
 
 #[cfg(windows)]
 fn set_below_normal_priority() {
@@ -60,9 +60,25 @@ fn main() {
             auth::auth_set_client_id,
             auth::auth_set_client_secret,
             auth::auth_clear_credentials,
+            db::get_activity,
+            db::retry_job,
         ])
         .setup(move |app| {
             let handle = app.handle();
+
+            // Open the state DB next to the executable (repo root / data/).
+            let db_path = handle
+                .path()
+                .resource_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("data")
+                .join("state.db");
+            let state_db = db::Db::open(&db_path)
+                .map_err(|e| format!("Failed to open state DB: {e}"))?;
+            app.manage(db::DbState(state_db));
 
             // Register tray icon and menu.
             setup_tray(handle)?;
