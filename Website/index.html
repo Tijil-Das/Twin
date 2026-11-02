@@ -98,111 +98,90 @@
         <p class="section-desc">Zero background bloat. Total transfer visibility.</p>
       </div>
 
-      <div class="bento-grid">
-        <!-- Card 1: Wide Spotlight (Real-Time Transfer) -->
-        <div class="bento-card bento-wide">
-          <div class="bento-content">
-            <span class="bento-tag">TRANSFER ENGINE</span>
-            <h3 class="bento-title">Real-time byte accuracy.</h3>
-            <p class="bento-desc">
-              Know what's uploading down to the byte. Real speeds, chunk confirmations, and exact ETA. No mystery spinners.
-            </p>
+      <div class="features-grid">
+        <!-- Card 1: Process Visibility -->
+        <div class="feature-card">
+          <div class="feature-head">
+            <span class="feature-tag">01 / VISIBILITY</span>
+            <h3 class="feature-title">Real-time byte accuracy.</h3>
+            <p class="feature-desc">Know what's uploading down to the byte. Real speeds, chunk confirmations, and exact ETA.</p>
           </div>
 
-          <!-- Visual: Clean Transfer Stream -->
-          <div class="ui-panel">
-            <div class="ui-panel-head">
-              <div class="ui-panel-title">
-                <span class="ui-status-pulse"></span>
-                <span>Active Upload</span>
-              </div>
-              <span class="ui-badge-speed">48.2 MB/s</span>
+          <div class="feature-visual">
+            <div class="stream-header">
+              <span class="stream-file">Project_Assets.zip</span>
+              <span class="stream-speed">48.2 MB/s</span>
             </div>
-
-            <div class="ui-transfer-item">
-              <div class="ui-item-header">
-                <span class="ui-filename">Project_Assets.zip</span>
-                <span class="ui-item-percent">76%</span>
-              </div>
-
-              <div class="ui-progress-bar">
-                <div class="ui-progress-fill" style="width: 76%;"></div>
-              </div>
-
-              <div class="ui-item-footer">
-                <span>1.2 GB / 1.6 GB</span>
-                <span class="ui-eta green">ETA 0.8s</span>
-              </div>
+            <div class="stream-bar">
+              <div class="stream-fill" style="width: 76%;"></div>
+            </div>
+            <div class="stream-meta">
+              <span>1.2 GB of 1.6 GB</span>
+              <span class="stream-eta">ETA 0.8s · 76%</span>
+            </div>
+            <div class="stream-chunks">
+              <span class="chunk-chip done">16M ✓</span>
+              <span class="chunk-chip done">16M ✓</span>
+              <span class="chunk-chip active">16M 76%</span>
+              <span class="chunk-chip queue">16M Queue</span>
             </div>
           </div>
         </div>
 
-        <!-- Card 2: Governor & RAM (Half Width) -->
-        <div class="bento-card">
-          <div class="bento-content">
-            <span class="bento-tag">EFFICIENCY</span>
-            <h3 class="bento-title">28 MB RAM. Zero lag.</h3>
-            <p class="bento-desc">
-              Pauses background sync automatically while you game, compile, or render.
-            </p>
+        <!-- Card 2: Hardware Efficiency -->
+        <div class="feature-card">
+          <div class="feature-head">
+            <span class="feature-tag">02 / EFFICIENCY</span>
+            <h3 class="feature-title">28 MB RAM. Zero lag.</h3>
+            <p class="feature-desc">Engineered in native Rust. Automatically pauses transfers while you game, compile, or render.</p>
           </div>
 
-          <!-- Visual: RAM & Thermal Governor -->
-          <div class="ui-panel governor-panel">
-            <div class="mem-compare-row">
-              <div class="mem-meta">
-                <span class="mem-name">Twin</span>
-                <span class="mem-val win">28 MB</span>
+          <div class="feature-visual">
+            <div class="stat-compare-grid">
+              <div class="stat-tile win">
+                <span class="stat-tile-label">Twin</span>
+                <span class="stat-tile-val green">28 MB</span>
+                <span class="stat-tile-sub">95% less RAM</span>
               </div>
-              <div class="mem-bar-track">
-                <div class="mem-bar-fill win" style="width: 6%;"></div>
-              </div>
-            </div>
-
-            <div class="mem-compare-row">
-              <div class="mem-meta">
-                <span class="mem-name">Google Drive</span>
-                <span class="mem-val loss">620 MB</span>
-              </div>
-              <div class="mem-bar-track">
-                <div class="mem-bar-fill loss" style="width: 86%;"></div>
+              <div class="stat-tile loss">
+                <span class="stat-tile-label">Google Drive</span>
+                <span class="stat-tile-val red">620 MB</span>
+                <span class="stat-tile-sub">Heavy background tax</span>
               </div>
             </div>
-
-            <div class="gov-pill">
-              <span class="gov-dot"></span>
+            <div class="gov-status-pill">
+              <span class="gov-status-dot"></span>
               <span>Auto-pause on CPU &gt; 70% or battery &lt; 20%</span>
             </div>
           </div>
         </div>
 
-        <!-- Card 3: Folder Freedom (Half Width) -->
-        <div class="bento-card">
-          <div class="bento-content">
-            <span class="bento-tag">FREEDOM</span>
-            <h3 class="bento-title">Any folder. Any drive.</h3>
-            <p class="bento-desc">
-              Direct two-way sync without virtual G: drive restrictions. Includes full revision rollback.
-            </p>
+        <!-- Card 3: Extended Freedom -->
+        <div class="feature-card">
+          <div class="feature-head">
+            <span class="feature-tag">03 / FREEDOM</span>
+            <h3 class="feature-title">Any folder. Any drive.</h3>
+            <p class="feature-desc">Direct two-way sync without virtual G: drive restrictions. Includes full revision rollback.</p>
           </div>
 
-          <!-- Visual: Direct Folder Route -->
-          <div class="ui-panel freedom-panel">
-            <div class="sync-route-box">
-              <div class="route-point">
-                <span class="point-badge">LOCAL</span>
-                <span class="point-path">D:\Projects</span>
+          <div class="feature-visual">
+            <div class="pipeline-box">
+              <div class="pipeline-node">
+                <span class="node-tag">LOCAL SSD</span>
+                <span class="node-val">D:\Projects</span>
               </div>
-              <span class="route-arrow">⇄</span>
-              <div class="route-point">
-                <span class="point-badge drive">DRIVE</span>
-                <span class="point-path">Drive:/Projects</span>
+              <div class="pipeline-connector">
+                <span class="pipeline-arrow">⇄</span>
+                <span class="pipeline-label">Two-Way</span>
+              </div>
+              <div class="pipeline-node drive">
+                <span class="node-tag drive">GOOGLE DRIVE</span>
+                <span class="node-val">Drive:/Projects</span>
               </div>
             </div>
-
-            <div class="vault-capsules">
-              <span class="vault-capsule">✔ In-App Revision Vault</span>
-              <span class="vault-capsule">✔ Native Office Export (.docx, .xlsx)</span>
+            <div class="feature-checks">
+              <span class="check-item">✔ In-App Revisions Vault (Keep Forever)</span>
+              <span class="check-item">✔ Native Office Export (.docx, .xlsx)</span>
             </div>
           </div>
         </div>
