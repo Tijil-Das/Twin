@@ -163,10 +163,14 @@ function ActivityRow({
         style={{
           fontSize: 12,
           fontWeight: 500,
-          color: isFailed ? "var(--danger)" : "var(--success)",
+          color: isFailed
+            ? "var(--danger)"
+            : row.result === "dry-run"
+            ? "var(--text-muted)"
+            : "var(--success)",
         }}
       >
-        {isFailed ? "Error" : "OK"}
+        {isFailed ? "Error" : row.result === "dry-run" ? "Dry run" : "OK"}
       </span>
       <span style={{ textAlign: "right" }}>
         {isFailed && (

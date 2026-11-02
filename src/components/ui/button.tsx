@@ -9,13 +9,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90 rounded",
+          "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90 rounded-[6px]",
         secondary:
-          "bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-2)] rounded",
+          "bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px]",
         ghost:
-          "text-[var(--text)] hover:bg-[var(--surface-2)] rounded",
+          "text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px]",
         destructive:
-          "bg-[var(--danger)] text-white hover:bg-[var(--danger)]/90 rounded",
+          "bg-[var(--danger)] text-white hover:bg-[var(--danger)]/90 rounded-[6px]",
       },
       size: {
         default: "h-8 px-3 py-1",
