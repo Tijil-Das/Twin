@@ -39,6 +39,14 @@ impl GitHubClient {
         self
     }
 
+    pub fn repo(&self) -> &str {
+        &self.repo
+    }
+
+    pub fn branch(&self) -> &str {
+        &self.branch
+    }
+
     pub(crate) fn auth_header(&self) -> String {
         // Note: token is never included in log messages.
         format!("Bearer {}", self.token)
