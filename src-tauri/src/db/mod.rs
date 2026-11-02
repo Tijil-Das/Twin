@@ -432,6 +432,43 @@ impl Db {
         Ok(())
     }
 
+    // ── GitHub sync helpers ────────────────────────────────────────────────────
+
+    /// Retrieve the `last_sync_ms` timestamp for a pair (GitHub push timestamp).
+    pub fn get_last_sync_ms(&self, pair: &str) -> Result<Option<i64>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let result: rusqlite::Result<Option<i64>> = conn.query_row(
+            "SELECT last_sync_ms FROM pair_meta WHERE pair_id=?1",
+            params![pair],
+            |r| r.get(0),
+        );
+        match result {
+            Ok(v) => Ok(v),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::Db(format!("get_last_sync_ms: {e}"))),
+        }
+    }
+
+    /// Insert or update `pair_meta` fields selectively (None = leave existing value).
+    pub fn upsert_pair_meta(
+        &self,
+        pair: &str,
+        token: Option<&str>,
+        last_sync_ms: Option<i64>,
+    ) -> Result<(), AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.execute(
+            "INSERT INTO pair_meta(pair_id, changes_page_token, last_sync_ms)
+             VALUES(?1, ?2, ?3)
+             ON CONFLICT(pair_id) DO UPDATE SET
+               changes_page_token = COALESCE(excluded.changes_page_token, changes_page_token),
+               last_sync_ms       = COALESCE(excluded.last_sync_ms,       last_sync_ms)",
+            params![pair, token, last_sync_ms],
+        )
+        .map_err(|e| AppError::Db(format!("upsert_pair_meta: {e}")))?;
+        Ok(())
+    }
+
     // ── upload_sessions ───────────────────────────────────────────────────────
 
     pub fn get_upload_session(

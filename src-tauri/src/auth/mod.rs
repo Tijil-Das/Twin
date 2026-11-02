@@ -14,6 +14,31 @@ const KEYRING_SERVICE: &str = "tether";
 const KEY_CLIENT_ID: &str = "client_id";
 const KEY_CLIENT_SECRET: &str = "client_secret";
 const KEY_REFRESH_TOKEN: &str = "refresh_token";
+const KEY_GITHUB_TOKEN: &str = "github_token";
+
+// ── GitHub PAT helpers ────────────────────────────────────────────────────
+
+/// Read GitHub PAT from Credential Manager. Returns `None` if not stored.
+/// The token value is **never** logged.
+pub fn github_token() -> Result<Option<String>, AppError> {
+    match cred_get(KEY_GITHUB_TOKEN) {
+        Ok(t) => Ok(Some(t)),
+        Err(_) => Ok(None),
+    }
+}
+
+/// Tauri command: persist a GitHub PAT in Credential Manager.
+#[tauri::command]
+pub fn gh_set_token(token: String) -> Result<(), String> {
+    cred_set(KEY_GITHUB_TOKEN, &token).map_err(|e| e.to_string())
+}
+
+/// Tauri command: remove GitHub PAT from Credential Manager.
+#[tauri::command]
+pub fn gh_clear_token() -> Result<(), String> {
+    cred_delete(KEY_GITHUB_TOKEN);
+    Ok(())
+}
 
 fn cred_get(key: &str) -> Result<String, AppError> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, key)

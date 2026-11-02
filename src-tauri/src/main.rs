@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 use tracing::info;
-use tether_lib::{auth, config, db, drive, governor, queue, sync, transfer, setup_tray};
+use tether_lib::{auth, config, db, drive, github, governor, queue, sync, transfer, setup_tray};
 use tether_lib::drive::revisions::Revision;
 use tether_lib::drive::client::DriveFile;
 use tether_lib::drive::trash::TrashedFile;
@@ -151,6 +151,52 @@ fn resolve_conflict(
         .map_err(|e| e.to_string())
 }
 
+// P11 Commands
+
+/// Get GitHub push status.
+#[tauri::command]
+async fn gh_status(_db_s: tauri::State<'_, db::DbState>) -> Result<serde_json::Value, String> {
+    let cfg = config::load().unwrap_or_default();
+    let has_token = auth::github_token().map(|t| t.is_some()).unwrap_or(false);
+    Ok(serde_json::json!({
+        "has_token": has_token,
+        "repo": cfg.github.repo,
+        "branch": cfg.github.branch,
+        "last_push": null
+    }))
+}
+
+/// Manually push state to GitHub.
+#[tauri::command]
+async fn gh_push_now(db_s: tauri::State<'_, db::DbState>) -> Result<(), String> {
+    let cfg = config::load().unwrap_or_default();
+    let token = auth::github_token().map_err(|e| e.to_string())?
+        .ok_or_else(|| "GitHub token not set".to_string())?;
+    let client = github::GitHubClient::new(token, cfg.github.repo.clone(), cfg.github.branch.clone());
+    let db_path = db_s.db_path();
+    let db_arc = Arc::new(db::Db::open(&db_path).map_err(|e| e.to_string())?);
+    let data_dir = db_path.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+    let repo_root = data_dir.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+    let mut cache = github::PushCache::load(&data_dir);
+    github::do_push(&client, &db_arc, &cfg, &mut cache, &repo_root)
+        .await.map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Manually pull state from GitHub.
+#[tauri::command]
+async fn gh_pull_now(db_s: tauri::State<'_, db::DbState>) -> Result<(), String> {
+    let cfg = config::load().unwrap_or_default();
+    let token = auth::github_token().map_err(|e| e.to_string())?
+        .ok_or_else(|| "GitHub token not set".to_string())?;
+    let client = github::GitHubClient::new(token, cfg.github.repo.clone(), cfg.github.branch.clone());
+    let db_path = db_s.db_path();
+    let db_arc = db::Db::open(&db_path).map_err(|e| e.to_string())?;
+    let data_dir = db_path.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+    let repo_root = data_dir.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+    github::do_pull(&client, &db_arc, &data_dir, &repo_root)
+        .await.map_err(|e| e.to_string())
+}
+
 fn main() {
     // Set process priority first -- before any heavy work starts.
     set_below_normal_priority();
@@ -205,6 +251,11 @@ fn main() {
             keep_revision,
             run_sync_cycle,
             resolve_conflict,
+            auth::gh_set_token,
+            auth::gh_clear_token,
+            gh_status,
+            gh_push_now,
+            gh_pull_now,
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -253,8 +304,8 @@ fn main() {
                 limiter: Arc::clone(&up_limiter),
             });
             let (q, prog_rx) = queue::Queue::new(
-                db_arc,
-                gov,
+                Arc::clone(&db_arc),
+                gov.clone(),
                 cfg.clone(),
                 upload_runner,
             );
@@ -262,6 +313,18 @@ fn main() {
             let app_handle = handle.clone();
             tokio::spawn(transfer::relay_progress(prog_rx, app_handle));
             app.manage(queue::QueueState(q));
+
+            // Spawn GitHub push loop (P11).
+            {
+                let db_arc2 = Arc::clone(&db_arc);
+                let gov2 = gov.clone();
+                let data_dir = db_path.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+                let repo_root = db_path.parent()
+                    .and_then(|p| p.parent())
+                    .unwrap_or(std::path::Path::new("."))
+                    .to_path_buf();
+                tokio::spawn(github::push_loop(db_arc2, gov2, data_dir, repo_root));
+            }
 
             // Register tray icon and menu.
             setup_tray(handle)?;

@@ -3,6 +3,7 @@ pub mod config;
 pub mod db;
 pub mod drive;
 pub mod error;
+pub mod github;
 pub mod governor;
 pub mod queue;
 pub mod rules;
