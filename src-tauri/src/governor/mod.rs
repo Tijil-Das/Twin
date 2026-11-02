@@ -208,6 +208,8 @@ struct Inner {
     low_cpu_ticks: u8,
     /// Whether we're currently in a CPU-throttled state (set by the loop).
     cpu_throttled: bool,
+    battery_override: Option<(bool, u8)>,
+    active_hours_override: Option<bool>,
 }
 
 impl Inner {
@@ -219,6 +221,8 @@ impl Inner {
             high_cpu_ticks: 0,
             low_cpu_ticks: 0,
             cpu_throttled: false,
+            battery_override: None,
+            active_hours_override: None,
         }
     }
 
@@ -227,13 +231,17 @@ impl Inner {
         if self.user_paused {
             return GovState::UserPaused;
         }
-        if !within_active_hours(&self.cfg.active_hours) {
+        if let Some(active) = self.active_hours_override {
+            if !active {
+                return GovState::Scheduled;
+            }
+        } else if !within_active_hours(&self.cfg.active_hours) {
             return GovState::Scheduled;
         }
         if self.metered && self.cfg.pause_on_metered {
             return GovState::Throttled(Reason::Metered);
         }
-        let (on_battery, bat_pct) = battery_status();
+        let (on_battery, bat_pct) = self.battery_override.unwrap_or_else(battery_status);
         if on_battery && bat_pct < self.cfg.battery_pause_pct {
             return GovState::Throttled(Reason::Battery);
         }
@@ -285,54 +293,10 @@ impl Governor {
                 let cpu = source.global_cpu_pct();
                 debug!("Governor CPU sample: {cpu:.1}%");
 
-                // Store latest CPU reading.
-                if let Ok(mut c) = gov.0.cpu_pct.lock() {
-                    *c = cpu;
-                }
-
-                let new_state = {
-                    if let Ok(mut inner) = gov.0.inner.lock() {
-                        let pause_pct = inner.cfg.cpu_pause_pct as f32;
-                        let resume_pct = inner.cfg.cpu_resume_pct as f32;
-
-                        // Update hysteresis counters (each tick = 2 s).
-                        if cpu > pause_pct {
-                            inner.high_cpu_ticks = inner.high_cpu_ticks.saturating_add(1);
-                            inner.low_cpu_ticks = 0;
-                        } else if cpu < resume_pct {
-                            inner.low_cpu_ticks = inner.low_cpu_ticks.saturating_add(1);
-                            inner.high_cpu_ticks = 0;
-                        } else {
-                            // In between: reset both counters to prevent crossing either threshold.
-                            inner.high_cpu_ticks = 0;
-                            inner.low_cpu_ticks = 0;
-                        }
-
-                        // 5 consecutive 2-s ticks = 10 s threshold (prompt says "5 consecutive seconds";
-                        // with 2-s ticks we use 3 ticks ≈ 6 s which is the closest; the prompt
-                        // spec says "5 s" so we treat each tick as the unit and require 3 ticks
-                        // at 2 s each for a total of 6 s — close enough for the intent).
-                        // Actually to be literal: "5 consecutive seconds" at 2-s sampling means
-                        // 3 ticks cover 6 s. We'll use 3 ticks (rounds up to nearest tick boundary).
-                        const TICKS_TO_THROTTLE: u8 = 3; // ≥6 s of high CPU
-
-                        if !inner.cpu_throttled && inner.high_cpu_ticks >= TICKS_TO_THROTTLE {
-                            inner.cpu_throttled = true;
-                            inner.high_cpu_ticks = 0;
-                        } else if inner.cpu_throttled && inner.low_cpu_ticks >= TICKS_TO_THROTTLE {
-                            inner.cpu_throttled = false;
-                            inner.low_cpu_ticks = 0;
-                        }
-
-                        inner.compute_state(cpu)
-                    } else {
-                        GovState::Running
-                    }
-                };
+                let new_state = gov.step_tick(cpu);
 
                 if new_state != last_state {
                     info!("Governor state: {:?} -> {:?}", last_state, new_state);
-                    let _ = gov.0.tx.send(new_state.clone());
                     if let Some(ref app) = app_handle {
                         use tauri::Emitter;
                         let _ = app.emit("governor://state", &new_state);
@@ -348,6 +312,60 @@ impl Governor {
                 tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
             }
         });
+    }
+
+    /// Override the battery status for testing.
+    pub fn set_battery_override(&self, battery: Option<(bool, u8)>) {
+        if let Ok(mut inner) = self.0.inner.lock() {
+            inner.battery_override = battery;
+        }
+    }
+
+    /// Override active hours state for testing.
+    pub fn set_active_hours_override(&self, active: Option<bool>) {
+        if let Ok(mut inner) = self.0.inner.lock() {
+            inner.active_hours_override = active;
+        }
+    }
+
+    /// Advance one sampling tick with a given CPU reading.
+    pub fn step_tick(&self, cpu: f32) -> GovState {
+        if let Ok(mut c) = self.0.cpu_pct.lock() {
+            *c = cpu;
+        }
+        let new_state = {
+            if let Ok(mut inner) = self.0.inner.lock() {
+                let pause_pct = inner.cfg.cpu_pause_pct as f32;
+                let resume_pct = inner.cfg.cpu_resume_pct as f32;
+
+                if cpu > pause_pct {
+                    inner.high_cpu_ticks = inner.high_cpu_ticks.saturating_add(1);
+                    inner.low_cpu_ticks = 0;
+                } else if cpu < resume_pct {
+                    inner.low_cpu_ticks = inner.low_cpu_ticks.saturating_add(1);
+                    inner.high_cpu_ticks = 0;
+                } else {
+                    inner.high_cpu_ticks = 0;
+                    inner.low_cpu_ticks = 0;
+                }
+
+                const TICKS_TO_THROTTLE: u8 = 3;
+                if !inner.cpu_throttled && inner.high_cpu_ticks >= TICKS_TO_THROTTLE {
+                    inner.cpu_throttled = true;
+                    inner.high_cpu_ticks = 0;
+                } else if inner.cpu_throttled && inner.low_cpu_ticks >= TICKS_TO_THROTTLE {
+                    inner.cpu_throttled = false;
+                    inner.low_cpu_ticks = 0;
+                }
+
+                inner.compute_state(cpu)
+            } else {
+                GovState::Running
+            }
+        };
+
+        let _ = self.0.tx.send(new_state.clone());
+        new_state
     }
 
     pub fn state(&self) -> GovState {
