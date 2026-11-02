@@ -3,7 +3,7 @@
 
 use tauri::Manager;
 use tracing::info;
-use tether_lib::{auth, config, db, governor, queue, setup_tray};
+use tether_lib::{auth, config, db, drive, governor, queue, transfer, setup_tray};
 
 #[cfg(windows)]
 fn set_below_normal_priority() {
@@ -98,7 +98,7 @@ fn main() {
             gov.start(governor::SysinfoCpuSource::new(), Some(handle.clone()));
             app.manage(governor::GovState2(gov.clone()));
 
-            // Start queue dispatcher with no-op runner (P07 wires the real one).
+            // Start queue dispatcher with UploadRunner (P07).
             let db_arc = {
                 let _s = app.state::<db::DbState>();
                 std::sync::Arc::new(
@@ -106,12 +106,26 @@ fn main() {
                         .map_err(|e| format!("db arc: {e}"))?,
                 )
             };
-            let (q, _prog_rx) = queue::Queue::new(
+            let limiter = std::sync::Arc::new(
+                transfer::Limiter::new(cfg.limits.upload_kbps)
+            );
+            let upload_runner = std::sync::Arc::new(transfer::UploadRunner {
+                db: std::sync::Arc::clone(&db_arc),
+                cfg: cfg.clone(),
+                gov: gov.clone(),
+                drive: drive::DriveClient::new()
+                    .map_err(|e| format!("drive client: {e}"))?,
+                limiter: std::sync::Arc::clone(&limiter),
+            });
+            let (q, prog_rx) = queue::Queue::new(
                 db_arc,
                 gov,
                 cfg.clone(),
-                std::sync::Arc::new(queue::NoopRunner),
+                upload_runner,
             );
+            // Spawn progress relay — emits transfer://progress events.
+            let app_handle = handle.clone();
+            tokio::spawn(transfer::relay_progress(prog_rx, app_handle));
             app.manage(queue::QueueState(q));
 
             // Register tray icon and menu.

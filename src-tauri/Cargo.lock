@@ -4412,6 +4412,8 @@ name = "tether"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
+ "futures",
  "globset",
  "keyring",
  "md-5",

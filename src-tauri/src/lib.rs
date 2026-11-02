@@ -1,10 +1,12 @@
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod drive;
 pub mod error;
 pub mod governor;
 pub mod queue;
 pub mod rules;
+pub mod transfer;
 pub mod watcher;
 
 use tauri::{
