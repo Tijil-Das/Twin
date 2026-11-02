@@ -68,14 +68,14 @@
         </a>
       </div>
 
-      <!-- Live Technical Metrics (No marketing fluff) -->
+      <!-- Live Technical Metrics -->
       <div class="metrics-grid">
         <div class="metric-box">
-          <div class="metric-value">28 MB</div>
+          <div class="metric-value green">28 MB</div>
           <div class="metric-label">Idle RAM consumption</div>
         </div>
         <div class="metric-box">
-          <div class="metric-value">0.01%</div>
+          <div class="metric-value cyan">0.01%</div>
           <div class="metric-label">Idle CPU overhead</div>
         </div>
         <div class="metric-box">
@@ -83,18 +83,18 @@
           <div class="metric-label">Resumable chunk size</div>
         </div>
         <div class="metric-box">
-          <div class="metric-value">8.4 MB</div>
+          <div class="metric-value green">8.4 MB</div>
           <div class="metric-label">Total installer package</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 1: Visual Architecture Modules (Flat, Technical, Low Text) -->
+  <!-- Section 1: Visual Architecture Modules -->
   <section id="architecture" class="section">
     <div class="container">
       <div class="section-head center">
-        <span class="section-tag">Technical Architecture</span>
+        <span class="section-tag">Architecture</span>
         <h2 class="section-title">Engineered for absolute control.</h2>
       </div>
 
@@ -113,7 +113,7 @@
             </div>
             <div class="schematic-row">
               <span>Checksum</span>
-              <span>Blake3 + MD5</span>
+              <span style="color: var(--accent-cyan);">Blake3 + MD5</span>
             </div>
             <div class="schematic-row">
               <span>Debounce</span>
@@ -133,13 +133,13 @@
         <div class="spec-module">
           <div class="module-header">
             <span class="module-title">Hardware Governor</span>
-            <span class="module-tag">Active</span>
+            <span class="module-tag green">Active</span>
           </div>
 
           <div class="governor-meter-box">
             <div style="display: flex; justify-content: space-between; font-size: 11.5px; font-family: var(--font-mono);">
               <span>Host CPU Load</span>
-              <span style="color: var(--accent);">Normal (18%)</span>
+              <span style="color: var(--success-light); font-weight: 600;">Normal (18%)</span>
             </div>
 
             <div class="threshold-track">
@@ -149,7 +149,7 @@
             <div class="threshold-markers">
               <span>0%</span>
               <span style="color: var(--warning);">20% Battery Pause</span>
-              <span style="color: var(--danger);">70% CPU Pause</span>
+              <span style="color: var(--danger-light);">70% CPU Pause</span>
               <span>100%</span>
             </div>
           </div>
@@ -159,14 +159,14 @@
         <div class="spec-module">
           <div class="module-header">
             <span class="module-title">Memory Footprint</span>
-            <span class="module-tag">-95% RAM</span>
+            <span class="module-tag green">-95% RAM</span>
           </div>
 
           <div class="ram-compare-box">
             <div class="bar-row">
               <div class="bar-meta">
                 <span>Google Drive Desktop</span>
-                <span>620 MB</span>
+                <span style="color: var(--danger-light);">620 MB</span>
               </div>
               <div class="flat-bar-track">
                 <div class="flat-bar-gdrive"></div>
@@ -175,8 +175,8 @@
 
             <div class="bar-row">
               <div class="bar-meta">
-                <span style="color: var(--text); font-weight: 500;">Twin</span>
-                <span style="color: var(--accent); font-weight: 600;">28 MB</span>
+                <span style="color: #FFFFFF; font-weight: 500;">Twin</span>
+                <span style="color: var(--success-light); font-weight: 600;">28 MB</span>
               </div>
               <div class="flat-bar-track">
                 <div class="flat-bar-twin"></div>
@@ -188,7 +188,7 @@
     </div>
   </section>
 
-  <!-- Section 2: Technical Feature Matrix (6 Flat Cards, Single Crisp Sentences) -->
+  <!-- Section 2: Technical Feature Matrix -->
   <section id="features" class="section">
     <div class="container">
       <div class="section-head center">
@@ -248,7 +248,7 @@
     </div>
   </section>
 
-  <!-- Section 3: Semantic Comparison Table (Flat, Rock-Solid) -->
+  <!-- Section 3: Semantic Comparison Table (WITH PRO COLOR BADGES) -->
   <section id="comparison" class="section">
     <div class="container">
       <div class="section-head center">
@@ -260,46 +260,61 @@
         <table class="compare-table">
           <thead>
             <tr>
-              <th style="width: 38%;">Feature / Capability</th>
-              <th style="width: 31%;">Twin v0.1.0</th>
-              <th style="width: 31%;">Google Drive for Desktop</th>
+              <th style="width: 32%;">Feature / Capability</th>
+              <th style="width: 34%;" class="col-twin">Twin v0.1.0</th>
+              <th style="width: 34%;">Google Drive for Desktop</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>Memory (RAM) Footprint</td>
-              <td class="twin-col">28 MB</td>
-              <td class="gdrive-col">450 MB – 1.2 GB</td>
+              <td class="col-twin-cell"><span class="badge-win">~28 MB RAM</span></td>
+              <td><span class="badge-loss">450 MB – 1.2 GB RAM</span></td>
             </tr>
             <tr>
-              <td>Hardware CPU Governor</td>
-              <td class="twin-col">Auto-pause &gt;70%, resume &lt;50%</td>
-              <td class="gdrive-col">None (unrestricted background draw)</td>
+              <td>Hardware CPU & Thermal Governor</td>
+              <td class="col-twin-cell"><span class="badge-win">Auto-pause &gt;70%, resume &lt;50%</span></td>
+              <td><span class="badge-loss">None (causes background fan spin)</span></td>
             </tr>
             <tr>
               <td>Battery State Awareness</td>
-              <td class="twin-col">Auto-pause below 20% on battery</td>
-              <td class="gdrive-col">Continuous active sync</td>
+              <td class="col-twin-cell"><span class="badge-win">Auto-pause below 20% on battery</span></td>
+              <td><span class="badge-loss">Aggressive background battery drain</span></td>
             </tr>
             <tr>
-              <td>Folder Mapping</td>
-              <td class="twin-col">Arbitrary paths anywhere on disk</td>
-              <td class="gdrive-col">Single virtual drive root</td>
+              <td>Folder Mapping Flexibility</td>
+              <td class="col-twin-cell"><span class="badge-win">Unlimited arbitrary folder pairs</span></td>
+              <td><span class="badge-neutral">Forced virtual G: drive / single root</span></td>
             </tr>
             <tr>
-              <td>Revision Rollback</td>
-              <td class="twin-col">In-app revision explorer</td>
-              <td class="gdrive-col">Web browser redirect only</td>
+              <td>Revision History & Rollback</td>
+              <td class="col-twin-cell"><span class="badge-win">In-app revision browser + Keep Forever</span></td>
+              <td><span class="badge-neutral">Redirects to web browser interface</span></td>
             </tr>
             <tr>
               <td>Google Workspace Files</td>
-              <td class="twin-col">Auto-export to .docx / .xlsx</td>
-              <td class="gdrive-col">Browser shortcut stubs (.gdoc)</td>
+              <td class="col-twin-cell"><span class="badge-win">Auto-export to .docx, .xlsx, .pptx</span></td>
+              <td><span class="badge-neutral">Browser shortcut stubs (.gdoc, .gsheet)</span></td>
+            </tr>
+            <tr>
+              <td>Sync State Transparency</td>
+              <td class="col-twin-cell"><span class="badge-win">True bytes, smoothed speed, exact ETA</span></td>
+              <td><span class="badge-loss">Vague file counters and endless spinners</span></td>
+            </tr>
+            <tr>
+              <td>Resumable Chunk Architecture</td>
+              <td class="col-twin-cell"><span class="badge-win">16 MiB chunks with Blake3 caching</span></td>
+              <td><span class="badge-neutral">Opaque chunking with full retries</span></td>
+            </tr>
+            <tr>
+              <td>Configuration Portability</td>
+              <td class="col-twin-cell"><span class="badge-win">Portable config.toml + GitHub backup</span></td>
+              <td><span class="badge-neutral">Opaque %APPDATA% registry storage</span></td>
             </tr>
             <tr>
               <td>Installer Package Size</td>
-              <td class="twin-col">8.4 MB (Native Rust)</td>
-              <td class="gdrive-col">~350 MB (Python + CEF)</td>
+              <td class="col-twin-cell"><span class="badge-win">8.4 MB (Native Rust binary)</span></td>
+              <td><span class="badge-loss">~350 MB (Bundled Python + Chromium)</span></td>
             </tr>
           </tbody>
         </table>

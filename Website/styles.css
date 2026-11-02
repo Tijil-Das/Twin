@@ -1,28 +1,41 @@
-/* Twin Website - Professional Utilitarian Dark
-   Strict adherence to UI_GUIDE: calm, precise, flat colors, zero glows, zero gradients. */
+/* Twin Website - Professional Dark with Pro Vibrant Color Accents
+   Utilitarian, clean typography, low text density, high-contrast badges */
 
 :root {
-  --bg: #0F1012;
-  --surface: #17181B;
-  --surface-2: #1E2024;
-  --surface-3: #26282E;
-  --surface-hover: #22242A;
+  --bg: #0C0D10;
+  --surface: #13151A;
+  --surface-2: #191C23;
+  --surface-3: #20242E;
+  --surface-hover: #262B37;
 
-  --border: #2A2C31;
-  --border-subtle: #1F2126;
+  --border: #232732;
+  --border-subtle: #191C24;
   --border-focus: #3B82F6;
 
-  --text: #ECECEE;
-  --text-muted: #9A9AA3;
-  --text-subtle: #62646D;
+  --text: #F1F4F9;
+  --text-muted: #9499A8;
+  --text-subtle: #616675;
 
   --accent: #3B82F6;
   --accent-hover: #2563EB;
-  --accent-subtle: rgba(59, 130, 246, 0.1);
+  --accent-light: #60A5FA;
+  --accent-cyan: #38BDF8;
+  --accent-subtle: rgba(59, 130, 246, 0.12);
+  --accent-border: rgba(59, 130, 246, 0.28);
 
   --success: #22C55E;
+  --success-light: #4ADE80;
+  --success-subtle: rgba(34, 197, 94, 0.14);
+  --success-border: rgba(34, 197, 94, 0.32);
+
   --warning: #F59E0B;
+  --warning-subtle: rgba(245, 158, 11, 0.14);
+  --warning-border: rgba(245, 158, 11, 0.30);
+
   --danger: #EF4444;
+  --danger-light: #F87171;
+  --danger-subtle: rgba(239, 68, 68, 0.14);
+  --danger-border: rgba(239, 68, 68, 0.30);
 
   --font-sans: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: "Cascadia Mono", Consolas, "SF Mono", monospace;
@@ -67,17 +80,17 @@ body {
 
 /* Typography */
 h1, h2, h3, h4 {
-  color: var(--text);
+  color: #FFFFFF;
   font-weight: 600;
   letter-spacing: -0.02em;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
-h1 { font-size: 2.5rem; }
-h2 { font-size: 1.6rem; }
-h3 { font-size: 1.15rem; }
-h4 { font-size: 1rem; }
-p { color: var(--text-muted); font-size: 0.95rem; }
+h1 { font-size: 2.6rem; }
+h2 { font-size: 1.65rem; }
+h3 { font-size: 1.2rem; }
+h4 { font-size: 1.05rem; }
+p { color: var(--text-muted); font-size: 0.98rem; }
 .mono { font-family: var(--font-mono); }
 
 /* Header */
@@ -85,9 +98,11 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   position: sticky;
   top: 0;
   z-index: 100;
-  background-color: var(--bg);
+  background-color: rgba(12, 13, 16, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
-  height: 54px;
+  height: 56px;
 }
 
 .header-inner {
@@ -103,17 +118,19 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   gap: 10px;
   font-weight: 600;
   font-size: 15px;
-  color: var(--text);
+  color: #FFFFFF;
   text-decoration: none;
 }
 
 .brand-icon {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
 }
 
 .brand-icon img {
@@ -125,11 +142,12 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 .version-pill {
   font-size: 11px;
   font-family: var(--font-mono);
-  color: var(--text-muted);
-  background-color: var(--surface-2);
-  border: 1px solid var(--border);
+  color: var(--accent-cyan);
+  background-color: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
   padding: 2px 7px;
   border-radius: var(--radius-sm);
+  font-weight: 500;
 }
 
 .nav-links {
@@ -147,10 +165,10 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 }
 
 .nav-link:hover {
-  color: var(--text);
+  color: #FFFFFF;
 }
 
-/* Utilitarian UI_GUIDE Buttons (Flat, 6px radius, no drop shadows) */
+/* Button System */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -165,7 +183,7 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   border: none;
   font-family: var(--font-sans);
   text-decoration: none;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: all 120ms ease;
   user-select: none;
   white-space: nowrap;
 }
@@ -187,46 +205,52 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 
 .btn-secondary:hover {
   background-color: var(--surface-2);
+  color: #FFFFFF;
 }
 
 .btn-lg {
-  height: 38px;
+  height: 40px;
   padding: 0 18px;
   font-size: 13.5px;
+  font-weight: 600;
 }
 
 /* Hero Section */
 .hero {
-  padding: 60px 0 44px;
+  padding: 64px 0 48px;
   text-align: center;
 }
 
 .hero-tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 4px 12px;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   font-size: 12px;
   font-family: var(--font-mono);
-  color: var(--text-muted);
-  margin-bottom: 16px;
+  color: var(--text);
+  margin-bottom: 18px;
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background-color: var(--success);
+  background-color: var(--success-light);
   display: inline-block;
 }
 
 .hero-title {
   margin: 0 auto 12px;
-  max-width: 780px;
+  max-width: 800px;
 }
 
 .hero-subtitle {
   margin: 0 auto 24px;
-  max-width: 580px;
+  max-width: 600px;
   font-size: 1.05rem;
   color: var(--text-muted);
 }
@@ -236,11 +260,11 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   flex-wrap: wrap;
 }
 
-/* Metric Strip (Clean, Cascadia Mono data, flat cards) */
+/* Metrics Grid */
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -252,16 +276,29 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   background-color: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 14px 16px;
+  padding: 16px;
   text-align: left;
+  transition: border-color 150ms ease;
+}
+
+.metric-box:hover {
+  border-color: var(--accent-border);
 }
 
 .metric-value {
-  font-size: 1.45rem;
+  font-size: 1.55rem;
   font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--text);
+  font-weight: 700;
+  color: #FFFFFF;
   margin-bottom: 2px;
+}
+
+.metric-value.cyan {
+  color: var(--accent-cyan);
+}
+
+.metric-value.green {
+  color: var(--success-light);
 }
 
 .metric-label {
@@ -271,7 +308,7 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 
 /* Sections Common */
 .section {
-  padding: 64px 0;
+  padding: 72px 0;
   border-top: 1px solid var(--border);
 }
 
@@ -286,18 +323,19 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 .section-tag {
   font-size: 11px;
   font-family: var(--font-mono);
-  color: var(--accent);
+  color: var(--accent-cyan);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   margin-bottom: 6px;
   display: block;
+  font-weight: 600;
 }
 
 .section-title {
   margin-bottom: 6px;
 }
 
-/* Visual Architecture Modules (Flat, High-density, Zero fluff) */
+/* Technical Architecture Modules */
 .specs-modules-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -312,6 +350,11 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   display: flex;
   flex-direction: column;
   gap: 14px;
+  transition: border-color 150ms ease;
+}
+
+.spec-module:hover {
+  border-color: var(--accent-border);
 }
 
 .module-header {
@@ -323,16 +366,26 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 .module-title {
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--text);
+  color: #FFFFFF;
 }
 
 .module-tag {
   font-size: 11px;
   font-family: var(--font-mono);
-  color: var(--text-muted);
+  color: var(--accent-cyan);
+  background-color: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
-/* Visual Module 1: Transfer Engine Schematic */
+.module-tag.green {
+  color: var(--success-light);
+  background-color: var(--success-subtle);
+  border-color: var(--success-border);
+}
+
+/* Schematic Box 1 */
 .schematic-box {
   background-color: var(--surface-2);
   border: 1px solid var(--border);
@@ -353,7 +406,8 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 }
 
 .schematic-row span:last-child {
-  color: var(--text);
+  color: #FFFFFF;
+  font-weight: 500;
 }
 
 .chunk-stream-bars {
@@ -373,15 +427,16 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   justify-content: center;
   font-size: 10px;
   font-family: var(--font-mono);
-  color: var(--accent);
+  color: var(--accent-cyan);
 }
 
 .stream-col.done {
-  border-color: var(--border);
-  color: var(--success);
+  border-color: var(--success-border);
+  color: var(--success-light);
+  background-color: var(--success-subtle);
 }
 
-/* Visual Module 2: Hardware Governor Meter */
+/* Schematic Box 2: Governor */
 .governor-meter-box {
   background-color: var(--surface-2);
   border: 1px solid var(--border);
@@ -411,12 +466,11 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 .threshold-markers {
   display: flex;
   justify-content: space-between;
-  font-size: 10.5px;
+  font-size: 10px;
   font-family: var(--font-mono);
-  color: var(--text-subtle);
 }
 
-/* Visual Module 3: Comparative RAM Bars */
+/* Schematic Box 3: RAM comparison */
 .ram-compare-box {
   background-color: var(--surface-2);
   border: 1px solid var(--border);
@@ -451,16 +505,16 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 .flat-bar-gdrive {
   height: 100%;
   width: 90%;
-  background-color: #71717A;
+  background-color: #EF4444;
 }
 
 .flat-bar-twin {
   height: 100%;
   width: 6%;
-  background-color: var(--accent);
+  background-color: #22C55E;
 }
 
-/* Technical Feature Matrix (6 Flat Cards) */
+/* Technical Feature Matrix */
 .tech-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -475,19 +529,24 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: border-color 150ms ease;
+}
+
+.tech-item:hover {
+  border-color: var(--accent-border);
 }
 
 .tech-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: #FFFFFF;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .tech-title svg {
-  color: var(--text-muted);
+  color: var(--accent-cyan);
   flex-shrink: 0;
 }
 
@@ -497,10 +556,14 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   line-height: 1.45;
 }
 
-/* Comparison Table (Semantic, Flat, Rock-Solid) */
+/* =========================================================
+   COMPARISON TABLE - WITH PRO COLOR ACCENT BADGES
+   ========================================================= */
+
 .table-wrap {
   width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background-color: var(--surface);
@@ -508,7 +571,7 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 
 .compare-table {
   width: 100%;
-  min-width: 640px;
+  min-width: 680px;
   border-collapse: collapse;
   text-align: left;
   font-size: 13px;
@@ -516,8 +579,9 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 
 .compare-table th,
 .compare-table td {
-  padding: 12px 16px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--border);
+  vertical-align: middle;
 }
 
 .compare-table tr:last-child td {
@@ -531,18 +595,55 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   font-size: 12.5px;
 }
 
-.compare-table td.twin-col {
-  color: var(--accent);
+.compare-table th.col-twin {
+  color: var(--accent-cyan);
+  background-color: var(--accent-subtle);
+  border-left: 1px solid var(--accent-border);
+  border-right: 1px solid var(--accent-border);
+}
+
+.compare-table td.col-twin-cell {
+  background-color: rgba(59, 130, 246, 0.03);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+/* User-loved Pro Color Badges */
+.badge-win {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--success-subtle);
+  color: var(--success-light);
+  border: 1px solid var(--success-border);
+  padding: 3px 8px;
+  border-radius: 4px;
   font-family: var(--font-mono);
+  font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
-.compare-table td.gdrive-col {
-  color: var(--text-muted);
+.badge-loss {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--danger-subtle);
+  color: var(--danger-light);
+  border: 1px solid var(--danger-border);
+  padding: 3px 8px;
+  border-radius: 4px;
   font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-/* GitHub Open Source Banner */
+.badge-neutral {
+  display: inline-block;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+/* GitHub Banner */
 .github-banner {
   background-color: var(--surface);
   border: 1px solid var(--border);
@@ -570,13 +671,14 @@ p { color: var(--text-muted); font-size: 0.95rem; }
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text);
+  color: #FFFFFF;
   flex-shrink: 0;
 }
 
 .github-text h3 {
-  font-size: 14px;
+  font-size: 14.5px;
   margin-bottom: 2px;
+  color: #FFFFFF;
 }
 
 .github-text p {
@@ -620,10 +722,15 @@ p { color: var(--text-muted); font-size: 0.95rem; }
 .hash-copy {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--accent-cyan);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 11px;
+  font-weight: 500;
+}
+
+.hash-copy:hover {
+  color: #FFFFFF;
 }
 
 /* Footer */
