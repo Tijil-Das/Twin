@@ -95,13 +95,26 @@ pub struct ReconcileResult {
 
 // ── Full listing reconcile ────────────────────────────────────────────────────
 
-/// Reconcile a fresh Drive folder listing against the local Db + filesystem.
+/// Reconcile a fresh Drive folder listing against the local Db + filesystem using default policies.
 pub async fn reconcile_listing(
     db:    &Arc<Db>,
     drive: &DriveClient,
     pair:  &PairEntry,
     entries: &[DriveEntry],
     echo:  &Arc<SelfWritten>,
+) -> Result<ReconcileResult, AppError> {
+    reconcile_listing_with_policy(db, drive, pair, entries, echo, ConflictPolicy::NewerWins, DeletionPolicy::DriveTrash).await
+}
+
+/// Reconcile a fresh Drive folder listing against the local Db + filesystem with explicit policies.
+pub async fn reconcile_listing_with_policy(
+    db:    &Arc<Db>,
+    drive: &DriveClient,
+    pair:  &PairEntry,
+    entries: &[DriveEntry],
+    echo:  &Arc<SelfWritten>,
+    conflict_policy: ConflictPolicy,
+    deletion_policy: DeletionPolicy,
 ) -> Result<ReconcileResult, AppError> {
     let _ = drive; // used by callers; not needed directly here
     let mut result = ReconcileResult::default();
@@ -115,10 +128,6 @@ pub async fn reconcile_listing(
             continue; // dirs handled separately
         }
         let Some(name) = &entry.name else { continue };
-        // Derive rel_path from name (flat listing for now; folder entries carry parent).
-        // Full relative paths require correlating folder entries which is done via
-        // the folder listing BFS already (entries have flat names under their parent).
-        // We use name as rel_path for simplicity in reconcile.
         remote_by_rel.insert(name.clone(), entry);
     }
 
@@ -137,10 +146,28 @@ pub async fn reconcile_listing(
         let local_changed  = local_exists && local_md5 != db_drive_md5 && !local_md5.is_empty();
         let remote_changed = remote_md5 != db_drive_md5 && !remote_md5.is_empty();
 
-        // Decision table: (local_changed, remote_changed, local_exists)
-        if !local_changed && !remote_changed {
-            // No changes — nothing to do.
-        } else if local_changed && !remote_changed && local_exists {
+        // Decision table: (local_exists, local_changed, remote_changed)
+        if !local_exists {
+            if db_row.is_some() {
+                if !remote_changed {
+                    // Local deleted, remote unchanged → delete remote
+                    if matches!(deletion_policy, DeletionPolicy::DriveTrash | DeletionPolicy::Delete) {
+                        apply_local_delete_inner(db, pair, rel, now, deletion_policy.clone())?;
+                        result.deletes += 1;
+                    }
+                } else if matches!(pair.mode, PairMode::TwoWay) {
+                    // Both changed (local deleted, remote updated) → re-download remote
+                    enqueue_download(db, pair, rel, remote, now)?;
+                    result.downloads += 1;
+                }
+            } else if matches!(pair.mode, PairMode::TwoWay) {
+                // New remote file not yet tracked locally
+                enqueue_download(db, pair, rel, remote, now)?;
+                result.downloads += 1;
+            }
+        } else if !local_changed && !remote_changed {
+            // Local exists, both unchanged — in sync.
+        } else if local_changed && !remote_changed {
             // Only local changed → upload.
             if matches!(pair.mode, PairMode::Upload | PairMode::TwoWay | PairMode::Mirror) {
                 enqueue_upload(db, pair, rel, now)?;
@@ -157,35 +184,23 @@ pub async fn reconcile_listing(
                     result.downloads += 1;
                 }
             }
-        } else if local_changed && remote_changed && local_exists {
+        } else if local_changed && remote_changed {
             // Both changed → conflict.
             if remote_md5 == local_md5 {
                 // Same content, just mark synced.
                 db.mark_state(&pair.id, rel, "synced")?;
             } else if matches!(pair.mode, PairMode::TwoWay) {
-                let outcome = apply_conflict(db, pair, rel, remote, &local_path, now, echo).await?;
+                let outcome = apply_conflict_inner(db, pair, rel, remote, &local_path, now, echo, conflict_policy.clone()).await?;
                 result.uploads    += outcome.uploads;
                 result.downloads  += outcome.downloads;
                 result.conflicts  += outcome.conflicts;
-            }
-        } else if local_changed && remote_changed && !local_exists {
-            // Both changed but local missing → treat as remote-only.
-            if matches!(pair.mode, PairMode::TwoWay) {
-                enqueue_download(db, pair, rel, remote, now)?;
-                result.downloads += 1;
-            }
-        } else if !remote_changed && !local_exists {
-            // Local deleted, remote unchanged.
-            if db_row.is_some() {
-                apply_local_delete(db, pair, rel, now)?;
-                result.deletes += 1;
             }
         }
 
         // Update drive metadata in DB row.
         let mtime_ms = remote.modified_time.as_deref().and_then(rfc3339_to_ms).unwrap_or(0);
         let size: Option<i64> = remote.size.as_deref().and_then(|s| s.parse().ok());
-        let existing = db_row.unwrap_or_else(|| FileRow {
+        let current = db.get_file(&pair.id, rel)?.unwrap_or_else(|| FileRow {
             pair_id:       pair.id.clone(),
             rel_path:      rel.clone(),
             size:          None,
@@ -200,14 +215,14 @@ pub async fn reconcile_listing(
         db.upsert_file(FileRow {
             pair_id:       pair.id.clone(),
             rel_path:      rel.clone(),
-            size:          size.or(existing.size),
-            mtime_ms:      existing.mtime_ms,
-            md5:           existing.md5.clone(),
+            size:          size.or(current.size),
+            mtime_ms:      current.mtime_ms,
+            md5:           current.md5.clone(),
             drive_id:      Some(remote.id.clone()),
             drive_md5:     Some(remote_md5.to_string()),
             drive_mtime_ms: Some(mtime_ms),
-            drive_rev:     existing.drive_rev.clone(),
-            state:         existing.state.clone(),
+            drive_rev:     current.drive_rev.clone(),
+            state:         current.state,
         })?;
     }
 
@@ -235,12 +250,23 @@ pub async fn reconcile_listing(
 
 // ── Remote change application ─────────────────────────────────────────────────
 
-/// Apply a single remote change from the Changes API feed.
+/// Apply a single remote change from the Changes API feed using default policy.
 pub async fn apply_remote_change(
     db:     &Arc<Db>,
     pair:   &PairEntry,
     change: &DriveChange,
     echo:   &Arc<SelfWritten>,
+) -> Result<(), AppError> {
+    apply_remote_change_with_policy(db, pair, change, echo, ConflictPolicy::NewerWins).await
+}
+
+/// Apply a single remote change from the Changes API feed with explicit conflict policy.
+pub async fn apply_remote_change_with_policy(
+    db:     &Arc<Db>,
+    pair:   &PairEntry,
+    change: &DriveChange,
+    echo:   &Arc<SelfWritten>,
+    conflict_policy: ConflictPolicy,
 ) -> Result<(), AppError> {
     let now = now_ms();
 
@@ -330,7 +356,7 @@ pub async fn apply_remote_change(
             if remote_md5 == local_md5 && !remote_md5.is_empty() {
                 db.mark_state(&pair.id, &rel_path, "synced")?;
             } else {
-                let _ = apply_conflict(db, pair, &rel_path, file, &local_path, now, echo).await?;
+                let _ = apply_conflict_inner(db, pair, &rel_path, file, &local_path, now, echo, conflict_policy).await?;
             }
         }
     }
@@ -348,6 +374,7 @@ struct ConflictOutcome {
 }
 
 /// Apply the configured conflict policy. Returns outcome counts.
+#[allow(dead_code)]
 async fn apply_conflict(
     db:         &Arc<Db>,
     pair:       &PairEntry,
@@ -355,7 +382,20 @@ async fn apply_conflict(
     remote:     &DriveEntry,
     local_path: &PathBuf,
     now:        i64,
+    echo:       &Arc<SelfWritten>,
+) -> Result<ConflictOutcome, AppError> {
+    apply_conflict_inner(db, pair, rel_path, remote, local_path, now, echo, get_conflict_policy(pair)).await
+}
+
+async fn apply_conflict_inner(
+    db:         &Arc<Db>,
+    pair:       &PairEntry,
+    rel_path:   &str,
+    remote:     &DriveEntry,
+    local_path: &PathBuf,
+    now:        i64,
     _echo:      &Arc<SelfWritten>,
+    conflict_policy: ConflictPolicy,
 ) -> Result<ConflictOutcome, AppError> {
     use crate::config::ConflictPolicy;
 
@@ -368,7 +408,7 @@ async fn apply_conflict(
         _ => {}
     }
 
-    match get_conflict_policy(pair) {
+    match conflict_policy {
         ConflictPolicy::NewerWins => {
             let remote_mtime = remote.modified_time.as_deref().and_then(rfc3339_to_ms).unwrap_or(0);
             let local_mtime = local_meta_mtime(local_path);
@@ -502,19 +542,21 @@ pub fn resolve_conflict(
 
 // ── Local delete handling ─────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 fn apply_local_delete(db: &Db, pair: &PairEntry, rel_path: &str, now: i64) -> Result<(), AppError> {
-    match get_deletion_policy(pair) {
+    apply_local_delete_inner(db, pair, rel_path, now, get_deletion_policy(pair))
+}
+
+fn apply_local_delete_inner(
+    db: &Db,
+    pair: &PairEntry,
+    rel_path: &str,
+    now: i64,
+    deletion_policy: DeletionPolicy,
+) -> Result<(), AppError> {
+    match deletion_policy {
         DeletionPolicy::Ignore => {}
-        DeletionPolicy::DriveTrash => {
-            db.enqueue(NewJob {
-                pair_id:    pair.id.clone(),
-                kind:       "delete".into(),
-                rel_path:   rel_path.to_string(),
-                priority:   5,
-                created_ms: now,
-            })?;
-        }
-        DeletionPolicy::Delete => {
+        DeletionPolicy::DriveTrash | DeletionPolicy::Delete => {
             db.enqueue(NewJob {
                 pair_id:    pair.id.clone(),
                 kind:       "delete".into(),
@@ -596,6 +638,7 @@ fn enqueue_download(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn get_conflict_policy(_pair: &PairEntry) -> ConflictPolicy {
     // Policy is global (from Config); PairEntry has no policy field.
     // Callers pass in the pair; we read policy from a thread-local default.
@@ -603,6 +646,7 @@ fn get_conflict_policy(_pair: &PairEntry) -> ConflictPolicy {
     ConflictPolicy::NewerWins
 }
 
+#[allow(dead_code)]
 fn get_deletion_policy(_pair: &PairEntry) -> DeletionPolicy {
     // Same as above — default to DriveTrash.
     DeletionPolicy::DriveTrash
