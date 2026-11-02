@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 use tracing::info;
-use twin_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, watcher, setup_tray};
+use twin_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, updater, watcher, setup_tray};
 use twin_lib::drive::revisions::Revision;
 use twin_lib::drive::client::DriveFile;
 use twin_lib::drive::trash::TrashedFile;
