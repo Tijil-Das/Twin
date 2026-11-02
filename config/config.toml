@@ -1,0 +1,33 @@
+[app]
+parallel_transfers = 4
+chunk_mib = 16
+debounce_secs = 3
+fallback_rescan_mins = 30
+github_push_mins = 30
+start_hidden = true
+
+[limits]
+upload_kbps = 0
+download_kbps = 0
+active_hours = ""
+
+[governor]
+cpu_pause_pct = 70
+cpu_resume_pct = 50
+battery_pause_pct = 20
+pause_on_metered = false
+
+[rules]
+exclude = ["*.tmp", "node_modules/**", ".git/**", "~$*", "Thumbs.db"]
+include = []
+max_file_mb = 0
+
+[policy]
+conflict = "newer_wins"
+deletion = "drive_trash"
+
+[github]
+repo = "owner/name"
+branch = "main"
+path = "config/sync-state.json"
+

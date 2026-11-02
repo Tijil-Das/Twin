@@ -3,7 +3,7 @@
 
 use tauri::Manager;
 use tracing::info;
-use tether_lib::setup_tray;
+use tether_lib::{config, setup_tray};
 
 #[cfg(windows)]
 fn set_below_normal_priority() {
@@ -49,11 +49,22 @@ fn main() {
             Some(vec!["--hidden"]),
         ))
         .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![
+            config::get_config,
+            config::update_config,
+            config::add_pair,
+            config::remove_pair,
+        ])
         .setup(move |app| {
             let handle = app.handle();
 
             // Register tray icon and menu.
             setup_tray(handle)?;
+
+            // Start config file watcher.
+            config::watch_config(|cfg| {
+                info!("Config reloaded: parallel_transfers={}", cfg.app.parallel_transfers);
+            });
 
             // Hide window on startup if --hidden flag was passed.
             if start_hidden {

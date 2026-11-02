@@ -11,7 +11,7 @@ src-tauri/gen/
 data/state.db
 data/*.db-*
 
-# Local config overrides (may contain paths)
+# Local config overrides (may contain paths, never committed)
 config/config.local.toml
 
 # Logs
