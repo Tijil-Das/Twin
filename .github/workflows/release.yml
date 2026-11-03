@@ -19,14 +19,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: 'Twin-Windows/pnpm-lock.yaml'
 
@@ -54,8 +54,8 @@ jobs:
           New-Item -ItemType Directory -Path "release_assets" -Force
           
           # Standalone executable
-          $srcExe = "Twin-Windows/src-tauri/target/release/twin.exe"
-          if (Test-Path $srcExe) {
+          $srcExe = Get-ChildItem -Path "Twin-Windows/src-tauri/target/release" -Filter "*.exe" -Depth 0 -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if ($srcExe -and (Test-Path $srcExe)) {
             Copy-Item $srcExe "release_assets/Twin.exe"
             Compress-Archive -Path "release_assets/Twin.exe", "README.md", "LICENSE" -DestinationPath "release_assets/Twin-Windows-Portable.zip" -Force
           }
@@ -75,10 +75,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Twin v${{ github.ref_name }}
+          body_path: release-notes.md
           files: release_assets/*
           draft: false
           prerelease: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

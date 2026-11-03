@@ -7,3 +7,4 @@ if errorlevel 1 (
   echo [Error] Release process encountered an error (exit code %errorlevel%).
   pause
 )
+

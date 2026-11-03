@@ -9,3 +9,4 @@ Official launch of Twin Desktop — Continuous, robust, local-first folder synch
 - **Hardware-Aware Adaptive Governor**: Throttles network/disk operations automatically during high CPU or battery-saver conditions.
 - **Google Drive Explorer & Revisions**: Browse remote Drive folders, restore previous file revisions, and recover trashed items.
 - **Semantic System Tray**: Circular status icon indicating Idle (Green), Syncing (Cyan/Green), Paused (Amber), or Danger/Error (Red).
+
