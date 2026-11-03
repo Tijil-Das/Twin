@@ -24,18 +24,11 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import {
-  ShieldCheck,
   LogOut,
   RefreshCw,
   Sparkles,
   ArrowDownCircle,
-  HardDrive,
-  Cpu,
-  Gauge,
-  Sliders,
-  Cloud,
   CheckCircle2,
-  FolderSync,
   Save,
   Check,
 } from "lucide-react";
@@ -275,15 +268,27 @@ export function SettingsScreen() {
                   </div>
                 </div>
 
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleLogout}
-                  className="hover:text-red-400"
-                >
-                  <LogOut size={13} className="mr-1.5" />
-                  Sign out
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleAppDataSync}
+                    disabled={syncingAppData}
+                    title="Sync preferences with Google Drive AppData folder"
+                  >
+                    <RefreshCw size={13} className={cn("mr-1.5 text-blue-400", syncingAppData && "animate-spin")} />
+                    {syncingAppData ? "Syncing…" : "Sync AppData"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="hover:text-red-400"
+                  >
+                    <LogOut size={13} className="mr-1.5" />
+                    Sign out
+                  </Button>
+                </div>
               </div>
 
               {/* Storage Quota bar */}
@@ -333,7 +338,7 @@ export function SettingsScreen() {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[13.5px] text-[var(--text)]">
-                Twin Desktop v{updateState?.current_version ?? "0.1.0"}
+                Twin Desktop v{updateState?.current_version ?? "1.0.0"}
               </span>
               {updateState?.ready_version ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">

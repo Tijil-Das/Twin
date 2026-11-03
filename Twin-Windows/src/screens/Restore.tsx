@@ -22,7 +22,6 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import {
   Folder,
-  FolderOpen,
   FileText,
   ChevronRight,
   Search,
@@ -33,8 +32,7 @@ import {
   RotateCcw,
   Trash2,
   Download,
-  Layers,
-  X,
+  RefreshCw,
 } from "lucide-react";
 import { formatBytes, formatRelTime } from "@/lib/format";
 import { cn } from "@/lib/utils";

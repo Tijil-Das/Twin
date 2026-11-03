@@ -16,9 +16,7 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle2,
-  FileText,
   Clock,
-  Layers,
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";

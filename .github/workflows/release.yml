@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release Windows App
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: 'Twin-Windows/pnpm-lock.yaml'
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: Twin-Windows/src-tauri
+
+      - name: Install Frontend Dependencies
+        working-directory: Twin-Windows
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build Tauri Desktop Application
+        working-directory: Twin-Windows
+        run: pnpm tauri build
+
+      - name: Stage Release Artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "release_assets" -Force
+          
+          # Standalone executable
+          $srcExe = "Twin-Windows/src-tauri/target/release/twin.exe"
+          if (Test-Path $srcExe) {
+            Copy-Item $srcExe "release_assets/Twin.exe"
+            Compress-Archive -Path "release_assets/Twin.exe", "README.md", "LICENSE" -DestinationPath "release_assets/Twin-Windows-Portable.zip" -Force
+          }
+          
+          # Bundle installers (NSIS / MSI)
+          Get-ChildItem -Path "Twin-Windows/src-tauri/target/release/bundle" -Recurse -Include "*.exe","*.msi" -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName "release_assets/"
+          }
+          
+          # Checksums
+          Get-ChildItem -Path "release_assets" -File | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File -FilePath "release_assets/SHA256SUMS.txt" -Append -Encoding ascii
+          }
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Twin v${{ github.ref_name }}
+          files: release_assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

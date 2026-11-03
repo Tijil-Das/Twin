@@ -244,8 +244,37 @@ pub fn apply_pending_update_on_launch(app: &tauri::AppHandle) -> bool {
         return false;
     }
 
-    info!("Pending update found: v{} (current is v{})", pending.version, current_ver);
-    true
+    let current_exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+
+    info!(
+        "Pending update found: v{} (current is v{}). Applying replacement...",
+        pending.version, current_ver
+    );
+
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        let script = format!(
+            "Start-Sleep -Milliseconds 1000; Copy-Item -Force -LiteralPath '{}' -Destination '{}'; Start-Process -FilePath '{}'",
+            bin_path.to_string_lossy(),
+            current_exe.to_string_lossy(),
+            current_exe.to_string_lossy()
+        );
+
+        let _ = Command::new("powershell")
+            .args(["-WindowStyle", "Hidden", "-NoProfile", "-Command", &script])
+            .spawn();
+
+        clear_pending(&pending_file);
+        app.exit(0);
+        return true;
+    }
+
+    #[cfg(not(windows))]
+    false
 }
 
 // ── Core Update Logic ────────────────────────────────────────────────────────

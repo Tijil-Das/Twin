@@ -32,8 +32,10 @@ config/config.local.toml
 Thumbs.db
 desktop.ini
 
-# IDE
-.vscode/
+# Release assets & updater-cli scratch
+release_assets/
+updater-cli/scratch/
+
 .idea/
 *.suo
 *.user

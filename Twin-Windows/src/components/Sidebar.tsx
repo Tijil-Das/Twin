@@ -3,21 +3,17 @@
  * navigation links with badge counts, and connected Google account card.
  */
 import {
-  FolderSync,
   Activity as ActivityIcon,
   ArchiveRestore,
   Settings as SettingsIcon,
   Cloud,
   Layers,
-  CheckCircle2,
-  AlertCircle,
-  PauseCircle,
   type LucideIcon,
   ChevronRight,
-  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/store";
+import appLogo from "@/assets/icon.png";
 
 export type Screen = "home" | "activity" | "restore" | "settings";
 
@@ -82,7 +78,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         <div className="px-4 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img
-              src="/32x32.png"
+              src={appLogo}
               alt="Twin"
               className="w-8 h-8 rounded-lg shadow-md shadow-emerald-500/10 border border-white/10 shrink-0 object-cover"
             />

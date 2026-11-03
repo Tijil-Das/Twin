@@ -12,21 +12,14 @@ import {
   FolderSync,
   Folder,
   Cloud,
-  CheckCircle2,
-  AlertTriangle,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
   Layers,
   Copy,
   Check,
-  Cpu,
-  Clock,
-  Sparkles,
-  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { useStore, type ProgressEvent } from "@/store";
@@ -40,7 +33,7 @@ import {
   runSyncCycle,
   type PairEntry,
 } from "@/lib/tauri";
-import { progressLabel, formatBytes } from "@/lib/format";
+import { progressLabel } from "@/lib/format";
 import { AddPairDialog } from "@/components/AddPairDialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";

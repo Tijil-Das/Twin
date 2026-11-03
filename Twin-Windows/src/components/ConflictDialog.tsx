@@ -3,11 +3,10 @@
  * local version, remote Drive version, or keeping both.
  */
 import * as Dialog from "@radix-ui/react-dialog";
-import { Button } from "@/components/ui/button";
 import { useStore, type ConflictRecord } from "@/store";
 import { resolveConflict } from "@/lib/tauri";
 import { toast } from "sonner";
-import { AlertTriangle, HardDrive, Cloud, Copy, X } from "lucide-react";
+import { AlertTriangle, HardDrive, Cloud, Copy } from "lucide-react";
 
 interface Props {
   conflict: ConflictRecord;

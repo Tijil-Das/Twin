@@ -10,6 +10,7 @@ import { getConfig, authStatus, govState, queueStatus, updateInstall } from "@/l
 import type { GovStatePayload } from "@/lib/tauri";
 import { Sidebar, type Screen } from "@/components/Sidebar";
 import { ConflictDialog } from "@/components/ConflictDialog";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { HomeScreen }     from "@/screens/Home";
 import { ActivityScreen } from "@/screens/Activity";
 import { RestoreScreen }  from "@/screens/Restore";
@@ -136,6 +137,9 @@ export default function App() {
       {conflicts.map((c) => (
         <ConflictDialog key={`${c.pair_id}:${c.rel_path}`} conflict={c} />
       ))}
+
+      {/* JioTV Max Autonomous Update Floating Banner */}
+      <UpdateBanner />
 
       {/* Toast notifications */}
       <Toaster
