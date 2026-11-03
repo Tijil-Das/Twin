@@ -81,9 +81,11 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
       <div>
         <div className="px-4 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/20 border border-blue-400/30">
-              <FolderSync className="w-4 h-4 text-white animate-in" strokeWidth={2.2} />
-            </div>
+            <img
+              src="/32x32.png"
+              alt="Twin"
+              className="w-8 h-8 rounded-lg shadow-md shadow-emerald-500/10 border border-white/10 shrink-0 object-cover"
+            />
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-semibold text-sm tracking-tight text-[var(--text)]">Twin</span>
