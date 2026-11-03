@@ -18,15 +18,13 @@ import { SettingsScreen } from "@/screens/Settings";
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
 
-  const { setConfig, setAuthed, setUserProfile, setProgress, setGov, setQueueStatus, conflicts } = useStore((s) => ({
-    setConfig:      s.setConfig,
-    setAuthed:      s.setAuthed,
-    setUserProfile: s.setUserProfile,
-    setProgress:    s.setProgress,
-    setGov:         s.setGov,
-    setQueueStatus: s.setQueueStatus,
-    conflicts:      s.conflicts,
-  }));
+  const setConfig = useStore((s) => s.setConfig);
+  const setAuthed = useStore((s) => s.setAuthed);
+  const setUserProfile = useStore((s) => s.setUserProfile);
+  const setProgress = useStore((s) => s.setProgress);
+  const setGov = useStore((s) => s.setGov);
+  const setQueueStatus = useStore((s) => s.setQueueStatus);
+  const conflicts = useStore((s) => s.conflicts);
   const addConflict = useStore((s) => s.addConflict);
 
   // Track window visibility so we stop processing events when hidden.

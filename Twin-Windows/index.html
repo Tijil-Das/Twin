@@ -5,6 +5,30 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Twin</title>
+    <script>
+      window.addEventListener('error', function(e) {
+        console.error('Window error:', e);
+        var div = document.getElementById('debug-error-banner');
+        if (!div) {
+          div = document.createElement('div');
+          div.id = 'debug-error-banner';
+          div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#990000;color:white;padding:12px;font-family:sans-serif;font-size:13px;z-index:999999;word-break:break-all;';
+          document.body.appendChild(div);
+        }
+        div.textContent = 'Script Error: ' + (e.error ? (e.error.stack || e.error.message) : e.message);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('Unhandled rejection:', e);
+        var div = document.getElementById('debug-rejection-banner');
+        if (!div) {
+          div = document.createElement('div');
+          div.id = 'debug-rejection-banner';
+          div.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#bb6600;color:white;padding:12px;font-family:sans-serif;font-size:13px;z-index:999999;word-break:break-all;';
+          document.body.appendChild(div);
+        }
+        div.textContent = 'Unhandled Rejection: ' + (e.reason ? (e.reason.stack || e.reason.message || e.reason) : e.reason);
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
