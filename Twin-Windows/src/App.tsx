@@ -121,25 +121,10 @@ export default function App() {
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          height: "100vh",
-          background: "var(--bg)",
-          color: "var(--text)",
-          overflow: "hidden",
-        }}
-      >
+      <div className="flex h-screen w-screen bg-[var(--bg)] text-[var(--text)] overflow-hidden font-sans">
         <Sidebar active={screen} onNavigate={setScreen} />
 
-        <main
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            display: "flex",
-            justifyContent: "flex-start",
-          }}
-        >
+        <main className="flex-1 h-screen overflow-y-auto bg-[var(--bg)] relative">
           {screen === "home"     && <HomeScreen />}
           {screen === "activity" && <ActivityScreen />}
           {screen === "restore"  && <RestoreScreen />}
@@ -152,7 +137,7 @@ export default function App() {
         <ConflictDialog key={`${c.pair_id}:${c.rel_path}`} conflict={c} />
       ))}
 
-      {/* Error toasts only */}
+      {/* Toast notifications */}
       <Toaster
         position="bottom-right"
         toastOptions={{
@@ -160,8 +145,9 @@ export default function App() {
             background: "var(--surface)",
             color: "var(--text)",
             border: "1px solid var(--border)",
-            borderRadius: 6,
-            fontSize: 13,
+            borderRadius: 10,
+            fontSize: 12.5,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
           },
           duration: 4000,
         }}

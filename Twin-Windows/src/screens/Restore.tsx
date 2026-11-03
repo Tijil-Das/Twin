@@ -1,17 +1,43 @@
 /**
- * Restore screen — Drive browser, revisions panel, trash sub-tab, restore progress.
+ * Pro Restore & Google Drive Explorer Screen — Drive hierarchy browser,
+ * revision history inspector, and trash management.
  */
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { driveList, listRevisions, restoreFileCmd, listTrash, untrash, keepRevision } from "@/lib/tauri";
-import type { DriveFile, Revision, TrashedFile } from "@/lib/tauri";
+import {
+  driveList,
+  listRevisions,
+  restoreFileCmd,
+  listTrash,
+  untrash,
+  keepRevision,
+  type DriveFile,
+  type Revision,
+  type TrashedFile,
+} from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { FolderOpen, FileText, ChevronRight, Search, Star, Share2, HardDrive } from "lucide-react";
+import {
+  Folder,
+  FolderOpen,
+  FileText,
+  ChevronRight,
+  Search,
+  Star,
+  Share2,
+  HardDrive,
+  Clock,
+  RotateCcw,
+  Trash2,
+  Download,
+  Layers,
+  X,
+} from "lucide-react";
 import { formatBytes, formatRelTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 type Tab = "files" | "trash";
 
@@ -29,27 +55,45 @@ export function RestoreScreen() {
   const [tab, setTab] = useState<Tab>("files");
 
   return (
-    <div style={{ padding: 24, maxWidth: 880, width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 0, borderBottom: "1px solid var(--border)" }}>
-        <h1 style={{ fontSize: 16, fontWeight: 600, marginRight: 24 }}>Restore</h1>
-        {(["files", "trash"] as Tab[]).map((t) => (
+    <div className="p-6 max-w-5xl w-full mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[var(--border)]">
+        <div>
+          <h1 className="text-lg font-bold tracking-tight text-[var(--text)]">
+            Drive Explorer & Restore
+          </h1>
+          <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
+            Browse remote Google Drive files, inspect multi-version history, and restore data.
+          </p>
+        </div>
+
+        {/* Tab switch */}
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--surface-2)]/80 border border-[var(--border)]">
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              padding: "8px 12px",
-              fontSize: 13,
-              color: tab === t ? "var(--text)" : "var(--text-muted)",
-              background: "none",
-              border: "none",
-              borderBottom: `2px solid ${tab === t ? "var(--accent)" : "transparent"}`,
-              cursor: "pointer",
-              fontWeight: tab === t ? 500 : 400,
-            }}
+            onClick={() => setTab("files")}
+            className={cn(
+              "px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer flex items-center gap-1.5",
+              tab === "files"
+                ? "bg-[var(--surface)] text-[var(--text)] shadow-sm font-semibold border border-[var(--border)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text)]"
+            )}
           >
-            {t === "files" ? "Files" : "Trash"}
+            <Folder size={13} className="text-blue-400" />
+            Drive Files
           </button>
-        ))}
+          <button
+            onClick={() => setTab("trash")}
+            className={cn(
+              "px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer flex items-center gap-1.5",
+              tab === "trash"
+                ? "bg-[var(--surface)] text-[var(--text)] shadow-sm font-semibold border border-[var(--border)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text)]"
+            )}
+          >
+            <Trash2 size={13} className="text-red-400" />
+            Trash
+          </button>
+        </div>
       </div>
 
       {tab === "files" ? <FileBrowser /> : <TrashBrowser />}
@@ -112,7 +156,10 @@ function FileBrowser() {
   async function handleDriveChange(driveId: string) {
     setSelectedDrive(driveId);
     setBreadcrumb([]);
-    const name = driveId === "root" ? "My Drive" : (sharedDrives.find((d) => d.id === driveId)?.name ?? "Shared Drive");
+    const name =
+      driveId === "root"
+        ? "My Drive"
+        : sharedDrives.find((d) => d.id === driveId)?.name ?? "Shared Drive";
     await loadFolder(driveId, name);
   }
 
@@ -165,9 +212,9 @@ function FileBrowser() {
         anyone: true,
       });
       await navigator.clipboard.writeText(link);
-      toast.success("Share link copied to clipboard!");
+      toast.success("Share link copied to clipboard");
     } catch (e) {
-      toast.error(`Share link failed: ${String(e)}`);
+      toast.error(`Share link error: ${String(e)}`);
     }
   }
 
@@ -193,9 +240,9 @@ function FileBrowser() {
       setFiles((prev) =>
         prev.map((f) => (f.id === selected.id ? { ...f, description: descInput.trim() } : f))
       );
-      toast.success("Description saved");
+      toast.success("Description updated");
     } catch (e) {
-      toast.error(`Save description failed: ${String(e)}`);
+      toast.error(`Save description error: ${String(e)}`);
     }
   }
 
@@ -205,6 +252,7 @@ function FileBrowser() {
     try {
       await restoreFileCmd(file.id, revId, target);
       setRestoreProgress(100);
+      toast.success(`Restored to ${target}`);
       setTimeout(() => setRestoreProgress(null), 2000);
     } catch (e) {
       toast.error(`Restore failed: ${String(e)}`);
@@ -219,52 +267,51 @@ function FileBrowser() {
         const revs = await listRevisions(fileId);
         setRevisions(revs);
       }
+      toast.info(keep ? "Revision locked forever" : "Revision retention unlocked");
     } catch (e) {
-      toast.error(`Failed to update revision: ${String(e)}`);
+      toast.error(`Revision update failed: ${String(e)}`);
     }
   }
 
   const folders = files.filter((f) => f.mime_type === "application/vnd.google-apps.folder");
-  const items   = files.filter((f) => f.mime_type !== "application/vnd.google-apps.folder");
+  const items = files.filter((f) => f.mime_type !== "application/vnd.google-apps.folder");
 
   return (
-    <div style={{ display: "flex", gap: 16 }}>
-      {/* File list */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Drive selector and search bar */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <HardDrive size={14} strokeWidth={1.5} style={{ color: "var(--text-muted)" }} />
+    <div className="flex gap-5">
+      {/* Main File List Container */}
+      <div className="flex-1 min-w-0 space-y-4">
+        {/* Drive & Search bar */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <HardDrive size={14} className="text-blue-400" />
             <select
               value={selectedDrive}
               onChange={(e) => void handleDriveChange(e.target.value)}
-              style={{
-                fontSize: 13,
-                height: 32,
-                padding: "0 8px",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                background: "var(--surface)",
-                color: "var(--text)",
-              }}
+              className="h-8 px-2 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none"
             >
               <option value="root">My Drive</option>
               {sharedDrives.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
               ))}
             </select>
           </div>
 
-          <div style={{ display: "flex", gap: 6, flex: 1, minWidth: 200 }}>
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search Drive files..."
-              onKeyDown={(e) => { if (e.key === "Enter") void handleSearch(); }}
-              style={{ flex: 1 }}
-            />
+          <div className="flex items-center gap-2 flex-1">
+            <div className="relative flex-1">
+              <Search size={13} className="absolute left-2.5 top-2.5 text-[var(--text-muted)]" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search files in Google Drive..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleSearch();
+                }}
+                className="pl-8 text-xs h-8"
+              />
+            </div>
             <Button variant="secondary" size="sm" onClick={() => void handleSearch()}>
-              <Search size={13} strokeWidth={1.5} style={{ marginRight: 4 }} />
               Search
             </Button>
             {isSearching && (
@@ -275,37 +322,38 @@ function FileBrowser() {
           </div>
         </div>
 
-        {/* Root input (fallback) */}
+        {/* Fallback Folder ID input if not opened */}
         {!rootId && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <div className="p-4 rounded-xl bg-[var(--surface)] border border-[var(--border)] flex items-center gap-3 shadow-sm">
             <Input
               value={rootInput}
               onChange={(e) => setRootInput(e.target.value)}
-              placeholder="Or enter Drive folder ID directly"
-              onKeyDown={(e) => { if (e.key === "Enter") void handleBrowse(); }}
-              style={{ flex: 1 }}
+              placeholder="Enter Google Drive Folder ID directly (or browse My Drive above)"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleBrowse();
+              }}
+              className="text-xs font-mono h-8"
             />
-            <Button onClick={() => void handleBrowse()}>Browse</Button>
+            <Button onClick={() => void handleBrowse()} size="sm" className="bg-blue-600 hover:bg-blue-500">
+              Open Folder
+            </Button>
           </div>
         )}
 
-        {/* Breadcrumb */}
+        {/* Breadcrumb Navigation */}
         {breadcrumb.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 12, flexWrap: "wrap" }}>
+          <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] py-1 overflow-x-auto">
             {breadcrumb.map((bc, i) => (
-              <span key={bc.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                {i > 0 && <ChevronRight size={12} strokeWidth={1.5} style={{ color: "var(--text-muted)" }} />}
+              <span key={bc.id} className="flex items-center gap-1.5 shrink-0">
+                {i > 0 && <ChevronRight size={12} className="text-[var(--text-subtle)]" />}
                 <button
                   onClick={() => void loadFolder(bc.id, bc.name)}
-                  style={{
-                    fontSize: 13,
-                    color: i === breadcrumb.length - 1 ? "var(--text)" : "var(--accent)",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                    fontWeight: i === breadcrumb.length - 1 ? 500 : 400,
-                  }}
+                  className={cn(
+                    "hover:text-blue-400 transition-colors px-1.5 py-0.5 rounded",
+                    i === breadcrumb.length - 1
+                      ? "font-semibold text-[var(--text)] bg-[var(--surface-2)]"
+                      : "text-blue-400"
+                  )}
                 >
                   {bc.name}
                 </button>
@@ -314,57 +362,50 @@ function FileBrowser() {
           </div>
         )}
 
+        {/* File Browser Table */}
         {loading ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>
+          <div className="p-12 text-center text-[var(--text-muted)] text-xs flex items-center justify-center gap-2">
+            <RefreshCw size={14} className="animate-spin text-blue-400" />
+            Loading folder contents…
+          </div>
         ) : rootId && files.length === 0 ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>This folder is empty.</p>
+          <div className="p-10 text-center text-[var(--text-muted)] text-xs rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)]">
+            This Google Drive folder is empty.
+          </div>
         ) : (
-          <div
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              overflow: "hidden",
-              background: "var(--surface)",
-            }}
-          >
-            {[...folders, ...items].map((file, i) => {
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden shadow-sm">
+            {[...folders, ...items].map((file) => {
               const isFolder = file.mime_type === "application/vnd.google-apps.folder";
+              const isSelected = selected?.id === file.id;
               return (
                 <div
                   key={file.id}
                   onClick={() => void handleSelect(file)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 16px",
-                    borderBottom: i < files.length - 1 ? "1px solid var(--border)" : "none",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    background: selected?.id === file.id ? "var(--surface-2)" : "var(--surface)",
-                    minHeight: 36,
-                  }}
-                  className="hover:bg-[var(--surface-2)]"
+                  className={cn(
+                    "flex items-center justify-between px-4 py-2.5 border-b border-[var(--border-subtle)] last:border-b-0 cursor-pointer text-xs transition-colors",
+                    isSelected
+                      ? "bg-blue-600/12 text-blue-300 font-medium"
+                      : "hover:bg-[var(--surface-2)] text-[var(--text)]"
+                  )}
                 >
-                  {isFolder ? (
-                    <FolderOpen size={14} strokeWidth={1.5} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-                  ) : (
-                    <FileText size={14} strokeWidth={1.5} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-                  )}
-                  <span
-                    title={file.name ?? file.id}
-                    style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                  >
-                    {file.name ?? file.id}
-                  </span>
-                  {file.starred && (
-                    <Star size={12} fill="var(--accent)" color="var(--accent)" style={{ flexShrink: 0 }} />
-                  )}
-                  {file.size && (
-                    <span style={{ fontSize: 12, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                      {formatBytes(parseInt(file.size, 10))}
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    {isFolder ? (
+                      <Folder size={15} className="text-amber-400 shrink-0" />
+                    ) : (
+                      <FileText size={15} className="text-blue-400 shrink-0" />
+                    )}
+                    <span className="truncate font-mono" title={file.name ?? file.id}>
+                      {file.name ?? file.id}
                     </span>
-                  )}
+                    {file.starred && (
+                      <Star size={11} className="fill-amber-400 text-amber-400 shrink-0" />
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0 text-[11px] font-mono text-[var(--text-muted)]">
+                    {file.size && <span>{formatBytes(parseInt(file.size, 10))}</span>}
+                    {isFolder && <span className="text-[10px] text-zinc-500 uppercase">Folder</span>}
+                  </div>
                 </div>
               );
             })}
@@ -372,157 +413,156 @@ function FileBrowser() {
         )}
       </div>
 
-      {/* Side panel — revisions */}
+      {/* Side Inspector Drawer (Revisions & File Details) */}
       {selected && (
-        <div
-          style={{
-            width: 280,
-            flexShrink: 0,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              background: "var(--surface)",
-              padding: 16,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
-              <p style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-word", margin: 0, flex: 1 }}>
-                {selected.name}
-              </p>
+        <aside className="w-72 shrink-0 space-y-4">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold text-xs text-[var(--text)] break-all leading-tight">
+                  {selected.name}
+                </p>
+                {selected.size && (
+                  <p className="text-[11px] font-mono text-[var(--text-muted)] mt-1">
+                    {formatBytes(parseInt(selected.size, 10))}
+                  </p>
+                )}
+              </div>
               <Button
                 variant="ghost"
-                size="sm"
+                size="iconSm"
                 onClick={handleToggleStar}
                 title={selected.starred ? "Unstar" : "Star"}
-                style={{ padding: 4, height: 28, width: 28 }}
               >
-                {selected.starred ? (
-                  <Star size={14} fill="var(--accent)" color="var(--accent)" />
-                ) : (
-                  <Star size={14} style={{ color: "var(--text-muted)" }} />
-                )}
+                <Star
+                  size={14}
+                  className={cn(
+                    selected.starred ? "fill-amber-400 text-amber-400" : "text-[var(--text-muted)]"
+                  )}
+                />
               </Button>
             </div>
 
-            {selected.size && (
-              <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
-                {formatBytes(parseInt(selected.size, 10))}
-              </p>
-            )}
-
-            {/* Description metadata */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", display: "block", marginBottom: 2 }}>
-                Description
+            {/* Description */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-[var(--text-muted)]">
+                Notes / Description
               </label>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div className="flex gap-2">
                 <Input
                   value={descInput}
                   onChange={(e) => setDescInput(e.target.value)}
-                  placeholder="Add a description"
-                  style={{ fontSize: 12, height: 28 }}
+                  placeholder="Add note..."
+                  className="text-xs h-7"
                 />
-                <Button variant="secondary" size="sm" onClick={handleSaveDescription} style={{ height: 28, padding: "0 8px", fontSize: 12 }}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleSaveDescription}
+                  className="h-7 text-xs"
+                >
                   Save
                 </Button>
               </div>
             </div>
 
-            {/* Copy share link */}
+            {/* Share link button */}
             <Button
               variant="secondary"
               size="sm"
               onClick={handleShareLink}
-              style={{ width: "100%", marginBottom: 12, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}
+              className="w-full flex items-center justify-center gap-1.5 text-xs"
             >
-              <Share2 size={13} strokeWidth={1.5} />
-              Copy share link
+              <Share2 size={13} />
+              Copy Google Share Link
             </Button>
 
-            <label style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-              Restore destination
-            </label>
-            <Input
-              value={dest}
-              onChange={(e) => setDest(e.target.value)}
-              placeholder={selected.name ?? "destination path"}
-              style={{ marginBottom: 8 }}
-            />
-            <Button onClick={() => void handleRestore(selected, null)} style={{ width: "100%" }}>
-              Restore latest
-            </Button>
-            {restoreProgress !== null && (
-              <div style={{ marginTop: 8 }}>
-                <Progress value={restoreProgress} aria-label="Restore progress" />
-              </div>
-            )}
-          </div>
+            {/* Restore target input */}
+            <div className="pt-2 border-t border-[var(--border)] space-y-2">
+              <label className="text-[11px] font-medium text-[var(--text-muted)]">
+                Local Restore Destination
+              </label>
+              <Input
+                value={dest}
+                onChange={(e) => setDest(e.target.value)}
+                placeholder={selected.name ?? "Target path..."}
+                className="text-xs font-mono h-8"
+              />
+              <Button
+                onClick={() => void handleRestore(selected, null)}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-xs flex items-center justify-center gap-1.5"
+              >
+                <Download size={13} />
+                Restore Latest Version
+              </Button>
 
-          {/* Revisions list */}
-          <div
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              background: "var(--surface)",
-              overflow: "hidden",
-            }}
-          >
-            <p style={{ fontSize: 13, fontWeight: 600, padding: "10px 16px 8px", borderBottom: "1px solid var(--border)", margin: 0 }}>
-              Revisions
-            </p>
-            {revLoading ? (
-              <p style={{ fontSize: 13, color: "var(--text-muted)", padding: 16 }}>Loading…</p>
-            ) : revisions.length === 0 ? (
-              <p style={{ fontSize: 13, color: "var(--text-muted)", padding: 16 }}>No revisions.</p>
-            ) : (
-              revisions.map((rev, i) => (
-                <div
-                  key={rev.id}
-                  style={{
-                    padding: "8px 16px",
-                    borderBottom: i < revisions.length - 1 ? "1px solid var(--border)" : "none",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 4,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {rev.modified_time ? formatRelTime(new Date(rev.modified_time).getTime()) : "Unknown date"}
-                    </span>
-                    {rev.size && (
-                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                        {formatBytes(parseInt(rev.size, 10))}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                      <Switch
-                        checked={rev.keep_forever ?? false}
-                        onCheckedChange={(v) => void handleKeepForever(selected.id, rev.id, v)}
-                      />
-                      Keep forever
-                    </label>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void handleRestore(selected, rev.id)}
-                    >
-                      Restore
-                    </Button>
-                  </div>
+              {restoreProgress !== null && (
+                <div className="mt-2">
+                  <Progress value={restoreProgress} aria-label="Restore progress" />
                 </div>
-              ))
-            )}
+              )}
+            </div>
           </div>
-        </div>
+
+          {/* Revisions History Drawer */}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden shadow-sm">
+            <div className="px-3 py-2 bg-[var(--surface-2)] border-b border-[var(--border)] flex items-center gap-1.5">
+              <Clock size={12} className="text-blue-400" />
+              <span className="text-[11.5px] font-semibold text-[var(--text)]">
+                Revisions ({revisions.length})
+              </span>
+            </div>
+
+            <div className="divide-y divide-[var(--border-subtle)] max-h-60 overflow-y-auto">
+              {revLoading ? (
+                <div className="p-4 text-center text-[var(--text-muted)] text-xs">
+                  Loading history…
+                </div>
+              ) : revisions.length === 0 ? (
+                <div className="p-4 text-center text-[var(--text-muted)] text-xs">
+                  Single version recorded.
+                </div>
+              ) : (
+                revisions.map((rev) => (
+                  <div key={rev.id} className="p-3 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between font-mono text-[11px]">
+                      <span className="text-[var(--text)]">
+                        {rev.modified_time
+                          ? formatRelTime(new Date(rev.modified_time).getTime())
+                          : "Unknown"}
+                      </span>
+                      {rev.size && (
+                        <span className="text-[var(--text-muted)]">
+                          {formatBytes(parseInt(rev.size, 10))}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <label className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5 cursor-pointer">
+                        <Switch
+                          checked={rev.keep_forever ?? false}
+                          onCheckedChange={(v) =>
+                            void handleKeepForever(selected.id, rev.id, v)
+                          }
+                        />
+                        Lock
+                      </label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleRestore(selected, rev.id)}
+                        className="h-6 px-2 text-[11px] text-blue-400 hover:text-blue-300"
+                      >
+                        Restore
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </aside>
       )}
     </div>
   );
@@ -551,48 +591,63 @@ function TrashBrowser() {
     try {
       await untrash(fileId);
       setItems((prev) => prev.filter((f) => f.id !== fileId));
+      toast.success("File restored from Drive trash");
     } catch (e) {
       toast.error(`Failed to restore: ${String(e)}`);
     }
   }
 
-  if (loading) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>;
-  if (items.length === 0) return <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Trash is empty.</p>;
+  if (loading) {
+    return (
+      <div className="p-12 text-center text-[var(--text-muted)] text-xs flex items-center justify-center gap-2">
+        <RefreshCw size={14} className="animate-spin text-blue-400" />
+        Loading trash contents…
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface)] p-12 text-center flex flex-col items-center justify-center space-y-2">
+        <Trash2 size={24} className="text-[var(--text-muted)]" />
+        <p className="text-[13px] font-medium text-[var(--text)]">Google Drive Trash is Empty</p>
+        <p className="text-[11px] text-[var(--text-muted)]">
+          Deleted items moved to trash will appear here for recovery.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        overflow: "hidden",
-        background: "var(--surface)",
-      }}
-    >
-      {items.map((file, i) => (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden shadow-sm divide-y divide-[var(--border-subtle)]">
+      {items.map((file) => (
         <div
           key={file.id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 16px",
-            borderBottom: i < items.length - 1 ? "1px solid var(--border)" : "none",
-            minHeight: 36,
-          }}
-          className="hover:bg-[var(--surface-2)]"
+          className="flex items-center justify-between px-4 py-3 text-xs hover:bg-[var(--surface-2)] transition-colors"
         >
-          <FileText size={14} strokeWidth={1.5} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-          <span style={{ flex: 1, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {file.name ?? file.id}
-          </span>
-          {file.size && (
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {formatBytes(parseInt(file.size, 10))}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FileText size={15} className="text-[var(--text-muted)] shrink-0" />
+            <span className="truncate font-mono font-medium text-[var(--text)]">
+              {file.name ?? file.id}
             </span>
-          )}
-          <Button variant="secondary" size="sm" onClick={() => void handleUntrash(file.id)}>
-            Restore
-          </Button>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            {file.size && (
+              <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                {formatBytes(parseInt(file.size, 10))}
+              </span>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleUntrash(file.id)}
+              className="flex items-center gap-1.5 text-xs"
+            >
+              <RotateCcw size={12} />
+              Restore
+            </Button>
+          </div>
         </div>
       ))}
     </div>

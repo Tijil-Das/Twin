@@ -1,23 +1,46 @@
 /**
- * Settings screen — Account, General, Advanced (collapsed).
+ * Pro Settings Screen — Google Account & Drive Quota, Governor controls,
+ * Bandwidth & Sync Rules, and JioTV Max Autonomous In-Place Updater.
  */
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "@/store";
 import {
-  getConfig, updateConfig,
-  authLogin, authLogout, authStatus,
+  getConfig,
+  updateConfig,
+  authLogin,
+  authLogout,
+  authStatus,
   appdataSyncNow,
-  updateGetState, updateCheck, updateInstall,
+  updateGetState,
+  updateCheck,
+  updateInstall,
   type UpdateStatePayload,
+  type Config,
 } from "@/lib/tauri";
-import type { Config } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, ShieldCheck, LogOut, RefreshCw, Sparkles, ArrowDownCircle } from "lucide-react";
+import {
+  ShieldCheck,
+  LogOut,
+  RefreshCw,
+  Sparkles,
+  ArrowDownCircle,
+  HardDrive,
+  Cpu,
+  Gauge,
+  Sliders,
+  Cloud,
+  CheckCircle2,
+  FolderSync,
+  Save,
+  Check,
+} from "lucide-react";
 import { formatBytes } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 interface StorageQuota {
   limit: number | null;
@@ -36,7 +59,7 @@ export function SettingsScreen() {
 
   const [local, setLocal] = useState<Config | null>(config);
   const [saving, setSaving] = useState(false);
-  const [advOpen, setAdvOpen] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
   const [syncingAppData, setSyncingAppData] = useState(false);
   const [quota, setQuota] = useState<StorageQuota | null>(null);
   const [autostart, setAutostart] = useState(false);
@@ -61,7 +84,7 @@ export function SettingsScreen() {
         const q = await invoke<StorageQuota>("get_storage_quota");
         setQuota(q);
       } catch {
-        // Ignore quota error if offline
+        // Ignore quota query error
       }
     }
 
@@ -73,7 +96,9 @@ export function SettingsScreen() {
     }
   }, [setConfig, setAuthed, setUserProfile]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   async function handleSave() {
     if (!local) return;
@@ -83,6 +108,8 @@ export function SettingsScreen() {
       const cfg = await getConfig();
       setConfig(cfg);
       setLocal(cfg);
+      setHasChanges(false);
+      toast.success("Settings saved and reloaded live");
     } catch (e) {
       toast.error(`Failed to save settings: ${String(e)}`);
     } finally {
@@ -118,7 +145,7 @@ export function SettingsScreen() {
     setSyncingAppData(true);
     try {
       await appdataSyncNow();
-      toast.success("Settings synchronized with Google Drive AppData.");
+      toast.success("Settings synchronized with Google Drive AppData");
     } catch (e) {
       toast.error(`Sync failed: ${String(e)}`);
     } finally {
@@ -130,6 +157,7 @@ export function SettingsScreen() {
     try {
       await invoke("set_autostart", { enable });
       setAutostart(enable);
+      toast.info(enable ? "Twin will start with Windows" : "Windows startup disabled");
     } catch (e) {
       toast.error(`Autostart error: ${String(e)}`);
     }
@@ -141,12 +169,12 @@ export function SettingsScreen() {
       const res = await updateCheck();
       setUpdateState(res);
       if (res.ready_version) {
-        toast.success(`Twin v${res.ready_version} is ready to install!`);
+        toast.success(`Twin v${res.ready_version} is downloaded and ready to apply!`);
       } else if (res.status.status === "up-to-date") {
-        toast.info("Twin is up to date.");
+        toast.info("Twin is up to date");
       }
     } catch (e) {
-      toast.error(`Update check failed: ${String(e)}`);
+      toast.error(`Update check error: ${String(e)}`);
     } finally {
       setCheckingUpdate(false);
     }
@@ -158,267 +186,183 @@ export function SettingsScreen() {
       toast.info("Applying update and restarting Twin...");
       await updateInstall();
     } catch (e) {
-      toast.error(`Failed to install update: ${String(e)}`);
+      toast.error(`Failed to apply update: ${String(e)}`);
       setInstallingUpdate(false);
     }
   }
 
-  if (!local) return <p style={{ padding: 24, color: "var(--text-muted)" }}>Loading…</p>;
-
-  function patchLocal(fn: (c: Config) => Config) {
-    setLocal((prev) => prev ? fn(prev) : prev);
+  if (!local) {
+    return (
+      <div className="p-8 text-center text-[var(--text-muted)] text-sm">
+        Loading preferences…
+      </div>
+    );
   }
 
-  const divider = <div style={{ height: 1, background: "var(--border)", margin: "20px 0" }} />;
+  function patchLocal(fn: (c: Config) => Config) {
+    setLocal((prev) => {
+      if (!prev) return prev;
+      const next = fn(prev);
+      setHasChanges(true);
+      return next;
+    });
+  }
+
+  const quotaPct =
+    quota && quota.limit ? Math.min(100, Math.round((quota.usage / quota.limit) * 100)) : 0;
 
   return (
-    <div style={{ padding: 24, maxWidth: 640, width: "100%" }}>
-      <h1 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Settings</h1>
+    <div className="p-6 max-w-3xl w-full mx-auto space-y-7 pb-20">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+        <div>
+          <h1 className="text-lg font-bold tracking-tight text-[var(--text)]">Preferences</h1>
+          <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
+            Configure Google Drive account, bandwidth thresholds, and governor rules.
+          </p>
+        </div>
 
-      {/* Account */}
-      <section>
-        <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Account</h2>
+        {hasChanges && (
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-600/25 flex items-center gap-1.5"
+          >
+            <Save size={13} />
+            {saving ? "Saving…" : "Save Changes"}
+          </Button>
+        )}
+      </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 18px",
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            gap: 16,
-          }}>
-            {authed ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-                {userProfile?.picture ? (
-                  <img
-                    src={userProfile.picture}
-                    alt={userProfile.name ?? "User"}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: "50%",
-                      objectFit: "cover",
-                      border: "1px solid var(--border)",
-                      flexShrink: 0,
-                    }}
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: "50%",
-                    background: "var(--surface-2)",
-                    border: "1px solid var(--border)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 600,
-                    fontSize: 16,
-                    color: "var(--accent)",
-                    flexShrink: 0,
-                  }}>
-                    {userProfile?.name ? userProfile.name[0].toUpperCase() : (userProfile?.email ? userProfile.email[0].toUpperCase() : "G")}
-                  </div>
-                )}
+      {/* 1. Account Section */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Google Cloud Account
+        </h2>
 
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: "#FFFFFF" }}>
-                      {userProfile?.name ?? "Google Account"}
-                    </span>
-                    <span style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                      background: "rgba(34, 197, 94, 0.14)",
-                      color: "#4ADE80",
-                      border: "1px solid rgba(34, 197, 94, 0.35)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}>
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ADE80" }} />
-                      Connected
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {userProfile?.email ?? "Signed in"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-subtle)", marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                    <ShieldCheck size={12} color="#4ADE80" />
-                    <span>Privacy-first scopes: <code>drive.file</code> + <code>drive.appdata</code></span>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
+          {authed ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  {userProfile?.picture ? (
+                    <img
+                      src={userProfile.picture}
+                      alt={userProfile.name ?? "User"}
+                      className="w-10 h-10 rounded-full object-cover border border-[var(--border)] shrink-0"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shrink-0">
+                      {userProfile?.name ? userProfile.name[0].toUpperCase() : "G"}
+                    </div>
+                  )}
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-[13.5px] text-[var(--text)] truncate">
+                        {userProfile?.name ?? "Google Account"}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <CheckCircle2 size={11} />
+                        Connected
+                      </span>
+                    </div>
+                    <p className="text-[12px] text-[var(--text-muted)] truncate">
+                      {userProfile?.email ?? "Signed in"}
+                    </p>
                   </div>
                 </div>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="hover:text-red-400"
+                >
+                  <LogOut size={13} className="mr-1.5" />
+                  Sign out
+                </Button>
               </div>
-            ) : (
+
+              {/* Storage Quota bar */}
+              {quota && (
+                <div className="pt-3 border-t border-[var(--border)] space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--text-muted)]">Google Drive Storage</span>
+                    <span className="font-mono text-[var(--text)]">
+                      {formatBytes(quota.usage)} of{" "}
+                      {quota.limit ? formatBytes(quota.limit) : "Unlimited"} ({quotaPct}%)
+                    </span>
+                  </div>
+                  <Progress value={quotaPct} aria-label="Drive quota" />
+                  <div className="flex items-center gap-4 text-[11px] text-[var(--text-muted)] pt-0.5">
+                    <span>Drive: {formatBytes(quota.usageInDrive)}</span>
+                    <span>Trash: {formatBytes(quota.usageInDriveTrash)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between py-2">
               <div>
-                <span style={{ fontSize: 14, fontWeight: 600, display: "block" }}>
-                  Connect Google Account
-                </span>
-                <span style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, display: "block" }}>
-                  Sign in to synchronize files securely using restricted <code>drive.file</code> permissions
-                </span>
+                <p className="text-[13px] font-semibold text-[var(--text)]">
+                  Connect Your Google Account
+                </p>
+                <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
+                  Sign in with OAuth 2.0. Twin uses restricted scopes (
+                  <code className="text-blue-400 font-mono">drive.file</code>) for maximum privacy.
+                </p>
               </div>
-            )}
-
-            {authed ? (
-              <Button variant="secondary" size="sm" onClick={handleLogout}>
-                <LogOut size={13} style={{ marginRight: 6 }} />
-                Sign out
+              <Button onClick={handleLogin} size="sm" className="bg-blue-600 hover:bg-blue-500">
+                Sign in with Google
               </Button>
-            ) : (
-              <Button size="sm" onClick={handleLogin}>Sign in with Google</Button>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {divider}
-
-      {/* General */}
-      <section>
-        <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>General</h2>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {quota && (
-            <FieldGroup label="Google Drive storage quota">
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 4 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                  <span>{formatBytes(quota.usage)} of {quota.limit ? formatBytes(quota.limit) : "Unlimited"}</span>
-                  <span>{quota.limit ? `${Math.round((quota.usage / quota.limit) * 100)}%` : ""}</span>
-                </div>
-                <div style={{ height: 8, width: "100%", background: "var(--border)", borderRadius: 4, overflow: "hidden" }}>
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${quota.limit ? Math.min(100, Math.round((quota.usage / quota.limit) * 100)) : 0}%`,
-                      background: "var(--accent)",
-                    }}
-                  />
-                </div>
-                <div style={{ display: "flex", gap: 16, fontSize: 11, color: "var(--text-muted)" }}>
-                  <span>Drive: {formatBytes(quota.usageInDrive)}</span>
-                  <span>Trash: {formatBytes(quota.usageInDriveTrash)}</span>
-                </div>
-              </div>
-            </FieldGroup>
+            </div>
           )}
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <span style={{ fontSize: 13, display: "block" }}>Start with Windows</span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Launch minimized to tray upon login</span>
-            </div>
-            <Switch
-              checked={autostart}
-              onCheckedChange={handleAutostartToggle}
-            />
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <span style={{ fontSize: 13, display: "block" }}>Dry-run mode</span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Simulate transfers without disk or Drive writes</span>
-            </div>
-            <Switch
-              checked={Boolean((local.app as unknown as Record<string, unknown>).dry_run)}
-              onCheckedChange={(v) => patchLocal((c) => ({ ...c, app: { ...c.app, dry_run: v } as unknown as typeof c.app }))}
-            />
-          </div>
-
-          <FieldGroup label={`Parallel transfers: ${local.app.parallel_transfers}`}>
-            <input
-              type="range"
-              min={1}
-              max={8}
-              value={local.app.parallel_transfers}
-              onChange={(e) =>
-                patchLocal((c) => ({ ...c, app: { ...c.app, parallel_transfers: parseInt(e.target.value, 10) } }))
-              }
-              style={{ width: "100%", accentColor: "var(--accent)" }}
-            />
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-muted)" }}>
-              <span>1</span><span>8</span>
-            </div>
-          </FieldGroup>
         </div>
       </section>
 
-      {divider}
+      {/* 2. Autonomous Background Updater (JioTV Max Pattern) */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Application Updates
+        </h2>
 
-      {/* Application Updates (JioTV Max pattern) */}
-      <section>
-        <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Application Updates</h2>
-
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "16px 18px",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          gap: 16,
-        }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#FFFFFF" }}>
-                Twin v{updateState?.current_version ?? "0.1.0"}
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-[13.5px] text-[var(--text)]">
+                Twin Desktop v{updateState?.current_version ?? "0.1.0"}
               </span>
               {updateState?.ready_version ? (
-                <span style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "2px 8px",
-                  borderRadius: 4,
-                  background: "rgba(34, 197, 94, 0.14)",
-                  color: "#4ADE80",
-                  border: "1px solid rgba(34, 197, 94, 0.35)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}>
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                   <Sparkles size={11} />
-                  v{updateState.ready_version} Ready
+                  v{updateState.ready_version} Downloaded & Ready
                 </span>
               ) : (
-                <span style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  padding: "2px 8px",
-                  borderRadius: 4,
-                  background: "var(--surface-2)",
-                  color: "var(--text-muted)",
-                  border: "1px solid var(--border)",
-                }}>
-                  64-bit Windows
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border)]">
+                  Up to date
                 </span>
               )}
             </div>
-            <span style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, display: "block" }}>
+            <p className="text-[12px] text-[var(--text-muted)]">
               {updateState?.ready_version
-                ? `Version ${updateState.ready_version} has been downloaded in the background. Restart to apply immediately with zero re-install.`
-                : updateState?.status.status === "checking" || checkingUpdate
-                ? "Checking for new releases..."
-                : "Silent in-place background updates enabled (checked every 20m)."}
-            </span>
+                ? "Update downloaded silently in background. Click below to restart and apply instantly."
+                : "Continuous in-place updates. Checks GitHub releases automatically in the background."}
+            </p>
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div>
             {updateState?.ready_version ? (
               <Button
                 size="sm"
                 onClick={handleInstallUpdate}
                 disabled={installingUpdate}
-                style={{ background: "#22C55E", color: "#000", fontWeight: 600 }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold flex items-center gap-1.5"
               >
-                <ArrowDownCircle size={14} style={{ marginRight: 6 }} />
-                {installingUpdate ? "Restarting..." : "Restart & Apply Update"}
+                <ArrowDownCircle size={14} />
+                {installingUpdate ? "Applying..." : "Restart & Apply"}
               </Button>
             ) : (
               <Button
@@ -426,251 +370,257 @@ export function SettingsScreen() {
                 size="sm"
                 onClick={handleCheckUpdate}
                 disabled={checkingUpdate}
+                className="flex items-center gap-1.5"
               >
-                <RefreshCw size={13} style={{ marginRight: 6 }} className={checkingUpdate ? "animate-spin" : ""} />
-                {checkingUpdate ? "Checking…" : "Check for updates"}
+                <RefreshCw size={13} className={cn("text-blue-400", checkingUpdate && "animate-spin")} />
+                {checkingUpdate ? "Checking…" : "Check for Updates"}
               </Button>
             )}
           </div>
         </div>
       </section>
 
-      {divider}
+      {/* 3. System & Concurrency */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          System & Engine Governor
+        </h2>
 
-      {/* Advanced (collapsed) */}
-      <section>
-        <button
-          onClick={() => setAdvOpen((v) => !v)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 14,
-            fontWeight: 600,
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "var(--text)",
-            padding: 0,
-            marginBottom: advOpen ? 16 : 0,
-          }}
-          aria-expanded={advOpen}
-        >
-          {advOpen ? <ChevronDown size={14} strokeWidth={1.5} /> : <ChevronRight size={14} strokeWidth={1.5} />}
-          Advanced
-        </button>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] divide-y divide-[var(--border)] shadow-sm">
+          {/* Autostart */}
+          <div className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-[13px] font-medium text-[var(--text)]">Launch with Windows</p>
+              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                Automatically start Twin minimized in the system tray when logging in.
+              </p>
+            </div>
+            <Switch checked={autostart} onCheckedChange={handleAutostartToggle} />
+          </div>
 
-        {advOpen && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <FieldGroup label="Include patterns (one per line)">
-              <textarea
-                rows={3}
-                value={(((local as unknown as Record<string, unknown>).rules as Record<string, string[]>)?.include || []).join("\n")}
-                onChange={(e) => {
-                  const lines = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
-                  patchLocal((c) => {
-                    const r = ((c as unknown as Record<string, unknown>).rules as Record<string, unknown>) || { exclude: [], max_file_mb: 0 };
-                    return {
-                      ...c,
-                      rules: {
-                        ...r,
-                        include: lines,
-                      },
-                    } as unknown as typeof c;
-                  });
-                }}
-                placeholder="*.md&#10;*.txt"
-                style={{
-                  width: "100%",
-                  padding: "6px 8px",
-                  fontSize: 12,
-                  fontFamily: '"Cascadia Mono", Consolas, monospace',
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  background: "var(--surface)",
-                  color: "var(--text)",
-                  resize: "vertical",
-                }}
-              />
-            </FieldGroup>
+          {/* Parallel Transfers */}
+          <div className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-[13px]">
+              <span className="font-medium text-[var(--text)]">
+                Parallel Transfers: {local.app.parallel_transfers}
+              </span>
+              <span className="text-[11px] text-[var(--text-muted)]">
+                Max concurrent file workers
+              </span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={8}
+              value={local.app.parallel_transfers}
+              onChange={(e) =>
+                patchLocal((c) => ({
+                  ...c,
+                  app: { ...c.app, parallel_transfers: parseInt(e.target.value, 10) },
+                }))
+              }
+              className="w-full h-1.5 bg-[var(--surface-2)] rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+            <div className="flex justify-between text-[11px] font-mono text-[var(--text-muted)]">
+              <span>1 worker</span>
+              <span>4</span>
+              <span>8 workers</span>
+            </div>
+          </div>
 
-            <FieldGroup label="Exclude patterns (one per line)">
-              <textarea
-                rows={3}
-                value={(((local as unknown as Record<string, unknown>).rules as Record<string, string[]>)?.exclude || []).join("\n")}
-                onChange={(e) => {
-                  const lines = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
-                  patchLocal((c) => {
-                    const r = ((c as unknown as Record<string, unknown>).rules as Record<string, unknown>) || { include: [], max_file_mb: 0 };
-                    return {
-                      ...c,
-                      rules: {
-                        ...r,
-                        exclude: lines,
-                      },
-                    } as unknown as typeof c;
-                  });
-                }}
-                placeholder=".git&#10;node_modules&#10;*.tmp"
-                style={{
-                  width: "100%",
-                  padding: "6px 8px",
-                  fontSize: 12,
-                  fontFamily: '"Cascadia Mono", Consolas, monospace',
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  background: "var(--surface)",
-                  color: "var(--text)",
-                  resize: "vertical",
-                }}
-              />
-            </FieldGroup>
-
-            <FieldGroup label="Upload limit (KB/s, 0 = unlimited)">
+          {/* Bandwidth Limits */}
+          <div className="p-4 grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
+                Upload Bandwidth Cap (KB/s)
+              </label>
               <Input
                 type="number"
                 min={0}
                 value={local.limits.upload_kbps}
                 onChange={(e) =>
-                  patchLocal((c) => ({ ...c, limits: { ...c.limits, upload_kbps: parseInt(e.target.value, 10) || 0 } }))
+                  patchLocal((c) => ({
+                    ...c,
+                    limits: {
+                      ...c.limits,
+                      upload_kbps: parseInt(e.target.value, 10) || 0,
+                    },
+                  }))
                 }
+                placeholder="0 = Unlimited"
               />
-            </FieldGroup>
+              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
+                0 = Unlimited
+              </span>
+            </div>
 
-            <FieldGroup label="Download limit (KB/s, 0 = unlimited)">
+            <div>
+              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
+                Download Bandwidth Cap (KB/s)
+              </label>
               <Input
                 type="number"
                 min={0}
                 value={local.limits.download_kbps}
                 onChange={(e) =>
-                  patchLocal((c) => ({ ...c, limits: { ...c.limits, download_kbps: parseInt(e.target.value, 10) || 0 } }))
+                  patchLocal((c) => ({
+                    ...c,
+                    limits: {
+                      ...c.limits,
+                      download_kbps: parseInt(e.target.value, 10) || 0,
+                    },
+                  }))
                 }
+                placeholder="0 = Unlimited"
               />
-            </FieldGroup>
+              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
+                0 = Unlimited
+              </span>
+            </div>
+          </div>
 
-            <FieldGroup label="Active hours (e.g. 08:00-18:00, blank = always)">
-              <Input
-                value={local.limits.active_hours ?? ""}
-                onChange={(e) =>
-                  patchLocal((c) => ({ ...c, limits: { ...c.limits, active_hours: e.target.value || null } }))
-                }
-                placeholder="08:00-18:00"
-              />
-            </FieldGroup>
-
-            <FieldGroup label="Conflict policy">
-              <select
-                value={local.policy.conflict}
-                onChange={(e) =>
-                  patchLocal((c) => ({ ...c, policy: { ...c.policy, conflict: e.target.value as Config["policy"]["conflict"] } }))
-                }
-                style={selectStyle}
-              >
-                <option value="newer_wins">Newer wins</option>
-                <option value="keep_both">Keep both</option>
-                <option value="ask">Ask</option>
-              </select>
-            </FieldGroup>
-
-            <FieldGroup label="Deletion policy">
-              <select
-                value={local.policy.deletion}
-                onChange={(e) =>
-                  patchLocal((c) => ({ ...c, policy: { ...c.policy, deletion: e.target.value as Config["policy"]["deletion"] } }))
-                }
-                style={selectStyle}
-              >
-                <option value="ignore">Ignore</option>
-                <option value="drive_trash">Move to Drive trash</option>
-                <option value="delete">Delete permanently</option>
-              </select>
-            </FieldGroup>
-
-            <FieldGroup label="CPU pause threshold (%)">
+          {/* CPU Governor Thresholds */}
+          <div className="p-4 grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
+                CPU Pause Threshold (%)
+              </label>
               <Input
                 type="number"
                 min={10}
                 max={100}
                 value={local.governor.cpu_pause_pct}
                 onChange={(e) =>
-                  patchLocal((c) => ({ ...c, governor: { ...c.governor, cpu_pause_pct: parseInt(e.target.value, 10) || 80 } }))
+                  patchLocal((c) => ({
+                    ...c,
+                    governor: {
+                      ...c.governor,
+                      cpu_pause_pct: parseInt(e.target.value, 10) || 80,
+                    },
+                  }))
                 }
               />
-            </FieldGroup>
+              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
+                Pause sync when system CPU exceeds this %
+              </span>
+            </div>
 
-            <FieldGroup label="CPU resume threshold (%)">
+            <div>
+              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
+                CPU Resume Threshold (%)
+              </label>
               <Input
                 type="number"
                 min={10}
                 max={100}
                 value={local.governor.cpu_resume_pct}
                 onChange={(e) =>
-                  patchLocal((c) => ({ ...c, governor: { ...c.governor, cpu_resume_pct: parseInt(e.target.value, 10) || 50 } }))
+                  patchLocal((c) => ({
+                    ...c,
+                    governor: {
+                      ...c.governor,
+                      cpu_resume_pct: parseInt(e.target.value, 10) || 50,
+                    },
+                  }))
                 }
               />
-            </FieldGroup>
-
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 13 }}>Pause on metered network</span>
-              <Switch
-                checked={local.governor.pause_on_metered}
-                onCheckedChange={(v) =>
-                  patchLocal((c) => ({ ...c, governor: { ...c.governor, pause_on_metered: v } }))
-                }
-              />
-            </div>
-
-            {divider}
-
-            <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Cloud Settings Sync</h3>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6 }}>
-              <div>
-                <span style={{ fontSize: 13, display: "block" }}>Google Drive AppData</span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Settings and device states sync automatically & privately to your Google Drive</span>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={syncingAppData || !authed}
-                onClick={handleAppDataSync}
-              >
-                {syncingAppData ? "Syncing…" : "Sync Now"}
-              </Button>
+              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
+                Resume sync when CPU drops below this %
+              </span>
             </div>
           </div>
-        )}
+
+          {/* Metered Network */}
+          <div className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-[13px] font-medium text-[var(--text)]">
+                Pause on Metered Connections
+              </p>
+              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                Automatically suspend sync when connected to cellular or metered Wi-Fi.
+              </p>
+            </div>
+            <Switch
+              checked={local.governor.pause_on_metered}
+              onCheckedChange={(v) =>
+                patchLocal((c) => ({
+                  ...c,
+                  governor: { ...c.governor, pause_on_metered: v },
+                }))
+              }
+            />
+          </div>
+        </div>
       </section>
 
-      {divider}
+      {/* 4. Conflict & Deletion Policies */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Conflict & Deletion Policy
+        </h2>
 
-      <Button onClick={handleSave} disabled={saving}>
-        {saving ? "Saving…" : "Save settings"}
-      </Button>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-[12px] font-medium text-[var(--text)] mb-1.5">
+              Conflict Resolution
+            </label>
+            <select
+              value={local.policy.conflict}
+              onChange={(e) =>
+                patchLocal((c) => ({
+                  ...c,
+                  policy: {
+                    ...c.policy,
+                    conflict: e.target.value as Config["policy"]["conflict"],
+                  },
+                }))
+              }
+              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-blue-500/60"
+            >
+              <option value="newer_wins">Newer Timestamp Wins (Automatic)</option>
+              <option value="keep_both">Keep Both (Suffix with Conflict)</option>
+              <option value="ask">Interactive Prompt (Ask User)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[12px] font-medium text-[var(--text)] mb-1.5">
+              Local Deletion Behavior
+            </label>
+            <select
+              value={local.policy.deletion}
+              onChange={(e) =>
+                patchLocal((c) => ({
+                  ...c,
+                  policy: {
+                    ...c.policy,
+                    deletion: e.target.value as Config["policy"]["deletion"],
+                  },
+                }))
+              }
+              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-blue-500/60"
+            >
+              <option value="drive_trash">Move to Google Drive Trash (Safe)</option>
+              <option value="ignore">Ignore Remote Deletions</option>
+              <option value="delete">Delete Permanently</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      {/* Floating Save Button if changes exist */}
+      {hasChanges && (
+        <div className="fixed bottom-6 right-8 z-30">
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-600/30 px-5 py-2.5 h-auto text-[13px] font-medium flex items-center gap-2"
+          >
+            <Check size={15} strokeWidth={2.5} />
+            {saving ? "Saving Changes…" : "Save Preferences"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--text-muted)", marginBottom: 4 }}>
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-const selectStyle: React.CSSProperties = {
-  width: "100%",
-  height: 32,
-  padding: "0 8px",
-  fontSize: 13,
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  background: "var(--surface)",
-  color: "var(--text)",
-};
-

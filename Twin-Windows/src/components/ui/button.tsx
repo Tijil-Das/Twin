@@ -4,24 +4,27 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-[13px] font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98] cursor-pointer",
   {
     variants: {
       variant: {
         default:
-          "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90 rounded-[6px]",
+          "bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-600/25 border border-blue-500/40 rounded-lg",
         secondary:
-          "bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px]",
+          "bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text)] border border-[var(--border)] shadow-sm rounded-lg",
         ghost:
-          "text-[var(--text)] hover:bg-[var(--surface-2)] rounded-[6px]",
+          "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] rounded-lg",
         destructive:
-          "bg-[var(--danger)] text-white hover:bg-[var(--danger)]/90 rounded-[6px]",
+          "bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 rounded-lg",
+        subtle:
+          "bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/25 rounded-lg",
       },
       size: {
-        default: "h-8 px-3 py-1",
-        sm: "h-7 px-2 text-xs",
-        lg: "h-9 px-4",
-        icon: "h-8 w-8",
+        default: "h-8 px-3.5 py-1.5",
+        sm: "h-7 px-2.5 text-xs rounded-md",
+        lg: "h-9 px-4 text-sm rounded-lg",
+        icon: "h-8 w-8 rounded-lg",
+        iconSm: "h-7 w-7 rounded-md",
       },
     },
     defaultVariants: {
