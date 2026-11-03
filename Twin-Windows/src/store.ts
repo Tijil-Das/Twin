@@ -70,7 +70,13 @@ const defaultGov: GovStatePayload = { state: "Running", reason: null, concurrenc
 
 export const useStore = create<AppState>((set) => ({
   config: null,
-  setConfig: (config) => set({ config, pairs: config.pairs }),
+  setConfig: (config) => {
+    const raw = config as any;
+    const pairs = Array.isArray(raw?.pairs)
+      ? raw.pairs
+      : (Array.isArray(raw?.pair) ? raw.pair : []);
+    set({ config: { ...config, pairs, pair: pairs }, pairs });
+  },
 
   authed: false,
   setAuthed: (authed) => set({ authed }),

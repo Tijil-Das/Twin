@@ -50,8 +50,8 @@ function StatusPill() {
 // ── Batch progress bar ─────────────────────────────────────────────────────────
 
 function BatchBar() {
-  const progress = useStore((s) => s.progress);
-  const queueStatus = useStore((s) => s.queueStatus);
+  const progress = useStore((s) => s.progress) ?? {};
+  const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, failed: 0 };
   const events = Object.values(progress) as ProgressEvent[];
 
   if (events.length === 0) return null;
@@ -93,13 +93,13 @@ const MODE_LABELS: Record<string, string> = {
 function PairCard({ id, local, drive_folder_id, mode, enabled }: {
   id: string; local: string; drive_folder_id: string; mode: string; enabled: boolean;
 }) {
-  const progress = useStore((s) => s.progress);
+  const progress = useStore((s) => s.progress) ?? {};
   const setConfig = useStore((s) => s.setConfig);
   const [syncing, setSyncing] = useState(false);
 
   // Find progress events for this pair
   const pairEvents = Object.values(progress).filter(
-    (e): e is ProgressEvent => (e as ProgressEvent).pair_id === id
+    (e): e is ProgressEvent => (e as ProgressEvent)?.pair_id === id
   );
   const totalDone  = pairEvents.reduce((a, e) => a + e.bytes_done, 0);
   const totalBytes = pairEvents.reduce((a, e) => a + e.bytes_total, 0);
@@ -202,9 +202,9 @@ function PairCard({ id, local, drive_folder_id, mode, enabled }: {
 // ── Home screen ────────────────────────────────────────────────────────────────
 
 export function HomeScreen() {
-  const gov = useStore((s) => s.gov);
-  const pairs = useStore((s) => s.pairs);
-  const queueStatus = useStore((s) => s.queueStatus);
+  const gov = useStore((s) => s.gov) ?? { state: "Running", reason: null, concurrency: 2 };
+  const pairs = useStore((s) => s.pairs) ?? [];
+  const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, failed: 0 };
   const setConfig = useStore((s) => s.setConfig);
 
   const [showAdd, setShowAdd] = useState(false);

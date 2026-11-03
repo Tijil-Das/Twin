@@ -46,7 +46,8 @@ export interface GitHubConfig {
 }
 
 export interface Config {
-  pairs: PairEntry[];
+  pairs?: PairEntry[];
+  pair?: PairEntry[];
   policy: PolicyConfig;
   limits: LimitsConfig;
   governor: GovernorConfig;

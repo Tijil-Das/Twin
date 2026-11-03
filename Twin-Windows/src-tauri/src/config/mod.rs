@@ -224,7 +224,7 @@ pub struct Config {
     pub governor: GovernorSection,
     pub rules: RulesSection,
     pub policy: PolicySection,
-    #[serde(rename = "pair", default)]
+    #[serde(alias = "pairs", rename = "pair", default)]
     pub pairs: Vec<PairEntry>,
     pub github: GitHubSection,
     pub vars: VarsSection,

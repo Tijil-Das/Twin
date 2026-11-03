@@ -24,7 +24,7 @@ export default function App() {
   const setProgress = useStore((s) => s.setProgress);
   const setGov = useStore((s) => s.setGov);
   const setQueueStatus = useStore((s) => s.setQueueStatus);
-  const conflicts = useStore((s) => s.conflicts);
+  const conflicts = useStore((s) => s.conflicts) ?? [];
   const addConflict = useStore((s) => s.addConflict);
 
   // Track window visibility so we stop processing events when hidden.

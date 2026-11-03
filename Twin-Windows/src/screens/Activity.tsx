@@ -15,7 +15,7 @@ type Filter = "all" | "failed";
 export function ActivityScreen() {
   const [filter, setFilter] = useState<Filter>("all");
   const setActivity = useStore((s) => s.setActivity);
-  const rows = useStore((s) => s.activity);
+  const rows = useStore((s) => s.activity) ?? [];
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
