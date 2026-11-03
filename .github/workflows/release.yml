@@ -27,8 +27,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
-          cache-dependency-path: 'Twin-Windows/pnpm-lock.yaml'
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -42,7 +40,7 @@ jobs:
 
       - name: Install Frontend Dependencies
         working-directory: Twin-Windows
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build Tauri Desktop Application
         working-directory: Twin-Windows
