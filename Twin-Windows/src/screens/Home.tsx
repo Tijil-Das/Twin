@@ -12,9 +12,9 @@ import {
   FolderSync,
   Folder,
   Cloud,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
+  ArrowLeftRight,
+  CloudUpload,
+  FlipHorizontal2,
   Layers,
   Copy,
   Check,
@@ -122,17 +122,17 @@ function BatchBar() {
 const MODE_CONFIG = {
   two_way: {
     label: "Two-way Sync",
-    Icon: ArrowUpDown,
+    Icon: ArrowLeftRight,
     badgeClass: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   },
   upload: {
     label: "Backup (Upload)",
-    Icon: ArrowUp,
+    Icon: CloudUpload,
     badgeClass: "bg-purple-500/10 text-purple-400 border-purple-500/20",
   },
   mirror: {
     label: "Mirror (Download)",
-    Icon: ArrowDown,
+    Icon: FlipHorizontal2,
     badgeClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   },
 };

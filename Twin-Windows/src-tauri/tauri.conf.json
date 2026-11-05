@@ -26,10 +26,6 @@
     ],
     "security": {
       "csp": null
-    },
-    "trayIcon": {
-      "iconPath": "icons/tray/idle.png",
-      "iconAsTemplate": false
     }
   },
   "bundle": {

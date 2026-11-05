@@ -1,23 +1,26 @@
 /**
- * Pro Add-Pair Dialog — Visual mode cards, Drive URL parser,
- * and high-contrast inputs with validation.
+ * Pro Add-Pair Dialog — Windows Explorer style Google Drive folder selector,
+ * native local folder picker, and updated sync mode icons.
  */
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   Folder,
   Cloud,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
+  ArrowLeftRight,
+  CloudUpload,
+  FlipHorizontal2,
   X,
+  FolderSearch,
+  Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { addPair } from "@/lib/tauri";
+import { addPair, pickFolder } from "@/lib/tauri";
 import type { PairEntry, PairMode } from "@/lib/tauri";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { DriveFolderSelector } from "@/components/DriveFolderSelector";
 
 interface Props {
   open: boolean;
@@ -34,28 +37,28 @@ const MODES: {
   id: PairMode;
   title: string;
   desc: string;
-  Icon: typeof ArrowUpDown;
+  Icon: typeof ArrowLeftRight;
   badge: string;
 }[] = [
   {
     id: "two_way",
     title: "Two-Way Sync",
     desc: "Bidirectional continuous replication. Changes in both local and Drive propagate automatically.",
-    Icon: ArrowUpDown,
+    Icon: ArrowLeftRight,
     badge: "Recommended",
   },
   {
     id: "upload",
     title: "Cloud Backup",
     desc: "One-way upload. Local edits sync to Google Drive. Remote changes do not overwrite local files.",
-    Icon: ArrowUp,
+    Icon: CloudUpload,
     badge: "Upload Only",
   },
   {
     id: "mirror",
     title: "Cloud Mirror",
     desc: "Strict mirror. Keeps the remote Drive folder as an exact mirror image of local folder state.",
-    Icon: ArrowDown,
+    Icon: FlipHorizontal2,
     badge: "Mirror",
   },
 ];
@@ -63,6 +66,8 @@ const MODES: {
 export function AddPairDialog({ open, onClose, onAdded }: Props) {
   const [local, setLocal] = useState("");
   const [driveInput, setDriveInput] = useState("");
+  const [selectedDriveName, setSelectedDriveName] = useState<string>("");
+  const [driveSelectionMode, setDriveSelectionMode] = useState<"explorer" | "manual">("explorer");
   const [mode, setMode] = useState<PairMode>("two_way");
   const [saving, setSaving] = useState(false);
   const [localErr, setLocalErr] = useState("");
@@ -77,12 +82,30 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
       setLocalErr("");
     }
     if (!driveInput.trim()) {
-      setDriveErr("Google Drive folder ID or URL is required.");
+      setDriveErr("Please choose a Google Drive folder or provide its ID.");
       ok = false;
     } else {
       setDriveErr("");
     }
     return ok;
+  }
+
+  async function handlePickLocal() {
+    try {
+      const selected = await pickFolder();
+      if (selected) {
+        setLocal(selected);
+        setLocalErr("");
+      }
+    } catch (e) {
+      console.warn("Folder picker error:", e);
+    }
+  }
+
+  function handleDriveFolderSelected(id: string, name: string) {
+    setDriveInput(id);
+    setSelectedDriveName(name);
+    setDriveErr("");
   }
 
   async function handleAdd() {
@@ -102,6 +125,7 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
       onClose();
       setLocal("");
       setDriveInput("");
+      setSelectedDriveName("");
       setMode("two_way");
     } catch (e) {
       toast.error(`Failed to add folder pair: ${String(e)}`);
@@ -119,7 +143,7 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
     >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/70 z-50 animate-in fade-in duration-150" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] max-w-[92vw] bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 z-[60] shadow-2xl animate-in zoom-in-95 duration-150">
+        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[580px] max-w-[94vw] max-h-[92vh] overflow-y-auto bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 z-[60] shadow-2xl animate-in zoom-in-95 duration-150">
           {/* Header */}
           <div className="flex items-start justify-between mb-5">
             <div>
@@ -139,51 +163,115 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
           </div>
 
           <div className="space-y-4">
-            {/* Local path input */}
+            {/* 1. Local path input with Browse Button */}
             <div>
               <label className="block text-[12px] font-semibold text-[var(--text)] mb-1.5 flex items-center gap-1.5">
                 <Folder size={13} className="text-blue-400" />
                 Local Folder Path
               </label>
-              <Input
-                value={local}
-                onChange={(e) => {
-                  setLocal(e.target.value);
-                  if (localErr) setLocalErr("");
-                }}
-                placeholder="T:\MyProjects\SourceCode  or  C:\Users\You\Documents"
-                className="font-mono text-[12px]"
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  value={local}
+                  onChange={(e) => {
+                    setLocal(e.target.value);
+                    if (localErr) setLocalErr("");
+                  }}
+                  placeholder="T:\MyProjects\SourceCode  or  C:\Users\You\Documents"
+                  className="font-mono text-[12px] flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handlePickLocal}
+                  className="shrink-0 text-xs flex items-center gap-1.5 px-3 h-9"
+                >
+                  <FolderSearch size={14} className="text-blue-400" />
+                  <span>Browse…</span>
+                </Button>
+              </div>
               {localErr && (
                 <p className="text-[11px] text-red-400 mt-1 font-medium">{localErr}</p>
               )}
             </div>
 
-            {/* Google Drive Folder ID / URL input */}
+            {/* 2. Google Drive Folder Selector (Windows Explorer Style) */}
             <div>
-              <label className="block text-[12px] font-semibold text-[var(--text)] mb-1.5 flex items-center gap-1.5">
-                <Cloud size={13} className="text-blue-400" />
-                Google Drive Folder URL or ID
-              </label>
-              <Input
-                value={driveInput}
-                onChange={(e) => {
-                  setDriveInput(e.target.value);
-                  if (driveErr) setDriveErr("");
-                }}
-                placeholder="https://drive.google.com/drive/folders/1aBcD_...  or  folder ID"
-                className="font-mono text-[12px]"
-              />
-              {driveErr ? (
-                <p className="text-[11px] text-red-400 mt-1 font-medium">{driveErr}</p>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[12px] font-semibold text-[var(--text)] flex items-center gap-1.5">
+                  <Cloud size={13} className="text-blue-400" />
+                  Google Drive Folder
+                </label>
+                <div className="flex items-center gap-1 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setDriveSelectionMode("explorer")}
+                    className={cn(
+                      "px-2 py-0.5 rounded transition-colors",
+                      driveSelectionMode === "explorer"
+                        ? "bg-blue-600/20 text-blue-400 font-semibold border border-blue-500/30"
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    Explorer View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDriveSelectionMode("manual")}
+                    className={cn(
+                      "px-2 py-0.5 rounded transition-colors flex items-center gap-1",
+                      driveSelectionMode === "manual"
+                        ? "bg-blue-600/20 text-blue-400 font-semibold border border-blue-500/30"
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <Link2 size={11} />
+                    <span>Paste Link / ID</span>
+                  </button>
+                </div>
+              </div>
+
+              {driveSelectionMode === "explorer" ? (
+                <div className="space-y-2">
+                  <DriveFolderSelector
+                    selectedFolderId={driveInput}
+                    onSelect={handleDriveFolderSelected}
+                  />
+                  {selectedDriveName && (
+                    <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-blue-600/10 border border-blue-500/30 text-xs">
+                      <span className="text-zinc-400">
+                        Selected Target:{" "}
+                        <strong className="text-blue-400">{selectedDriveName}</strong>
+                      </span>
+                      <span className="font-mono text-[10.5px] text-zinc-500">
+                        ID: {driveInput}
+                      </span>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <p className="text-[11px] text-[var(--text-subtle)] mt-1">
-                  Paste the direct link from your browser or the unique folder ID.
-                </p>
+                <div>
+                  <Input
+                    value={driveInput}
+                    onChange={(e) => {
+                      setDriveInput(e.target.value);
+                      setSelectedDriveName("");
+                      if (driveErr) setDriveErr("");
+                    }}
+                    placeholder="https://drive.google.com/drive/folders/1aBcD_...  or  folder ID"
+                    className="font-mono text-[12px]"
+                  />
+                  <p className="text-[11px] text-[var(--text-subtle)] mt-1">
+                    Paste the direct browser link or unique folder ID from Google Drive.
+                  </p>
+                </div>
+              )}
+
+              {driveErr && (
+                <p className="text-[11px] text-red-400 mt-1 font-medium">{driveErr}</p>
               )}
             </div>
 
-            {/* Sync Mode Selection: Visual Cards */}
+            {/* 3. Sync Mode Selection: Visual Cards with Updated Icons */}
             <div>
               <label className="block text-[12px] font-semibold text-[var(--text)] mb-2">
                 Synchronization Mode

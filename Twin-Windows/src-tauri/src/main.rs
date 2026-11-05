@@ -136,6 +136,40 @@ async fn drive_list(folder_id: String) -> Result<Vec<DriveFile>, String> {
     drive.list_folder(&folder_id).await.map_err(|e| e.to_string())
 }
 
+/// Open a native folder browser dialog.
+#[tauri::command]
+async fn pick_folder() -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(|| {
+        #[cfg(target_os = "windows")]
+        {
+            let output = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Local Folder to Sync'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }",
+                ])
+                .output();
+            match output {
+                Ok(o) => {
+                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if s.is_empty() {
+                        Ok(None)
+                    } else {
+                        Ok(Some(s))
+                    }
+                }
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Ok(None)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// List revisions for a Drive file.
 #[tauri::command]
 async fn list_revisions(file_id: String) -> Result<Vec<Revision>, String> {
@@ -359,6 +393,7 @@ fn main() {
             queue::sync_now,
             queue::queue_status,
             drive_list,
+            pick_folder,
             list_revisions,
             restore_file_cmd,
             restore_folder_cmd,

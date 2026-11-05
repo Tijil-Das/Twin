@@ -158,6 +158,7 @@ export const syncNow = () => invoke<void>("sync_now");
 export const queueStatus = () => invoke<QueueStatus>("queue_status");
 
 export const driveList = (folderId: string) => invoke<DriveFile[]>("drive_list", { folderId });
+export const pickFolder = () => invoke<string | null>("pick_folder");
 export const listRevisions = (fileId: string) => invoke<Revision[]>("list_revisions", { fileId });
 export const restoreFileCmd = (fileId: string, revId: string | null, dest: string) =>
   invoke<void>("restore_file_cmd", { fileId, revId, dest });
