@@ -109,10 +109,13 @@ async fn run_download(
     progress: ProgressTx,
 ) -> Result<(), AppError> {
     // Resolve pair.
-    let pair = cfg.pairs.iter()
-        .find(|p| p.id == job.pair_id)
-        .ok_or_else(|| AppError::Other(format!("pair {} not found", job.pair_id)))?
-        .clone();
+    let pair = match cfg.pairs.iter().find(|p| p.id == job.pair_id) {
+        Some(p) => p.clone(),
+        None => {
+            let _ = db.complete_job(job.id);
+            return Ok(());
+        }
+    };
 
     let dest = PathBuf::from(&pair.local).join(&job.rel_path);
 
@@ -520,10 +523,13 @@ async fn run_restore(
 
     // Determine destination path.
     // For simplicity: dest = pair's local root / file name from Drive.
-    let pair = cfg.pairs.iter()
-        .find(|p| p.id == job.pair_id)
-        .ok_or_else(|| AppError::Other(format!("pair {} not found", job.pair_id)))?
-        .clone();
+    let pair = match cfg.pairs.iter().find(|p| p.id == job.pair_id) {
+        Some(p) => p.clone(),
+        None => {
+            let _ = db.complete_job(job.id);
+            return Ok(());
+        }
+    };
 
     let meta = fetch_file_meta(&drive, &drive_id).await?;
     let file_name = meta.name.as_deref().unwrap_or("restored_file").to_string();

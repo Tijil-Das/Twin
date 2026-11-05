@@ -85,10 +85,13 @@ async fn run_upload(
     progress: ProgressTx,
 ) -> Result<(), AppError> {
     // Find the pair config.
-    let pair = cfg.pairs.iter()
-        .find(|p| p.id == job.pair_id)
-        .ok_or_else(|| AppError::Other(format!("pair {} not found", job.pair_id)))?
-        .clone();
+    let pair = match cfg.pairs.iter().find(|p| p.id == job.pair_id) {
+        Some(p) => p.clone(),
+        None => {
+            let _ = db.complete_job(job.id);
+            return Ok(());
+        }
+    };
 
     let local_path = PathBuf::from(&pair.local).join(&job.rel_path);
 
@@ -371,6 +374,11 @@ async fn run_delete(
 ) -> Result<(), AppError> {
     use crate::config::DeletionPolicy;
 
+    if !cfg.pairs.iter().any(|p| p.id == job.pair_id) {
+        let _ = db.complete_job(job.id);
+        return Ok(());
+    }
+
     let existing = db.get_file(&job.pair_id, &job.rel_path)?;
     let drive_id = match existing.as_ref().and_then(|r| r.drive_id.as_deref()) {
         Some(id) => id.to_string(),
@@ -400,13 +408,17 @@ async fn run_delete(
 
 async fn run_mkdir(
     job: Job,
-    _db: Arc<Db>,
+    db: Arc<Db>,
     cfg: Config,
     drive: DriveClient,
 ) -> Result<(), AppError> {
-    let pair = cfg.pairs.iter()
-        .find(|p| p.id == job.pair_id)
-        .ok_or_else(|| AppError::Other(format!("pair {} not found", job.pair_id)))?;
+    let pair = match cfg.pairs.iter().find(|p| p.id == job.pair_id) {
+        Some(p) => p,
+        None => {
+            let _ = db.complete_job(job.id);
+            return Ok(());
+        }
+    };
 
     drive.ensure_path(&job.pair_id, &pair.drive_folder_id, &job.rel_path).await?;
     info!("mkdir: ensured {}", job.rel_path);
