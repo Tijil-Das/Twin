@@ -61,6 +61,11 @@ html, body {
   user-select: none;
 }
 
+input, textarea, select {
+  color: var(--text);
+  background-color: #12141d;
+}
+
 /* Sleek native-feel scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
