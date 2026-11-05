@@ -188,17 +188,17 @@ impl DriveClient {
         Ok(list.files)
     }
 
-    /// Retrieve all folders across the entire Google Drive (pageSize=1000).
-    pub async fn get_all_folders(&self) -> Result<Vec<DriveFile>, AppError> {
+    /// Retrieve folders owned by the authenticated user in My Drive ('me' in owners, pageSize=1000).
+    pub async fn get_my_drive_folders(&self) -> Result<Vec<DriveFile>, AppError> {
         let token = auth::access_token().await?;
         let url = format!("{}/files", self.base_url);
-        let q = "(mimeType = 'application/vnd.google-apps.folder' or mimeType = 'application/vnd.google-apps.shortcut') and trashed = false";
+        let q = "(mimeType = 'application/vnd.google-apps.folder' or mimeType = 'application/vnd.google-apps.shortcut') and 'me' in owners and trashed = false";
         let resp = self.execute_with_retry(|| {
             self.http.get(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[
                     ("q",                         q),
-                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred)"),
+                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred,shared)"),
                     ("pageSize",                  "1000"),
                     ("orderBy",                   "name"),
                     ("supportsAllDrives",         "true"),
@@ -207,12 +207,44 @@ impl DriveClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            tracing::error!("get_all_folders HTTP {status}: {body}");
-            return Err(AppError::Drive(format!("get_all_folders HTTP {status}: {body}")));
+            tracing::error!("get_my_drive_folders HTTP {status}: {body}");
+            return Err(AppError::Drive(format!("get_my_drive_folders HTTP {status}: {body}")));
         }
         let list: FileList = resp.json().await
-            .map_err(|e| AppError::Drive(format!("get_all_folders parse: {e}")))?;
+            .map_err(|e| AppError::Drive(format!("get_my_drive_folders parse: {e}")))?;
         Ok(list.files)
+    }
+
+    /// Retrieve folders shared with the user (sharedWithMe = true, pageSize=1000).
+    pub async fn get_shared_with_me_folders(&self) -> Result<Vec<DriveFile>, AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{}/files", self.base_url);
+        let q = "(mimeType = 'application/vnd.google-apps.folder' or mimeType = 'application/vnd.google-apps.shortcut') and sharedWithMe = true and trashed = false";
+        let resp = self.execute_with_retry(|| {
+            self.http.get(&url)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .query(&[
+                    ("q",                         q),
+                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred,shared)"),
+                    ("pageSize",                  "1000"),
+                    ("orderBy",                   "name"),
+                    ("supportsAllDrives",         "true"),
+                ])
+        }).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            tracing::error!("get_shared_with_me_folders HTTP {status}: {body}");
+            return Err(AppError::Drive(format!("get_shared_with_me_folders HTTP {status}: {body}")));
+        }
+        let list: FileList = resp.json().await
+            .map_err(|e| AppError::Drive(format!("get_shared_with_me_folders parse: {e}")))?;
+        Ok(list.files)
+    }
+
+    /// Default all folders query: returns user-owned My Drive folders.
+    pub async fn get_all_folders(&self) -> Result<Vec<DriveFile>, AppError> {
+        self.get_my_drive_folders().await
     }
 
     /// Create a folder in Drive.
@@ -637,6 +669,8 @@ pub struct DriveFile {
     pub trashed: Option<bool>,
     #[serde(default)]
     pub parents: Option<Vec<String>>,
+    #[serde(default)]
+    pub shared: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

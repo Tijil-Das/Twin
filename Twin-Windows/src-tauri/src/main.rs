@@ -143,7 +143,7 @@ async fn drive_list(folder_id: String) -> Result<Vec<DriveFile>, String> {
     })
 }
 
-/// List all folders across Google Drive.
+/// List all folders across Google Drive (My Drive).
 #[tauri::command]
 async fn drive_get_folders() -> Result<Vec<DriveFile>, String> {
     tracing::info!("Retrieving all Drive folders");
@@ -153,6 +153,20 @@ async fn drive_get_folders() -> Result<Vec<DriveFile>, String> {
     })?;
     drive.get_all_folders().await.map_err(|e| {
         tracing::error!("drive.get_all_folders() failed: {e}");
+        e.to_string()
+    })
+}
+
+/// List shared folders in Google Drive (sharedWithMe = true).
+#[tauri::command]
+async fn drive_get_shared_folders() -> Result<Vec<DriveFile>, String> {
+    tracing::info!("Retrieving shared Drive folders");
+    let drive = drive::DriveClient::new().map_err(|e| {
+        tracing::error!("DriveClient::new failed: {e}");
+        e.to_string()
+    })?;
+    drive.get_shared_with_me_folders().await.map_err(|e| {
+        tracing::error!("drive.get_shared_with_me_folders() failed: {e}");
         e.to_string()
     })
 }
@@ -430,6 +444,7 @@ fn main() {
             queue::queue_status,
             drive_list,
             drive_get_folders,
+            drive_get_shared_folders,
             drive_create_folder,
             pick_folder,
             list_revisions,

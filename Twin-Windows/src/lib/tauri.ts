@@ -161,6 +161,7 @@ export const queueStatus = () => invoke<QueueStatus>("queue_status");
 
 export const driveList = (folderId: string) => invoke<DriveFile[]>("drive_list", { folderId });
 export const driveGetFolders = () => invoke<DriveFile[]>("drive_get_folders");
+export const driveGetSharedFolders = () => invoke<DriveFile[]>("drive_get_shared_folders");
 export const driveCreateFolder = (parentId: string, name: string) =>
   invoke<string>("drive_create_folder", { parentId, name });
 export const authHasFullScope = () => invoke<boolean>("auth_has_full_scope").catch(() => true);
