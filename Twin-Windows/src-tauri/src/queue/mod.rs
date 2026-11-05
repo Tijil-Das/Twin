@@ -152,23 +152,15 @@ async fn dispatcher<R: JobRunner>(
             }
 
             Ok(None) => {
-                // No job due right now.  Check if any are scheduled for later.
-                match next_retry_time(&db) {
-                    Some(next_ms) => {
-                        let delay_ms = (next_ms - now_ms()).max(0) as u64;
-                        let deadline = Instant::now()
-                            + std::time::Duration::from_millis(delay_ms);
-                        // Sleep until the next scheduled job, but wake early if
-                        // a new job arrives via notify.
-                        tokio::select! {
-                            _ = sleep_until(deadline) => {}
-                            _ = notify.notified() => {}
-                        }
-                    }
-                    None => {
-                        // Truly empty — await Notify with no timer.
-                        notify.notified().await;
-                    }
+                // Sleep until next retry or wake on notify, with a max 2s fallback poll
+                let delay_ms = match next_retry_time(&db) {
+                    Some(next_ms) => (next_ms - now_ms()).max(0) as u64,
+                    None => 2000,
+                };
+                let deadline = Instant::now() + std::time::Duration::from_millis(delay_ms.min(2000));
+                tokio::select! {
+                    _ = sleep_until(deadline) => {}
+                    _ = notify.notified() => {}
                 }
             }
 
@@ -201,6 +193,7 @@ fn now_ms() -> i64 {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueueStatus {
     pub queued: i64,
+    pub running: i64,
     pub failed: i64,
 }
 
@@ -218,8 +211,15 @@ pub fn sync_now(
 
 /// Return current queue depth.
 #[tauri::command]
-pub fn queue_status(_state: tauri::State<'_, QueueState>) -> Result<QueueStatus, String> {
-    Ok(QueueStatus { queued: 0, failed: 0 })
+pub fn queue_status(db: tauri::State<'_, crate::db::DbState>) -> Result<QueueStatus, String> {
+    let queued = db.0.count_jobs_by_status("queued").unwrap_or(0);
+    let running = db.0.count_jobs_by_status("running").unwrap_or(0);
+    let failed = db.0.count_jobs_by_status("failed").unwrap_or(0);
+    Ok(QueueStatus {
+        queued,
+        running,
+        failed,
+    })
 }
 
 /// Tauri managed state wrapper.

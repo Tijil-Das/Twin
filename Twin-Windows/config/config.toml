@@ -34,7 +34,7 @@ conflict = "newer_wins"
 deletion = "drive_trash"
 
 [[pair]]
-id = "4f6f6a52-f857-4d35-98cd-1561f3e1d820"
+id = "2d1366fe-ca75-41eb-b5c2-73a9e3325c54"
 local = 'D:\DOCUMENTS'
 drive_folder_id = "1RxclVsw61iSZFiGazPf23kJXCDo56FZH"
 mode = "mirror"

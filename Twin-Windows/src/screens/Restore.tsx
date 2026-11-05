@@ -572,6 +572,7 @@ function FileBrowser() {
 function TrashBrowser() {
   const [items, setItems] = useState<TrashedFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [restoringAll, setRestoringAll] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -597,12 +598,34 @@ function TrashBrowser() {
   }
 
   async function handleUntrashAll() {
+    if (items.length === 0 || restoringAll) return;
+    setRestoringAll(true);
     try {
-      const count = await untrashAll();
+      try {
+        const count = await untrashAll();
+        setItems([]);
+        toast.success(`Successfully restored ${count} file(s) from Drive trash!`);
+        return;
+      } catch (err) {
+        console.warn("untrashAll command unavailable on running binary, falling back to per-file untrash:", err);
+      }
+
+      // Fallback: restore items one by one using untrash(fileId) which exists in all binaries
+      let count = 0;
+      for (const item of items) {
+        try {
+          await untrash(item.id);
+          count++;
+        } catch {
+          // ignore individual restore errors
+        }
+      }
       setItems([]);
       toast.success(`Successfully restored ${count} file(s) from Drive trash!`);
     } catch (e) {
-      toast.error(`Failed to restore all: ${String(e)}`);
+      toast.error(`Failed to restore: ${String(e)}`);
+    } finally {
+      setRestoringAll(false);
     }
   }
 
@@ -637,10 +660,11 @@ function TrashBrowser() {
           variant="secondary"
           size="sm"
           onClick={handleUntrashAll}
+          disabled={restoringAll || items.length === 0}
           className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300"
         >
-          <RotateCcw size={13} />
-          Restore All Files
+          <RotateCcw size={13} className={cn(restoringAll && "animate-spin")} />
+          {restoringAll ? "Restoring All Files…" : "Restore All Files"}
         </Button>
       </div>
 
