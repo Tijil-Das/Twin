@@ -143,6 +143,34 @@ async fn drive_list(folder_id: String) -> Result<Vec<DriveFile>, String> {
     })
 }
 
+/// List all folders across Google Drive.
+#[tauri::command]
+async fn drive_get_folders() -> Result<Vec<DriveFile>, String> {
+    tracing::info!("Retrieving all Drive folders");
+    let drive = drive::DriveClient::new().map_err(|e| {
+        tracing::error!("DriveClient::new failed: {e}");
+        e.to_string()
+    })?;
+    drive.get_all_folders().await.map_err(|e| {
+        tracing::error!("drive.get_all_folders() failed: {e}");
+        e.to_string()
+    })
+}
+
+/// Create a new folder in Google Drive.
+#[tauri::command]
+async fn drive_create_folder(parent_id: String, name: String) -> Result<String, String> {
+    tracing::info!("Creating Drive folder '{name}' inside '{parent_id}'");
+    let drive = drive::DriveClient::new().map_err(|e| {
+        tracing::error!("DriveClient::new failed: {e}");
+        e.to_string()
+    })?;
+    drive.create_folder(&parent_id, &name).await.map_err(|e| {
+        tracing::error!("drive.create_folder('{parent_id}', '{name}') failed: {e}");
+        e.to_string()
+    })
+}
+
 /// Open a native folder browser dialog.
 #[tauri::command]
 async fn pick_folder() -> Result<Option<String>, String> {
@@ -392,6 +420,7 @@ fn main() {
             auth::auth_set_client_id,
             auth::auth_set_client_secret,
             auth::auth_clear_credentials,
+            auth::auth_has_full_scope,
             db::get_activity,
             db::retry_job,
             governor::gov_state,
@@ -400,6 +429,8 @@ fn main() {
             queue::sync_now,
             queue::queue_status,
             drive_list,
+            drive_get_folders,
+            drive_create_folder,
             pick_folder,
             list_revisions,
             restore_file_cmd,

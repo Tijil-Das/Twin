@@ -316,8 +316,7 @@ export function SettingsScreen() {
                   Connect Your Google Account
                 </p>
                 <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
-                  Sign in with OAuth 2.0. Twin uses restricted scopes (
-                  <code className="text-blue-400 font-mono">drive.file</code>) for maximum privacy.
+                  Sign in with OAuth 2.0 for continuous two-way Google Drive synchronization.
                 </p>
               </div>
               <Button onClick={handleLogin} size="sm" className="bg-blue-600 hover:bg-blue-500">

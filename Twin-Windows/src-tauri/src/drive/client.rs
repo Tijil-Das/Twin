@@ -172,7 +172,7 @@ impl DriveClient {
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[
                     ("q",                         q.as_str()),
-                    ("fields",                    "files(id,name,mimeType,md5Checksum,modifiedTime,size,description,starred)"),
+                    ("fields",                    "files(id,name,mimeType,md5Checksum,modifiedTime,size,description,starred,parents)"),
                     ("pageSize",                  "1000"),
                     ("supportsAllDrives",         "true"),
                 ])
@@ -185,6 +185,33 @@ impl DriveClient {
         }
         let list: FileList = resp.json().await
             .map_err(|e| AppError::Drive(format!("list_folder parse: {e}")))?;
+        Ok(list.files)
+    }
+
+    /// Retrieve all folders across the entire Google Drive (pageSize=1000).
+    pub async fn get_all_folders(&self) -> Result<Vec<DriveFile>, AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{}/files", self.base_url);
+        let q = "(mimeType = 'application/vnd.google-apps.folder' or mimeType = 'application/vnd.google-apps.shortcut') and trashed = false";
+        let resp = self.execute_with_retry(|| {
+            self.http.get(&url)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .query(&[
+                    ("q",                         q),
+                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred)"),
+                    ("pageSize",                  "1000"),
+                    ("orderBy",                   "name"),
+                    ("supportsAllDrives",         "true"),
+                ])
+        }).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            tracing::error!("get_all_folders HTTP {status}: {body}");
+            return Err(AppError::Drive(format!("get_all_folders HTTP {status}: {body}")));
+        }
+        let list: FileList = resp.json().await
+            .map_err(|e| AppError::Drive(format!("get_all_folders parse: {e}")))?;
         Ok(list.files)
     }
 
@@ -608,6 +635,8 @@ pub struct DriveFile {
     pub starred: Option<bool>,
     #[serde(default)]
     pub trashed: Option<bool>,
+    #[serde(default)]
+    pub parents: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -74,7 +74,9 @@ export interface DriveFile {
   name: string | null;
   size: string | null;
   modified_time: string | null;
+  modifiedTime?: string | null;
   mime_type: string | null;
+  mimeType?: string | null;
   parents: string[] | null;
 }
 
@@ -158,6 +160,10 @@ export const syncNow = () => invoke<void>("sync_now");
 export const queueStatus = () => invoke<QueueStatus>("queue_status");
 
 export const driveList = (folderId: string) => invoke<DriveFile[]>("drive_list", { folderId });
+export const driveGetFolders = () => invoke<DriveFile[]>("drive_get_folders");
+export const driveCreateFolder = (parentId: string, name: string) =>
+  invoke<string>("drive_create_folder", { parentId, name });
+export const authHasFullScope = () => invoke<boolean>("auth_has_full_scope").catch(() => true);
 export const pickFolder = () => invoke<string | null>("pick_folder");
 export const listSharedDrives = () => invoke<{ id: string; name: string }[]>("list_shared_drives").catch(() => []);
 export const driveSearch = (query: string, mime?: string) =>

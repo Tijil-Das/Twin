@@ -157,7 +157,7 @@ pub async fn get_user_profile() -> Option<GoogleUserProfile> {
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const DRIVE_SCOPE: &str = "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata";
+const DRIVE_SCOPE: &str = "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata";
 
 // ── Built-in Twin Google OAuth client credentials ─────────────────────────
 
@@ -556,6 +556,30 @@ pub fn auth_clear_credentials() {
     if let Ok(mut guard) = profile_state().try_lock() {
         *guard = None;
     }
+}
+
+/// Checks if currently authenticated session has broad Google Drive access (not restricted to drive.file only).
+#[tauri::command]
+pub async fn auth_has_full_scope() -> bool {
+    let token = match access_token().await {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    let client = match build_client() {
+        Ok(c) => c,
+        Err(_) => return true,
+    };
+    let url = format!("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token={token}");
+    if let Ok(resp) = client.get(&url).send().await {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(scope_str) = json.get("scope").and_then(|v| v.as_str()) {
+                return scope_str.contains("https://www.googleapis.com/auth/drive ")
+                    || scope_str.ends_with("https://www.googleapis.com/auth/drive")
+                    || scope_str.contains("auth/drive ");
+            }
+        }
+    }
+    true
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────────
