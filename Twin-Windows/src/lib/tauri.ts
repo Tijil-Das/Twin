@@ -159,6 +159,9 @@ export const queueStatus = () => invoke<QueueStatus>("queue_status");
 
 export const driveList = (folderId: string) => invoke<DriveFile[]>("drive_list", { folderId });
 export const pickFolder = () => invoke<string | null>("pick_folder");
+export const listSharedDrives = () => invoke<{ id: string; name: string }[]>("list_shared_drives").catch(() => []);
+export const driveSearch = (query: string, mime?: string) =>
+  invoke<DriveFile[]>("drive_search", { query, mime: mime ?? null, after: null });
 export const listRevisions = (fileId: string) => invoke<Revision[]>("list_revisions", { fileId });
 export const restoreFileCmd = (fileId: string, revId: string | null, dest: string) =>
   invoke<void>("restore_file_cmd", { fileId, revId, dest });

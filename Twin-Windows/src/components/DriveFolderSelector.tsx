@@ -1,7 +1,7 @@
 /**
  * Windows Explorer style Google Drive folder selector panel.
  * Provides hierarchical breadcrumb navigation, subfolder listing,
- * fast filtering, and 1-click folder targeting.
+ * Drive switching (My Drive / Shared Drives), and search.
  */
 import { useState, useEffect, useMemo } from "react";
 import {
@@ -14,8 +14,9 @@ import {
   Check,
   AlertCircle,
   FolderPlus,
+  Compass,
 } from "lucide-react";
-import { driveList } from "@/lib/tauri";
+import { driveList, driveSearch, listSharedDrives } from "@/lib/tauri";
 import type { DriveFile } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,11 @@ interface DriveFolder {
 }
 
 interface BreadcrumbItem {
+  id: string;
+  name: string;
+}
+
+interface SharedDriveItem {
   id: string;
   name: string;
 }
@@ -41,8 +47,10 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([
     { id: "root", name: "My Drive" },
   ]);
+  const [sharedDrives, setSharedDrives] = useState<SharedDriveItem[]>([]);
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isSearchingAll, setIsSearchingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
   const [activeSelection, setActiveSelection] = useState<{ id: string; name: string } | null>(
@@ -51,13 +59,24 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
 
   const currentFolder = breadcrumbs[breadcrumbs.length - 1];
 
+  // Load shared drives on mount
+  useEffect(() => {
+    void listSharedDrives().then((drives) => {
+      if (Array.isArray(drives)) setSharedDrives(drives);
+    });
+  }, []);
+
   async function fetchFolders(folderId: string) {
     setLoading(true);
+    setIsSearchingAll(false);
     setError(null);
     try {
+      console.log("[DriveFolderSelector] Querying folder:", folderId);
       const items = await driveList(folderId);
+      console.log("[DriveFolderSelector] Retrieved items:", items);
+
       // Filter for Google Drive folder MIME types
-      const folderList: DriveFolder[] = (items || [])
+      let folderList: DriveFolder[] = (items || [])
         .filter((item: DriveFile | any) => {
           const mime = item.mime_type || item.mimeType;
           return mime === "application/vnd.google-apps.folder";
@@ -69,11 +88,29 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         }))
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
+      // Fallback: If root folder has 0 immediate subfolders, check for any accessible folders across account
+      if (folderList.length === 0 && folderId === "root") {
+        console.log("[DriveFolderSelector] 0 subfolders in root, searching for any accessible folders...");
+        try {
+          const allFolders = await driveSearch("", "application/vnd.google-apps.folder");
+          if (Array.isArray(allFolders) && allFolders.length > 0) {
+            folderList = allFolders.map((f: any) => ({
+              id: f.id,
+              name: f.name || "Untitled Folder",
+              modifiedTime: f.modified_time || f.modifiedTime,
+            }));
+            setIsSearchingAll(true);
+          }
+        } catch {
+          // Ignore broad search fallback errors
+        }
+      }
+
       setFolders(folderList);
-    } catch (err) {
-      setError(
-        "Could not load Google Drive folders. Make sure you are authenticated in Settings."
-      );
+    } catch (err: any) {
+      console.error("[DriveFolderSelector] fetchFolders error:", err);
+      const msg = typeof err === "string" ? err : err?.message || JSON.stringify(err);
+      setError(`Failed to retrieve folders: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -82,6 +119,27 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
   useEffect(() => {
     void fetchFolders(currentFolderId);
   }, [currentFolderId]);
+
+  // Search across the entire Google Drive
+  async function handleSearchEntireDrive() {
+    if (!filterQuery.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await driveSearch(filterQuery.trim(), "application/vnd.google-apps.folder");
+      const list: DriveFolder[] = (results || []).map((f: any) => ({
+        id: f.id,
+        name: f.name || "Untitled Folder",
+        modifiedTime: f.modified_time || f.modifiedTime,
+      }));
+      setFolders(list);
+      setIsSearchingAll(true);
+    } catch (err: any) {
+      setError(`Drive search failed: ${String(err)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // Navigate deeper into a subfolder
   function enterFolder(folder: DriveFolder) {
@@ -108,12 +166,19 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
     setFilterQuery("");
   }
 
-  // Filtered folders
+  // Switch drive (e.g. Shared Drive or My Drive)
+  function handleSwitchDrive(driveId: string, driveName: string) {
+    setBreadcrumbs([{ id: driveId, name: driveName }]);
+    setCurrentFolderId(driveId);
+    setFilterQuery("");
+  }
+
+  // Filtered folders in current view
   const displayedFolders = useMemo(() => {
-    if (!filterQuery.trim()) return folders;
+    if (!filterQuery.trim() || isSearchingAll) return folders;
     const q = filterQuery.toLowerCase();
     return folders.filter((f) => f.name.toLowerCase().includes(q));
-  }, [folders, filterQuery]);
+  }, [folders, filterQuery, isSearchingAll]);
 
   // Handle selecting a folder
   function selectFolder(id: string, name: string) {
@@ -139,6 +204,26 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         >
           <ArrowUp size={14} />
         </button>
+
+        {/* Drive Selector if Shared Drives exist */}
+        {sharedDrives.length > 0 && (
+          <select
+            value={breadcrumbs[0]?.id || "root"}
+            onChange={(e) => {
+              const id = e.target.value;
+              const name = id === "root" ? "My Drive" : sharedDrives.find((d) => d.id === id)?.name || "Drive";
+              handleSwitchDrive(id, name);
+            }}
+            className="bg-[#090a0e] text-xs text-white border border-[var(--border)] rounded px-2 py-1 outline-none"
+          >
+            <option value="root">My Drive</option>
+            {sharedDrives.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        )}
 
         {/* Breadcrumb address path */}
         <div className="flex-1 min-w-0 flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#090a0e] border border-[var(--border)] overflow-x-auto select-none">
@@ -179,7 +264,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         </button>
       </div>
 
-      {/* ── Subfolder Filter Bar ── */}
+      {/* ── Subfolder Filter / Search Bar ── */}
       <div className="px-3 py-1.5 border-b border-[var(--border)] bg-[#10121a] flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-zinc-400 text-[11px] font-medium flex-1">
           <Search size={12} className="text-zinc-500 shrink-0" />
@@ -187,10 +272,22 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
             type="text"
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
-            placeholder={`Filter in ${currentFolder.name}...`}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleSearchEntireDrive();
+            }}
+            placeholder={`Filter in ${currentFolder.name} (or press Enter to search Drive)...`}
             className="bg-transparent border-0 outline-none text-xs text-white placeholder:text-zinc-500 w-full"
           />
         </div>
+        {filterQuery && !isSearchingAll && (
+          <button
+            type="button"
+            onClick={handleSearchEntireDrive}
+            className="text-[11px] text-blue-400 hover:underline shrink-0"
+          >
+            Search Drive
+          </button>
+        )}
         <span className="text-[11px] text-zinc-500 shrink-0">
           {displayedFolders.length} folder{displayedFolders.length === 1 ? "" : "s"}
         </span>
@@ -206,7 +303,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         ) : error ? (
           <div className="p-4 text-center space-y-2">
             <AlertCircle size={20} className="mx-auto text-amber-400/80" />
-            <p className="text-xs text-zinc-400 leading-relaxed">{error}</p>
+            <p className="text-xs text-zinc-400 leading-relaxed break-words">{error}</p>
             <button
               type="button"
               onClick={() => void fetchFolders(currentFolderId)}
@@ -216,11 +313,21 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
             </button>
           </div>
         ) : displayedFolders.length === 0 ? (
-          <div className="py-10 text-center space-y-3">
+          <div className="py-8 text-center space-y-2.5">
             <FolderPlus size={24} className="mx-auto text-zinc-600" />
-            <p className="text-xs text-zinc-500">
-              {filterQuery ? "No matching folders found." : "No subfolders in this directory."}
+            <p className="text-xs text-zinc-400">
+              {filterQuery
+                ? `No folders matching "${filterQuery}".`
+                : "No subfolders found in this directory."}
             </p>
+            <button
+              type="button"
+              onClick={handleSearchEntireDrive}
+              className="text-xs px-2.5 py-1 rounded bg-[var(--surface-2)] text-blue-400 hover:text-white border border-[var(--border)] inline-flex items-center gap-1.5"
+            >
+              <Compass size={13} />
+              <span>Search Across All Drive Folders</span>
+            </button>
           </div>
         ) : (
           displayedFolders.map((folder) => {

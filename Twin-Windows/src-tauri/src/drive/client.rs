@@ -175,9 +175,14 @@ impl DriveClient {
                     ("fields",                    "files(id,name,mimeType,md5Checksum,modifiedTime,size,description,starred)"),
                     ("pageSize",                  "1000"),
                     ("supportsAllDrives",         "true"),
-                    ("includeItemsFromAllDrives", "true"),
                 ])
         }).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            tracing::error!("list_folder HTTP {status}: {body}");
+            return Err(AppError::Drive(format!("list_folder HTTP {status}: {body}")));
+        }
         let list: FileList = resp.json().await
             .map_err(|e| AppError::Drive(format!("list_folder parse: {e}")))?;
         Ok(list.files)

@@ -249,10 +249,16 @@ impl DriveClient {
                         ),
                         ("pageSize", "100"),
                         ("supportsAllDrives", "true"),
-                        ("includeItemsFromAllDrives", "true"),
                     ])
             })
             .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            tracing::error!("search HTTP {status}: {body}");
+            return Err(AppError::Drive(format!("search HTTP {status}: {body}")));
+        }
 
         let list: FileList = resp
             .json()

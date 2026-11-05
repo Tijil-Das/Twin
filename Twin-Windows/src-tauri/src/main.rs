@@ -132,8 +132,15 @@ fn set_below_normal_priority() {
 /// List files in a Drive folder (non-recursive).
 #[tauri::command]
 async fn drive_list(folder_id: String) -> Result<Vec<DriveFile>, String> {
-    let drive = drive::DriveClient::new().map_err(|e| e.to_string())?;
-    drive.list_folder(&folder_id).await.map_err(|e| e.to_string())
+    tracing::info!("Listing Drive folder: {folder_id}");
+    let drive = drive::DriveClient::new().map_err(|e| {
+        tracing::error!("DriveClient::new failed: {e}");
+        e.to_string()
+    })?;
+    drive.list_folder(&folder_id).await.map_err(|e| {
+        tracing::error!("drive.list_folder({folder_id}) failed: {e}");
+        e.to_string()
+    })
 }
 
 /// Open a native folder browser dialog.
