@@ -675,6 +675,7 @@ function TrashBrowser() {
           </div>
         </div>
       ))}
+      </div>
     </div>
   );
 }
