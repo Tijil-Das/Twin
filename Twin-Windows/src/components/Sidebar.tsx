@@ -80,7 +80,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
             <img
               src={appLogo}
               alt="Twin"
-              className="w-8 h-8 rounded-lg shadow-md shadow-emerald-500/10 border border-white/10 shrink-0 object-cover"
+              className="w-8 h-8 rounded-lg border border-white/10 shrink-0 object-cover"
             />
             <div>
               <div className="flex items-center gap-1.5">

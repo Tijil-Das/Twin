@@ -442,7 +442,7 @@ export function HomeScreen() {
           <Button
             onClick={() => setShowAdd(true)}
             size="sm"
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-600/25"
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500"
           >
             <Plus size={14} strokeWidth={2.5} />
             Add Folder
@@ -545,7 +545,7 @@ export function HomeScreen() {
         {/* Pairs list or Pro Empty State */}
         {pairs.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface)]/60 p-8 sm:p-12 text-center flex flex-col items-center justify-center space-y-4 shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600/20 to-indigo-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-md shadow-blue-500/10">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600/20 to-indigo-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
               <FolderSync size={26} strokeWidth={1.8} />
             </div>
 
@@ -573,7 +573,7 @@ export function HomeScreen() {
 
             <Button
               onClick={() => setShowAdd(true)}
-              className="mt-2 bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-600/25 px-5 py-2 h-auto text-[13px] font-medium flex items-center gap-2"
+              className="mt-2 bg-blue-600 hover:bg-blue-500 px-5 py-2 h-auto text-[13px] font-medium flex items-center gap-2"
             >
               <Plus size={15} strokeWidth={2.5} />
               Add Your First Folder Pair

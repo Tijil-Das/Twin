@@ -34,9 +34,9 @@ export function ConflictDialog({ conflict }: Props) {
   return (
     <Dialog.Root open>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 animate-in fade-in duration-200" />
+        <Dialog.Overlay className="fixed inset-0 bg-black/70 z-50 animate-in fade-in duration-150" />
         <Dialog.Content
-          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] max-w-[92vw] bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 z-51 shadow-2xl animate-in zoom-in-95 duration-200"
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] max-w-[92vw] bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 z-[60] shadow-2xl animate-in zoom-in-95 duration-150"
           onEscapeKeyDown={() => removeConflict(conflict.pair_id, conflict.rel_path)}
         >
           {/* Header */}

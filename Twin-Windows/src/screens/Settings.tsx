@@ -220,7 +220,7 @@ export function SettingsScreen() {
             onClick={handleSave}
             disabled={saving}
             size="sm"
-            className="bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-600/25 flex items-center gap-1.5"
+            className="bg-blue-600 hover:bg-blue-500 flex items-center gap-1.5"
           >
             <Save size={13} />
             {saving ? "Saving…" : "Save Changes"}
@@ -619,7 +619,7 @@ export function SettingsScreen() {
           <Button
             onClick={handleSave}
             disabled={saving}
-            className="bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-600/30 px-5 py-2.5 h-auto text-[13px] font-medium flex items-center gap-2"
+            className="bg-blue-600 hover:bg-blue-500 shadow-xl px-5 py-2.5 h-auto text-[13px] font-medium flex items-center gap-2"
           >
             <Check size={15} strokeWidth={2.5} />
             {saving ? "Saving Changes…" : "Save Preferences"}

@@ -76,7 +76,7 @@ export function UpdateBanner() {
           type="button"
           onClick={handleRestart}
           disabled={installing}
-          className="rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 px-3 py-1.5 text-[12px] font-semibold text-white transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5"
+          className="rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 px-3 py-1.5 text-[12px] font-semibold text-white transition-all shadow-md flex items-center gap-1.5"
         >
           {installing ? (
             <>
