@@ -181,6 +181,7 @@ export const restoreFolderCmd = (folderId: string, dest: string, pairId: string)
 export const listTrash = (parentId?: string) =>
   invoke<TrashedFile[]>("list_trash", { parentId: parentId ?? null });
 export const untrash = (fileId: string) => invoke<void>("untrash", { fileId });
+export const untrashAll = () => invoke<number>("untrash_all");
 export const keepRevision = (fileId: string, revId: string, keep: boolean) =>
   invoke<void>("keep_revision", { fileId, revId, keep });
 

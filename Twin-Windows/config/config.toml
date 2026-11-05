@@ -5,6 +5,7 @@ debounce_secs = 3
 fallback_rescan_mins = 30
 github_push_mins = 30
 start_hidden = true
+dry_run = false
 
 [limits]
 upload_kbps = 0
@@ -18,7 +19,13 @@ battery_pause_pct = 20
 pause_on_metered = false
 
 [rules]
-exclude = ["*.tmp", "node_modules/**", ".git/**", "~$*", "Thumbs.db"]
+exclude = [
+    "*.tmp",
+    "node_modules/**",
+    ".git/**",
+    "~$*",
+    "Thumbs.db",
+]
 include = []
 max_file_mb = 0
 
@@ -26,8 +33,16 @@ max_file_mb = 0
 conflict = "newer_wins"
 deletion = "drive_trash"
 
+[[pair]]
+id = "4f6f6a52-f857-4d35-98cd-1561f3e1d820"
+local = 'D:\DOCUMENTS'
+drive_folder_id = "1RxclVsw61iSZFiGazPf23kJXCDo56FZH"
+mode = "mirror"
+enabled = true
+
 [github]
 repo = "owner/name"
 branch = "main"
 path = "config/sync-state.json"
 
+[vars]

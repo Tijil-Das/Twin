@@ -249,7 +249,7 @@ async fn fetch_parents(drive: &DriveClient, file_id: &str) -> Result<Vec<String>
 }
 
 /// List all files in a Drive folder tree (recursive via pageSize=1000).
-/// Returns a flat list of all non-trashed files.
+/// Returns a flat list of all non-trashed files with their relative paths populated in `name`.
 pub async fn list_drive_folder(
     drive: &DriveClient,
     root_folder_id: &str,
@@ -259,14 +259,14 @@ pub async fn list_drive_folder(
     let fields = "nextPageToken,files(id,name,parents,md5Checksum,modifiedTime,size,mimeType,trashed)";
 
     let mut all: Vec<DriveEntry> = Vec::new();
-    // Use a stack of folder IDs to explore.
-    let mut folders_to_explore = vec![root_folder_id.to_string()];
+    // Stack holds (folder_id, relative_path_prefix)
+    let mut folders_to_explore: Vec<(String, String)> = vec![(root_folder_id.to_string(), String::new())];
 
-    while let Some(folder_id) = folders_to_explore.pop() {
+    while let Some((folder_id, rel_prefix)) = folders_to_explore.pop() {
         let mut page_token: Option<String> = None;
 
         loop {
-            let q = format!("'{folder_id}' in parents");
+            let q = format!("'{folder_id}' in parents and trashed = false");
             let resp = drive
                 .execute_with_retry(|| {
                     let mut req = drive
@@ -291,15 +291,23 @@ pub async fn list_drive_folder(
                 .await
                 .map_err(|e| AppError::Drive(format!("list_drive_folder parse: {e}")))?;
 
-            for entry in page.files {
+            for mut entry in page.files {
                 if entry.trashed == Some(true) {
                     continue;
                 }
+                let base_name = entry.name.clone().unwrap_or_default();
+                let full_rel = if rel_prefix.is_empty() {
+                    base_name.clone()
+                } else {
+                    format!("{rel_prefix}/{base_name}")
+                };
+
                 let is_folder = entry.mime_type.as_deref()
                     == Some("application/vnd.google-apps.folder");
                 if is_folder {
-                    folders_to_explore.push(entry.id.clone());
+                    folders_to_explore.push((entry.id.clone(), full_rel.clone()));
                 }
+                entry.name = Some(full_rel);
                 all.push(entry);
             }
 

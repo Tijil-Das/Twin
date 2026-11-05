@@ -303,6 +303,20 @@ async fn untrash(file_id: String) -> Result<(), String> {
     drive.untrash(&file_id).await.map_err(|e| e.to_string())
 }
 
+/// Untrash (restore) all files in Google Drive trash.
+#[tauri::command]
+async fn untrash_all() -> Result<usize, String> {
+    let drive = drive::DriveClient::new().map_err(|e| e.to_string())?;
+    let trashed = drive.list_trashed(None).await.map_err(|e| e.to_string())?;
+    let mut count = 0;
+    for file in trashed {
+        if drive.untrash(&file.id).await.is_ok() {
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
 /// Set keepForever on a revision.
 #[tauri::command]
 async fn keep_revision(file_id: String, rev_id: String, keep: bool) -> Result<(), String> {
@@ -475,6 +489,7 @@ fn main() {
             restore_folder_cmd,
             list_trash,
             untrash,
+            untrash_all,
             keep_revision,
             run_sync_cycle,
             resolve_conflict,

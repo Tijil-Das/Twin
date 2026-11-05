@@ -148,15 +148,16 @@ pub async fn reconcile_listing_with_policy(
 
         // Decision table: (local_exists, local_changed, remote_changed)
         if !local_exists {
-            if db_row.is_some() {
-                if !remote_changed {
-                    // Local deleted, remote unchanged → delete remote
+            if let Some(ref row) = db_row {
+                // Safety: only delete remote if the file was previously tracked locally AND marked deleted_local.
+                // Never delete remote files on initial discovery or unconfirmed scan!
+                if row.state == "deleted_local" && !remote_changed {
                     if matches!(deletion_policy, DeletionPolicy::DriveTrash | DeletionPolicy::Delete) {
                         apply_local_delete_inner(db, pair, rel, now, deletion_policy.clone())?;
                         result.deletes += 1;
                     }
                 } else if matches!(pair.mode, PairMode::TwoWay) {
-                    // Both changed (local deleted, remote updated) → re-download remote
+                    // Remote file exists and local does not: re-download remote
                     enqueue_download(db, pair, rel, remote, now)?;
                     result.downloads += 1;
                 }

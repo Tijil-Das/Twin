@@ -10,6 +10,7 @@ import {
   restoreFileCmd,
   listTrash,
   untrash,
+  untrashAll,
   keepRevision,
   type DriveFile,
   type Revision,
@@ -595,6 +596,16 @@ function TrashBrowser() {
     }
   }
 
+  async function handleUntrashAll() {
+    try {
+      const count = await untrashAll();
+      setItems([]);
+      toast.success(`Successfully restored ${count} file(s) from Drive trash!`);
+    } catch (e) {
+      toast.error(`Failed to restore all: ${String(e)}`);
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-12 text-center text-[var(--text-muted)] text-xs flex items-center justify-center gap-2">
@@ -617,7 +628,23 @@ function TrashBrowser() {
   }
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden shadow-sm divide-y divide-[var(--border-subtle)]">
+    <div className="space-y-3">
+      <div className="flex items-center justify-between px-1">
+        <span className="text-xs text-[var(--text-muted)]">
+          {items.length} file{items.length === 1 ? "" : "s"} in Google Drive Trash
+        </span>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleUntrashAll}
+          className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300"
+        >
+          <RotateCcw size={13} />
+          Restore All Files
+        </Button>
+      </div>
+
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden shadow-sm divide-y divide-[var(--border-subtle)]">
       {items.map((file) => (
         <div
           key={file.id}
