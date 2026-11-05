@@ -10,11 +10,11 @@ cd /d "%~dp0"
 
 :: Set Cargo environment paths
 if exist "T:\DevLibs\cargo" set "CARGO_HOME=T:\DevLibs\cargo"
-set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+if exist "%USERPROFILE%\.cargo\bin" set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
 
 :: Automatically free port 1420 if previously occupied by a dangling process
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r ":1420[ ]" ^| findstr "LISTENING"') do (
-    echo Freeing port 1420 (PID %%a)...
+    echo Freeing port 1420 for PID %%a...
     taskkill /f /pid %%a >nul 2>&1
 )
 
@@ -23,7 +23,6 @@ call pnpm tauri dev
 
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo Process exited with code %ERRORLEVEL%. Press any key to exit...
-    pause >nul
+    echo Process exited with error code %ERRORLEVEL%.
+    pause
 )
-
