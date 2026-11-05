@@ -160,6 +160,10 @@ export const syncNow = () => invoke<void>("sync_now");
 export const queueStatus = () => invoke<QueueStatus>("queue_status");
 
 export const driveList = (folderId: string) => invoke<DriveFile[]>("drive_list", { folderId });
+export const driveListSubfolders = (parentId: string) =>
+  invoke<DriveFile[]>("drive_list_subfolders", { parentId });
+export const driveGetFolderMeta = (folderId: string) =>
+  invoke<DriveFile>("drive_get_folder_meta", { folderId });
 export const driveGetFolders = () => invoke<DriveFile[]>("drive_get_folders");
 export const driveGetSharedFolders = () => invoke<DriveFile[]>("drive_get_shared_folders");
 export const driveCreateFolder = (parentId: string, name: string) =>

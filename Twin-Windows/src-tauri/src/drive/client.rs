@@ -188,6 +188,56 @@ impl DriveClient {
         Ok(list.files)
     }
 
+    /// List immediate subfolders of a specific parent folder in Google Drive (ordered by name).
+    pub async fn list_subfolders(
+        &self,
+        parent_id: &str,
+    ) -> Result<Vec<DriveFile>, AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{}/files", self.base_url);
+        let q = format!("'{parent_id}' in parents and (mimeType = 'application/vnd.google-apps.folder' or mimeType = 'application/vnd.google-apps.shortcut') and trashed = false");
+        let resp = self.execute_with_retry(|| {
+            self.http.get(&url)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .query(&[
+                    ("q",                         q.as_str()),
+                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred,shared)"),
+                    ("pageSize",                  "1000"),
+                    ("orderBy",                   "name"),
+                    ("supportsAllDrives",         "true"),
+                ])
+        }).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            tracing::error!("list_subfolders HTTP {status}: {body}");
+            return Err(AppError::Drive(format!("list_subfolders HTTP {status}: {body}")));
+        }
+        let list: FileList = resp.json().await
+            .map_err(|e| AppError::Drive(format!("list_subfolders parse: {e}")))?;
+        Ok(list.files)
+    }
+
+    /// Get folder details by ID.
+    pub async fn get_folder_meta(&self, folder_id: &str) -> Result<DriveFile, AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{}/files/{folder_id}", self.base_url);
+        let resp = self.execute_with_retry(|| {
+            self.http.get(&url)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .query(&[
+                    ("fields", "id,name,mimeType,modifiedTime,parents,starred,shared"),
+                    ("supportsAllDrives", "true"),
+                ])
+        }).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AppError::Drive(format!("get_folder_meta HTTP {status}: {body}")));
+        }
+        resp.json().await.map_err(|e| AppError::Drive(format!("parse meta: {e}")))
+    }
+
     /// Retrieve folders owned by the authenticated user in My Drive ('me' in owners, pageSize=1000).
     pub async fn get_my_drive_folders(&self) -> Result<Vec<DriveFile>, AppError> {
         let token = auth::access_token().await?;

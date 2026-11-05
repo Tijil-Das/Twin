@@ -1,8 +1,12 @@
 /**
  * Windows Explorer style Google Drive folder selector panel.
- * Strictly separates "My Drive" (owned by user) and "Shared with me" (shared by others).
- * Provides hierarchical breadcrumb navigation, instant inline folder creation,
- * Drive switching, search, and scope diagnostics.
+ * Performs true path-based directory traversal:
+ * - Direct subfolder querying per directory level ('parent_id' in parents)
+ * - Breadcrumb address bar with clickable ancestors & jump-to-path
+ * - Up-one-level navigation (ArrowUp)
+ * - Folder caching for instant back/forth browsing
+ * - Dedicated "My Drive" and "Shared with me" locations
+ * - Direct folder ID / URL jump support
  */
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
@@ -19,10 +23,11 @@ import {
   Plus,
   X,
   ShieldAlert,
+  Edit2,
 } from "lucide-react";
 import {
-  driveList,
-  driveGetFolders,
+  driveListSubfolders,
+  driveGetFolderMeta,
   driveGetSharedFolders,
   driveCreateFolder,
   driveSearch,
@@ -52,7 +57,7 @@ interface SharedDriveItem {
   name: string;
 }
 
-type DriveSection = "my_drive" | "shared_with_me" | string;
+type DriveLocation = "my_drive" | "shared_with_me" | string;
 
 interface Props {
   selectedFolderId: string;
@@ -61,20 +66,17 @@ interface Props {
 }
 
 export function DriveFolderSelector({ selectedFolderId, onSelect, className }: Props) {
-  const [activeSection, setActiveSection] = useState<DriveSection>("my_drive");
+  const [activeLocation, setActiveLocation] = useState<DriveLocation>("my_drive");
   const [currentFolderId, setCurrentFolderId] = useState<string>("root");
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([
     { id: "root", name: "My Drive" },
   ]);
   const [sharedDrives, setSharedDrives] = useState<SharedDriveItem[]>([]);
-  
-  // Cache partitioned by section: "my_drive" or "shared_with_me"
-  const [myDriveFolders, setMyDriveFolders] = useState<DriveFolder[]>([]);
-  const [sharedFolders, setSharedFolders] = useState<DriveFolder[]>([]);
-  const [folderCache, setFolderCache] = useState<Record<string, DriveFolder[]>>({});
+
+  // Directory cache: parentId -> immediate subfolders
+  const [directoryCache, setDirectoryCache] = useState<Record<string, DriveFolder[]>>({});
 
   const [loading, setLoading] = useState(false);
-  const [isSearchingAll, setIsSearchingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
   const [activeSelection, setActiveSelection] = useState<{ id: string; name: string } | null>(
@@ -82,6 +84,10 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
   );
   const [hasFullScope, setHasFullScope] = useState<boolean>(true);
   const [reauthorizing, setReauthorizing] = useState(false);
+
+  // Address bar manual edit mode
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [addressInput, setAddressInput] = useState("");
 
   // New folder inline creation
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -100,246 +106,75 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
     });
   }, []);
 
-  // Primary loader: load My Drive folders or Shared with me folders
-  const loadSectionFolders = useCallback(async (section: DriveSection, force = false) => {
-    setLoading(true);
-    setIsSearchingAll(false);
-    setError(null);
-    try {
-      if (section === "my_drive") {
-        if (myDriveFolders.length === 0 || force) {
-          const raw = await driveGetFolders();
-          const list: DriveFolder[] = (raw || []).map((f: DriveFile) => ({
-            id: f.id,
-            name: f.name || "Untitled Folder",
-            modifiedTime: f.modified_time || f.modifiedTime,
-            parents: f.parents || [],
-            shared: f.shared || false,
-          }));
-          setMyDriveFolders(list);
-          return list;
+  // Fetch immediate subfolders of a specific parent
+  const fetchSubfolders = useCallback(
+    async (folderId: string, force = false) => {
+      if (!force && directoryCache[folderId]) {
+        return directoryCache[folderId];
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        let raw: DriveFile[] = [];
+
+        // If top-level "Shared with me", query shared items
+        if (folderId === "shared_with_me") {
+          raw = await driveGetSharedFolders();
+        } else {
+          // Direct path query: immediate children of folderId
+          raw = await driveListSubfolders(folderId);
         }
-        return myDriveFolders;
-      } else if (section === "shared_with_me") {
-        if (sharedFolders.length === 0 || force) {
-          const raw = await driveGetSharedFolders();
-          const list: DriveFolder[] = (raw || []).map((f: DriveFile) => ({
-            id: f.id,
-            name: f.name || "Untitled Folder",
-            modifiedTime: f.modified_time || f.modifiedTime,
-            parents: f.parents || [],
-            shared: true,
-          }));
-          setSharedFolders(list);
-          return list;
-        }
-        return sharedFolders;
-      } else {
-        // Shared Drive or specific drive container
-        const items = await driveList(section);
-        const list: DriveFolder[] = (items || [])
-          .filter((item: DriveFile) => {
-            const mime = item.mime_type || item.mimeType;
+
+        const folders: DriveFolder[] = (raw || [])
+          .filter((f) => {
+            const mime = f.mime_type || f.mimeType;
             return (
               mime === "application/vnd.google-apps.folder" ||
               mime === "application/vnd.google-apps.shortcut"
             );
           })
-          .map((f: DriveFile) => ({
+          .map((f) => ({
             id: f.id,
             name: f.name || "Untitled Folder",
             modifiedTime: f.modified_time || f.modifiedTime,
             parents: f.parents || [],
-            shared: false,
-          }));
-        setFolderCache((prev) => ({ ...prev, [section]: list }));
-        return list;
-      }
-    } catch (err: unknown) {
-      console.error("[DriveFolderSelector] loadSectionFolders error:", err);
-      const msg =
-        typeof err === "string" ? err : err instanceof Error ? err.message : JSON.stringify(err);
-      setError(`Failed to retrieve folders: ${msg}`);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, [myDriveFolders, sharedFolders]);
+            shared: f.shared || false,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
-  // Load subfolder or top-level folders
-  const loadCurrentFolder = useCallback(async (targetId: string, section: DriveSection, force = false) => {
-    // If inside a subfolder, list its direct children if not in cache
-    if (targetId !== "root" && targetId !== "shared_with_me" && !sharedDrives.some((d) => d.id === targetId)) {
-      if (!folderCache[targetId] || force) {
-        setLoading(true);
-        try {
-          const items = await driveList(targetId);
-          const list: DriveFolder[] = (items || [])
-            .filter((item: DriveFile) => {
-              const mime = item.mime_type || item.mimeType;
-              return (
-                mime === "application/vnd.google-apps.folder" ||
-                mime === "application/vnd.google-apps.shortcut"
-              );
-            })
-            .map((f: DriveFile) => ({
-              id: f.id,
-              name: f.name || "Untitled Folder",
-              modifiedTime: f.modified_time || f.modifiedTime,
-              parents: f.parents || [],
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-          setFolderCache((prev) => ({ ...prev, [targetId]: list }));
-        } catch (e: unknown) {
-          setError(`Failed to open folder: ${String(e)}`);
-        } finally {
-          setLoading(false);
-        }
+        setDirectoryCache((prev) => ({ ...prev, [folderId]: folders }));
+        return folders;
+      } catch (err: unknown) {
+        console.error(`[DriveFolderSelector] fetchSubfolders(${folderId}) error:`, err);
+        const msg =
+          typeof err === "string" ? err : err instanceof Error ? err.message : JSON.stringify(err);
+        setError(`Failed to open folder: ${msg}`);
+        return [];
+      } finally {
+        setLoading(false);
       }
-      return;
-    }
-
-    // Top-level section load
-    await loadSectionFolders(section, force);
-  }, [folderCache, loadSectionFolders, sharedDrives]);
+    },
+    [directoryCache]
+  );
 
   useEffect(() => {
-    void loadCurrentFolder(currentFolderId, activeSection);
-  }, [currentFolderId, activeSection, loadCurrentFolder]);
+    void fetchSubfolders(currentFolderId);
+  }, [currentFolderId, fetchSubfolders]);
 
-  // Determine displayed folders for current view
-  const currentFolders = useMemo(() => {
-    if (activeSection === "my_drive") {
-      if (currentFolderId === "root") {
-        // Direct top-level folders in My Drive:
-        // Folders with 'root' in parents, or whose parent is not one of user's other folders
-        const allIds = new Set(myDriveFolders.map((f) => f.id));
-        const roots = myDriveFolders.filter((f) => {
-          if (!f.parents || f.parents.length === 0) return true;
-          if (f.parents.includes("root")) return true;
-          // If parent is not any folder in myDriveFolders, it sits at root
-          return !f.parents.some((p) => allIds.has(p));
-        });
-        return roots.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-      }
-      // Subfolder in My Drive
-      if (folderCache[currentFolderId]) {
-        return folderCache[currentFolderId];
-      }
-      const children = myDriveFolders.filter((f) => f.parents && f.parents.includes(currentFolderId));
-      return children.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-    } else if (activeSection === "shared_with_me") {
-      if (currentFolderId === "root" || currentFolderId === "shared_with_me") {
-        return sharedFolders.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-      }
-      return folderCache[currentFolderId] || [];
-    } else {
-      // Shared Drive container
-      return folderCache[currentFolderId] || [];
-    }
-  }, [activeSection, currentFolderId, myDriveFolders, sharedFolders, folderCache]);
+  // Current folder's children from cache
+  const subfolders = useMemo(() => {
+    return directoryCache[currentFolderId] || [];
+  }, [directoryCache, currentFolderId]);
 
-  // Filtered folders by search text
+  // Filtered by local search query
   const displayedFolders = useMemo(() => {
-    if (!filterQuery.trim() || isSearchingAll) return currentFolders;
+    if (!filterQuery.trim()) return subfolders;
     const q = filterQuery.toLowerCase();
-    return currentFolders.filter((f) => f.name.toLowerCase().includes(q));
-  }, [currentFolders, filterQuery, isSearchingAll]);
+    return subfolders.filter((f) => f.name.toLowerCase().includes(q));
+  }, [subfolders, filterQuery]);
 
-  // Search across Google Drive
-  async function handleSearchEntireDrive() {
-    if (!filterQuery.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const results = await driveSearch(filterQuery.trim(), "application/vnd.google-apps.folder");
-      const list: DriveFolder[] = (results || []).map((f: DriveFile) => ({
-        id: f.id,
-        name: f.name || "Untitled Folder",
-        modifiedTime: f.modified_time || f.modifiedTime,
-        parents: f.parents || [],
-        shared: f.shared || false,
-      }));
-      setFolderCache((prev) => ({ ...prev, [currentFolderId]: list }));
-      setIsSearchingAll(true);
-    } catch (err: unknown) {
-      setError(`Drive search failed: ${String(err)}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Create new folder in current directory
-  async function handleCreateNewFolder() {
-    const name = newFolderName.trim();
-    if (!name) return;
-    setCreatingFolder(true);
-    try {
-      const targetParent = currentFolderId === "shared_with_me" ? "root" : currentFolderId;
-      const newId = await driveCreateFolder(targetParent, name);
-      toast.success(`Created folder "${name}"`);
-      const newFolder: DriveFolder = {
-        id: newId,
-        name,
-        modifiedTime: new Date().toISOString(),
-        parents: [targetParent],
-        shared: false,
-      };
-      setMyDriveFolders((prev) => [newFolder, ...prev]);
-      setFolderCache((prev) => ({
-        ...prev,
-        [targetParent]: [newFolder, ...(prev[targetParent] || [])],
-      }));
-      setIsCreatingFolder(false);
-      setNewFolderName("");
-      selectFolder(newId, name);
-    } catch (e) {
-      toast.error(`Could not create folder: ${String(e)}`);
-    } finally {
-      setCreatingFolder(false);
-    }
-  }
-
-  // Re-authorize with full Drive scope
-  async function handleReauthorize() {
-    setReauthorizing(true);
-    try {
-      await authLogin();
-      toast.success("Authentication updated! Refreshing My Drive folders...");
-      setHasFullScope(true);
-      void loadSectionFolders(activeSection, true);
-    } catch (e) {
-      toast.error(`Authorization failed: ${String(e)}`);
-    } finally {
-      setReauthorizing(false);
-    }
-  }
-
-  // Switch top-level location (My Drive vs Shared with me vs Shared Drives)
-  function handleSectionChange(newSection: DriveSection) {
-    setActiveSection(newSection);
-    setIsSearchingAll(false);
-    setFilterQuery("");
-    setIsCreatingFolder(false);
-
-    if (newSection === "my_drive") {
-      setCurrentFolderId("root");
-      setBreadcrumbs([{ id: "root", name: "My Drive" }]);
-      void loadSectionFolders("my_drive");
-    } else if (newSection === "shared_with_me") {
-      setCurrentFolderId("shared_with_me");
-      setBreadcrumbs([{ id: "shared_with_me", name: "Shared with me" }]);
-      void loadSectionFolders("shared_with_me");
-    } else {
-      const drive = sharedDrives.find((d) => d.id === newSection);
-      const driveName = drive?.name || "Shared Drive";
-      setCurrentFolderId(newSection);
-      setBreadcrumbs([{ id: newSection, name: driveName }]);
-      void loadSectionFolders(newSection);
-    }
-  }
-
-  // Navigate deeper into a subfolder
+  // Navigate deeper into a clicked subfolder
   function enterFolder(folder: DriveFolder) {
     setCurrentFolderId(folder.id);
     setBreadcrumbs((prev) => [...prev, { id: folder.id, name: folder.name }]);
@@ -347,7 +182,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
     setIsCreatingFolder(false);
   }
 
-  // Navigate up to parent folder
+  // Navigate up one folder level
   function navigateUp() {
     if (breadcrumbs.length <= 1) return;
     const parent = breadcrumbs[breadcrumbs.length - 2];
@@ -367,7 +202,105 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
     setIsCreatingFolder(false);
   }
 
-  // Handle selecting a folder
+  // Switch top-level location (My Drive vs Shared with me vs Shared Drive)
+  function handleLocationChange(newLocation: DriveLocation) {
+    setActiveLocation(newLocation);
+    setFilterQuery("");
+    setIsCreatingFolder(false);
+
+    if (newLocation === "my_drive") {
+      setCurrentFolderId("root");
+      setBreadcrumbs([{ id: "root", name: "My Drive" }]);
+      void fetchSubfolders("root", true);
+    } else if (newLocation === "shared_with_me") {
+      setCurrentFolderId("shared_with_me");
+      setBreadcrumbs([{ id: "shared_with_me", name: "Shared with me" }]);
+      void fetchSubfolders("shared_with_me", true);
+    } else {
+      const drive = sharedDrives.find((d) => d.id === newLocation);
+      const driveName = drive?.name || "Shared Drive";
+      setCurrentFolderId(newLocation);
+      setBreadcrumbs([{ id: newLocation, name: driveName }]);
+      void fetchSubfolders(newLocation, true);
+    }
+  }
+
+  // Jump to pasted folder ID or link
+  async function handleJumpToAddress() {
+    let input = addressInput.trim();
+    if (!input) {
+      setIsEditingAddress(false);
+      return;
+    }
+    // Parse ID from URL if pasted (e.g. https://drive.google.com/drive/folders/1aBcDeFg...)
+    const urlMatch = input.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+    if (urlMatch) {
+      input = urlMatch[1];
+    }
+
+    setLoading(true);
+    try {
+      const meta = await driveGetFolderMeta(input);
+      const name = meta.name || "Target Folder";
+      setCurrentFolderId(meta.id);
+      setBreadcrumbs([{ id: meta.id, name }]);
+      setIsEditingAddress(false);
+      setAddressInput("");
+      selectFolder(meta.id, name);
+      void fetchSubfolders(meta.id, true);
+    } catch {
+      toast.error(`Folder "${input}" not found or inaccessible`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Create new subfolder inside current folder
+  async function handleCreateNewFolder() {
+    const name = newFolderName.trim();
+    if (!name) return;
+    setCreatingFolder(true);
+    try {
+      const parentId = currentFolderId === "shared_with_me" ? "root" : currentFolderId;
+      const newId = await driveCreateFolder(parentId, name);
+      toast.success(`Created folder "${name}"`);
+      const newFolder: DriveFolder = {
+        id: newId,
+        name,
+        modifiedTime: new Date().toISOString(),
+        parents: [parentId],
+        shared: false,
+      };
+      setDirectoryCache((prev) => ({
+        ...prev,
+        [parentId]: [newFolder, ...(prev[parentId] || [])],
+      }));
+      setIsCreatingFolder(false);
+      setNewFolderName("");
+      selectFolder(newId, name);
+    } catch (e) {
+      toast.error(`Could not create folder: ${String(e)}`);
+    } finally {
+      setCreatingFolder(false);
+    }
+  }
+
+  // Re-authorize with full Drive scope
+  async function handleReauthorize() {
+    setReauthorizing(true);
+    try {
+      await authLogin();
+      toast.success("Authentication updated! Refreshing Drive folders...");
+      setHasFullScope(true);
+      void fetchSubfolders(currentFolderId, true);
+    } catch (e) {
+      toast.error(`Authorization failed: ${String(e)}`);
+    } finally {
+      setReauthorizing(false);
+    }
+  }
+
+  // Select a folder as target
   function selectFolder(id: string, name: string) {
     setActiveSelection({ id, name });
     onSelect(id, name);
@@ -400,8 +333,9 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         </div>
       )}
 
-      {/* ── Location Selector & Breadcrumb Toolbar ── */}
+      {/* ── Location Selector & Windows Explorer Address Bar ── */}
       <div className="p-2 border-b border-[var(--border)] bg-[#12141d] flex items-center gap-1.5 flex-wrap">
+        {/* Up-one-level button */}
         <button
           type="button"
           onClick={navigateUp}
@@ -412,51 +346,95 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
           <ArrowUp size={14} />
         </button>
 
-        {/* Section Switcher: My Drive / Shared with me / Shared Drives */}
+        {/* Location Switcher: My Drive / Shared with me / Shared Drives */}
         <select
-          value={activeSection}
-          onChange={(e) => handleSectionChange(e.target.value)}
+          value={activeLocation}
+          onChange={(e) => handleLocationChange(e.target.value)}
           className="bg-[#090a0e] text-xs text-white border border-[var(--border)] rounded px-2.5 py-1 outline-none font-medium shrink-0 cursor-pointer hover:border-zinc-500"
         >
-          <option value="my_drive">📁 My Drive (Personal)</option>
+          <option value="my_drive">📁 My Drive</option>
           <option value="shared_with_me">👥 Shared with me</option>
           {sharedDrives.map((d) => (
             <option key={d.id} value={d.id}>
-              🏢 {d.name} (Shared Drive)
+              🏢 {d.name}
             </option>
           ))}
         </select>
 
-        {/* Breadcrumb address path */}
-        <div className="flex-1 min-w-[140px] flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#090a0e] border border-[var(--border)] overflow-x-auto select-none">
-          {activeSection === "shared_with_me" ? (
-            <Users size={13} className="text-emerald-400 shrink-0 mr-0.5" />
-          ) : (
-            <HardDrive size={13} className="text-blue-400 shrink-0 mr-0.5" />
-          )}
-          {breadcrumbs.map((bc, idx) => {
-            const isLast = idx === breadcrumbs.length - 1;
-            return (
-              <div key={bc.id} className="flex items-center gap-1 shrink-0">
-                {idx > 0 && <ChevronRight size={11} className="text-zinc-600 shrink-0" />}
-                <button
-                  type="button"
-                  onClick={() => jumpToBreadcrumb(idx)}
-                  disabled={isLast}
-                  className={cn(
-                    "px-1 py-0.5 rounded transition-colors text-xs truncate max-w-[140px]",
-                    isLast
-                      ? "font-semibold text-white cursor-default"
-                      : "text-zinc-400 hover:text-blue-400 hover:bg-white/5"
-                  )}
-                  title={bc.name}
-                >
-                  {bc.name}
-                </button>
-              </div>
-            );
-          })}
-        </div>
+        {/* Breadcrumb Path or Direct Address Input */}
+        {isEditingAddress ? (
+          <div className="flex-1 min-w-[180px] flex items-center gap-1">
+            <input
+              type="text"
+              value={addressInput}
+              onChange={(e) => setAddressInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleJumpToAddress();
+                if (e.key === "Escape") setIsEditingAddress(false);
+              }}
+              placeholder="Paste Google Drive folder URL or ID..."
+              autoFocus
+              className="flex-1 bg-[#090a0e] text-xs text-white border border-blue-500 rounded px-2.5 py-1 outline-none font-mono"
+            />
+            <button
+              type="button"
+              onClick={handleJumpToAddress}
+              className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-medium"
+            >
+              Go
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsEditingAddress(false)}
+              className="p-1 text-zinc-400 hover:text-white"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex-1 min-w-[140px] flex items-center justify-between gap-1 px-2.5 py-1 rounded-md bg-[#090a0e] border border-[var(--border)] overflow-x-auto select-none group">
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {activeLocation === "shared_with_me" ? (
+                <Users size={13} className="text-emerald-400 shrink-0 mr-0.5" />
+              ) : (
+                <HardDrive size={13} className="text-blue-400 shrink-0 mr-0.5" />
+              )}
+              {breadcrumbs.map((bc, idx) => {
+                const isLast = idx === breadcrumbs.length - 1;
+                return (
+                  <div key={bc.id} className="flex items-center gap-1 shrink-0">
+                    {idx > 0 && <ChevronRight size={11} className="text-zinc-600 shrink-0" />}
+                    <button
+                      type="button"
+                      onClick={() => jumpToBreadcrumb(idx)}
+                      disabled={isLast}
+                      className={cn(
+                        "px-1 py-0.5 rounded transition-colors text-xs truncate max-w-[140px]",
+                        isLast
+                          ? "font-semibold text-white cursor-default"
+                          : "text-zinc-400 hover:text-blue-400 hover:bg-white/5"
+                      )}
+                      title={bc.name}
+                    >
+                      {bc.name}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAddressInput(currentFolderId === "root" ? "" : currentFolderId);
+                setIsEditingAddress(true);
+              }}
+              title="Edit folder path or paste ID"
+              className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-white transition-opacity"
+            >
+              <Edit2 size={11} />
+            </button>
+          </div>
+        )}
 
         {/* New Folder button */}
         <button
@@ -477,9 +455,9 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         {/* Refresh button */}
         <button
           type="button"
-          onClick={() => void loadSectionFolders(activeSection, true)}
+          onClick={() => void fetchSubfolders(currentFolderId, true)}
           disabled={loading}
-          title="Refresh folder listing"
+          title="Refresh current folder"
           className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-2)] disabled:opacity-40 transition-colors shrink-0"
         >
           <RefreshCw size={13} className={cn(loading && "animate-spin text-blue-400")} />
@@ -498,7 +476,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
               if (e.key === "Enter") void handleCreateNewFolder();
               if (e.key === "Escape") setIsCreatingFolder(false);
             }}
-            placeholder="Enter new folder name..."
+            placeholder={`Create new folder inside "${currentFolder.name}"...`}
             autoFocus
             className="flex-1 bg-[#090a0e] border border-[var(--border)] rounded px-2.5 py-1 text-xs text-white placeholder:text-zinc-500 outline-none focus:border-blue-500"
           />
@@ -524,7 +502,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         </div>
       )}
 
-      {/* ── Subfolder Filter / Search Bar ── */}
+      {/* ── Subfolder Filter Bar ── */}
       <div className="px-3 py-1.5 border-b border-[var(--border)] bg-[#10121a] flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-zinc-400 text-[11px] font-medium flex-1">
           <Search size={12} className="text-zinc-500 shrink-0" />
@@ -532,24 +510,12 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
             type="text"
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleSearchEntireDrive();
-            }}
-            placeholder={`Filter ${currentFolder.name}...`}
+            placeholder={`Filter inside "${currentFolder.name}"...`}
             className="bg-transparent border-0 outline-none text-xs text-white placeholder:text-zinc-500 w-full"
           />
         </div>
-        {filterQuery && !isSearchingAll && (
-          <button
-            type="button"
-            onClick={handleSearchEntireDrive}
-            className="text-[11px] text-blue-400 hover:underline shrink-0"
-          >
-            Search Drive
-          </button>
-        )}
         <span className="text-[11px] text-zinc-500 shrink-0">
-          {displayedFolders.length} folder{displayedFolders.length === 1 ? "" : "s"}
+          {displayedFolders.length} subfolder{displayedFolders.length === 1 ? "" : "s"}
         </span>
       </div>
 
@@ -558,9 +524,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         {loading ? (
           <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500">
             <RefreshCw size={18} className="animate-spin text-blue-400" />
-            <span className="text-xs">
-              Loading {activeSection === "shared_with_me" ? "shared folders" : "My Drive folders"}...
-            </span>
+            <span className="text-xs">Opening "{currentFolder.name}"...</span>
           </div>
         ) : error ? (
           <div className="p-4 text-center space-y-2">
@@ -568,7 +532,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
             <p className="text-xs text-zinc-400 leading-relaxed break-words">{error}</p>
             <button
               type="button"
-              onClick={() => void loadSectionFolders(activeSection, true)}
+              onClick={() => void fetchSubfolders(currentFolderId, true)}
               className="text-xs text-blue-400 hover:underline inline-block font-medium"
             >
               Retry Connection
@@ -579,39 +543,17 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
             <FolderPlus size={24} className="mx-auto text-zinc-600" />
             <p className="text-xs text-zinc-400">
               {filterQuery
-                ? `No folders matching "${filterQuery}".`
-                : activeSection === "shared_with_me"
-                ? "No folders shared with you."
-                : "No folders found in your My Drive."}
+                ? `No subfolders matching "${filterQuery}".`
+                : `No subfolders inside "${currentFolder.name}".`}
             </p>
-            <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
-              {activeSection === "my_drive" && (
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingFolder(true)}
-                  className="text-xs px-2.5 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30 inline-flex items-center gap-1.5 font-medium"
-                >
-                  <FolderPlus size={13} />
-                  <span>+ Create Folder in My Drive</span>
-                </button>
-              )}
-              {activeSection === "my_drive" && (
-                <button
-                  type="button"
-                  onClick={() => handleSectionChange("shared_with_me")}
-                  className="text-xs px-2.5 py-1 rounded bg-[var(--surface-2)] text-zinc-300 hover:text-white border border-[var(--border)] inline-flex items-center gap-1.5"
-                >
-                  <Users size={13} />
-                  <span>View Shared with me</span>
-                </button>
-              )}
+            <div className="flex items-center justify-center gap-2 pt-1">
               <button
                 type="button"
-                onClick={handleSearchEntireDrive}
-                className="text-xs px-2.5 py-1 rounded bg-[var(--surface-2)] text-zinc-300 hover:text-white border border-[var(--border)] inline-flex items-center gap-1.5"
+                onClick={() => setIsCreatingFolder(true)}
+                className="text-xs px-2.5 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30 inline-flex items-center gap-1.5 font-medium"
               >
-                <Search size={13} />
-                <span>Search All Drive</span>
+                <FolderPlus size={13} />
+                <span>+ Create Subfolder Here</span>
               </button>
             </div>
           </div>
@@ -632,7 +574,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
                 )}
               >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  {folder.shared || activeSection === "shared_with_me" ? (
+                  {folder.shared ? (
                     <Users size={15} className="text-emerald-400 shrink-0" />
                   ) : (
                     <Folder
@@ -681,7 +623,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
           )}
         >
           <Folder size={12} className="text-amber-400" />
-          <span>Use Current: "{currentFolder.name}"</span>
+          <span>Use Current Folder: "{currentFolder.name}"</span>
         </button>
 
         {activeSelection ? (

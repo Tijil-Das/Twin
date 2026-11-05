@@ -143,6 +143,27 @@ async fn drive_list(folder_id: String) -> Result<Vec<DriveFile>, String> {
     })
 }
 
+/// List immediate subfolders of a specific parent folder.
+#[tauri::command]
+async fn drive_list_subfolders(parent_id: String) -> Result<Vec<DriveFile>, String> {
+    tracing::info!("Listing subfolders for parent: {parent_id}");
+    let drive = drive::DriveClient::new().map_err(|e| {
+        tracing::error!("DriveClient::new failed: {e}");
+        e.to_string()
+    })?;
+    drive.list_subfolders(&parent_id).await.map_err(|e| {
+        tracing::error!("drive.list_subfolders('{parent_id}') failed: {e}");
+        e.to_string()
+    })
+}
+
+/// Get folder metadata by ID.
+#[tauri::command]
+async fn drive_get_folder_meta(folder_id: String) -> Result<DriveFile, String> {
+    let drive = drive::DriveClient::new().map_err(|e| e.to_string())?;
+    drive.get_folder_meta(&folder_id).await.map_err(|e| e.to_string())
+}
+
 /// List all folders across Google Drive (My Drive).
 #[tauri::command]
 async fn drive_get_folders() -> Result<Vec<DriveFile>, String> {
@@ -443,6 +464,8 @@ fn main() {
             queue::sync_now,
             queue::queue_status,
             drive_list,
+            drive_list_subfolders,
+            drive_get_folder_meta,
             drive_get_folders,
             drive_get_shared_folders,
             drive_create_folder,
