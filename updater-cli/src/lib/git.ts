@@ -46,6 +46,30 @@ export async function bumpPackageJson(
       fs.writeFileSync(cargoPath, cargo, 'utf8')
     } catch {}
   }
+
+  // Also bump Website static fallbacks
+  const gitRoot = path.resolve(appDir, '..')
+  const websiteIndex = path.join(gitRoot, 'Website', 'index.html')
+  if (fs.existsSync(websiteIndex)) {
+    try {
+      let indexHtml = fs.readFileSync(websiteIndex, 'utf8')
+      indexHtml = indexHtml.replace(/(v)\d+\.\d+\.\d+/g, `$1${newVersion}`)
+      indexHtml = indexHtml.replace(/(Version\s+<[^>]+>)\d+\.\d+\.\d+(<)/g, `$1${newVersion}$2`)
+      indexHtml = indexHtml.replace(/(Twin_)\d+\.\d+\.\d+(_x64)/g, `$1${newVersion}$2`)
+      fs.writeFileSync(websiteIndex, indexHtml, 'utf8')
+    } catch {}
+  }
+
+  const websiteMain = path.join(gitRoot, 'Website', 'main.js')
+  if (fs.existsSync(websiteMain)) {
+    try {
+      let mainJs = fs.readFileSync(websiteMain, 'utf8')
+      mainJs = mainJs.replace(/(DEFAULT_VERSION\s*=\s*['"])v\d+\.\d+\.\d+(['"])/, `$1v${newVersion}$2`)
+      mainJs = mainJs.replace(/(Twin_)\d+\.\d+\.\d+(_x64)/g, `$1${newVersion}$2`)
+      mainJs = mainJs.replace(/(\/download\/)v\d+\.\d+\.\d+(\/)/g, `$1v${newVersion}$2`)
+      fs.writeFileSync(websiteMain, mainJs, 'utf8')
+    } catch {}
+  }
 }
 
 /**
@@ -85,6 +109,13 @@ export async function createReleaseCommit(
   if (fs.existsSync(releaseNotesPath)) {
     const relNotes = path.relative(gitRoot, releaseNotesPath).replace(/\\/g, '/')
     await execa('git', ['add', relNotes], { cwd: gitRoot })
+  }
+
+  // Stage Website files if present
+  for (const webFile of ['Website/index.html', 'Website/main.js', 'Website/privacy.html', 'Website/terms.html']) {
+    if (fs.existsSync(path.join(gitRoot, webFile))) {
+      await execa('git', ['add', webFile], { cwd: gitRoot })
+    }
   }
 
   // Commit (supports --allow-empty if package.json was already at newVersion)

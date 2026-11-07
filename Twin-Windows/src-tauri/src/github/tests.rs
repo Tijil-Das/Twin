@@ -145,6 +145,7 @@ async fn unchanged_hash_skips_push() {
             drive_folder_id: "folder123".into(),
             mode: PairMode::TwoWay,
             enabled: true,
+            deletion: None,
         }],
         ..Default::default()
     };

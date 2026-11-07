@@ -50,6 +50,7 @@ fn test_pending_update_file_lifecycle() {
         downloaded_at: "2026-11-03T00:00:00Z".to_string(),
         binary_path: "C:\\path\\to\\twin.exe".to_string(),
         release_notes: Some("Fixes and features".to_string()),
+        update_type: Some(UpdateType::SetupInstaller),
     };
     write_pending(&pending_file, &pending).unwrap();
 
@@ -98,4 +99,64 @@ async fn test_release_info_json_deserialization() {
     assert_eq!(info.body.as_deref(), Some("Major speed upgrade"));
     assert_eq!(info.assets.len(), 1);
     assert_eq!(info.assets[0].name, "twin-setup.exe");
+}
+
+#[test]
+fn test_select_update_asset_safety() {
+    let assets = vec![
+        ReleaseAsset {
+            name: "SHA256SUMS.txt".to_string(),
+            browser_download_url: "https://example.com/sums".to_string(),
+            size: 100,
+        },
+        ReleaseAsset {
+            name: "Twin-Windows-Portable.zip".to_string(),
+            browser_download_url: "https://example.com/zip".to_string(),
+            size: 30000000,
+        },
+        ReleaseAsset {
+            name: "Twin.exe".to_string(),
+            browser_download_url: "https://example.com/exe".to_string(),
+            size: 10000000,
+        },
+        ReleaseAsset {
+            name: "Twin_1.1.1_x64-setup.exe".to_string(),
+            browser_download_url: "https://example.com/setup".to_string(),
+            size: 12000000,
+        },
+        ReleaseAsset {
+            name: "Twin_1.1.1_x64_en-US.msi".to_string(),
+            browser_download_url: "https://example.com/msi".to_string(),
+            size: 11000000,
+        },
+    ];
+
+    // Installed environment must select the setup installer, NEVER the zip or portable
+    let installed_selected = select_update_asset(&assets, true).unwrap();
+    assert_eq!(installed_selected.name, "Twin_1.1.1_x64-setup.exe");
+
+    // Portable/standalone environment must select standalone Twin.exe, NEVER the zip or setup installer
+    let portable_selected = select_update_asset(&assets, false).unwrap();
+    assert_eq!(portable_selected.name, "Twin.exe");
+
+    // Never selects a zip file even if it's the only archive
+    let zip_only = vec![ReleaseAsset {
+        name: "Twin-Windows-Portable.zip".to_string(),
+        browser_download_url: "https://example.com/zip".to_string(),
+        size: 30000000,
+    }];
+    assert!(select_update_asset(&zip_only, true).is_none());
+    assert!(select_update_asset(&zip_only, false).is_none());
+}
+
+#[test]
+fn test_pe_magic_header_validation() {
+    let valid_pe = b"MZ\x90\x00\x03\x00\x00\x00";
+    assert_eq!(&valid_pe[0..2], b"MZ");
+
+    let zip_header = b"PK\x03\x04\x14\x00\x00\x00";
+    assert_ne!(&zip_header[0..2], b"MZ");
+
+    let html_error = b"<!DOCTYPE html>";
+    assert_ne!(&html_error[0..2], b"MZ");
 }

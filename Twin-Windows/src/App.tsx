@@ -106,17 +106,16 @@ export default function App() {
         addConflict(ev.payload);
       }),
 
-      // Background update ready (JioTV Max pattern)
+      // Background update ready (short JioTV Max pattern)
       listen<{ version: string; notes?: string }>("update://ready", (ev) => {
-        toast.success(`Twin v${ev.payload.version} is ready to apply!`, {
-          description: "Update was downloaded seamlessly in the background. Restart to apply with zero re-install.",
+        toast.success(`Update v${ev.payload.version} Ready`, {
           action: {
-            label: "Restart now",
+            label: "Restart",
             onClick: () => {
               void updateInstall();
             },
           },
-          duration: 20000,
+          duration: 15000,
         });
       }),
     ];

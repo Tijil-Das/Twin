@@ -46,6 +46,7 @@ async fn setup_transfer_env() -> (tempfile::TempDir, Arc<Db>, Config, FakeDrive,
             github_push_mins: 60,
             start_hidden: false,
             dry_run: false,
+            color_drive_folders: false,
         },
         ..Default::default()
     };
@@ -55,6 +56,7 @@ async fn setup_transfer_env() -> (tempfile::TempDir, Arc<Db>, Config, FakeDrive,
         drive_folder_id: "root".into(),
         mode: PairMode::TwoWay,
         enabled: true,
+        deletion: None,
     });
 
     (dir, db, cfg, fake_drive, drive_client)

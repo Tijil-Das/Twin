@@ -67,12 +67,20 @@ pub struct UpdateStatePayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum UpdateType {
+    SetupInstaller,
+    BinaryReplace,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PendingUpdate {
     pub version: String,
     pub downloaded_at: String,
     pub binary_path: String,
     #[serde(default)]
     pub release_notes: Option<String>,
+    #[serde(default)]
+    pub update_type: Option<UpdateType>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -221,6 +229,63 @@ pub fn clear_pending(file_path: &Path) {
     let _ = std::fs::remove_file(file_path);
 }
 
+// ── Asset Selection & Environment Detection ──────────────────────────────────
+
+/// Checks whether Twin is running as an installed NSIS application or portable binary.
+pub fn is_installed_app() -> bool {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            if parent.join("uninstall.exe").exists() {
+                return true;
+            }
+        }
+        let exe_str = exe.to_string_lossy().to_lowercase();
+        if exe_str.contains("appdata\\local\\programs\\twin")
+            || exe_str.contains("program files\\twin")
+            || exe_str.contains("program files (x86)\\twin")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Selects the correct update asset for the current running environment.
+/// - Installed app: prefers NSIS setup installer (`Twin_<ver>_x64-setup.exe`) to preserve Windows registry uninstall entries.
+/// - Standalone / Portable app: selects standalone executable (`Twin.exe`).
+/// - NEVER selects .zip or .msi.
+pub fn select_update_asset<'a>(
+    assets: &'a [ReleaseAsset],
+    is_installed: bool,
+) -> Option<&'a ReleaseAsset> {
+    if is_installed {
+        // Priority 1: Official NSIS setup installer
+        if let Some(setup) = assets.iter().find(|a| a.name.ends_with("-setup.exe")) {
+            return Some(setup);
+        }
+        // Priority 2: Any .exe containing "setup"
+        if let Some(setup) = assets
+            .iter()
+            .find(|a| a.name.ends_with(".exe") && a.name.to_lowercase().contains("setup"))
+        {
+            return Some(setup);
+        }
+    }
+
+    // Portable / Standalone: Look specifically for standalone Twin.exe
+    if let Some(exe) = assets
+        .iter()
+        .find(|a| a.name.eq_ignore_ascii_case("Twin.exe"))
+    {
+        return Some(exe);
+    }
+
+    // Fallback: any .exe that is NOT setup and NOT a zip/msi
+    assets
+        .iter()
+        .find(|a| a.name.ends_with(".exe") && !a.name.to_lowercase().contains("setup"))
+}
+
 // ── Startup Pending Check ────────────────────────────────────────────────────
 
 /// Checks if an update was already downloaded and is waiting to be applied.
@@ -244,25 +309,57 @@ pub fn apply_pending_update_on_launch(app: &tauri::AppHandle) -> bool {
         return false;
     }
 
+    // Strict validation: verify file starts with PE magic header 'MZ'
+    if let Ok(bytes) = std::fs::read(&bin_path) {
+        if bytes.len() < 2 || &bytes[0..2] != b"MZ" {
+            error!("Pending binary failed PE check; discarding corrupted payload");
+            let _ = std::fs::remove_file(&bin_path);
+            clear_pending(&pending_file);
+            return false;
+        }
+    } else {
+        clear_pending(&pending_file);
+        return false;
+    }
+
     let current_exe = match std::env::current_exe() {
         Ok(e) => e,
         Err(_) => return false,
     };
 
+    let update_type = pending.update_type.unwrap_or_else(|| {
+        if bin_path.to_string_lossy().to_lowercase().contains("setup") {
+            UpdateType::SetupInstaller
+        } else {
+            UpdateType::BinaryReplace
+        }
+    });
+
     info!(
-        "Pending update found: v{} (current is v{}). Applying replacement...",
+        "Pending update found: v{} (current is v{}). Applying update...",
         pending.version, current_ver
     );
 
     #[cfg(windows)]
     {
         use std::process::Command;
-        let script = format!(
-            "Start-Sleep -Milliseconds 1000; Copy-Item -Force -LiteralPath '{}' -Destination '{}'; Start-Process -FilePath '{}'",
-            bin_path.to_string_lossy(),
-            current_exe.to_string_lossy(),
-            current_exe.to_string_lossy()
-        );
+        let script = match update_type {
+            UpdateType::SetupInstaller => {
+                // Silently run NSIS installer: updates files, registry uninstall keys, and restarts app cleanly
+                format!(
+                    "Start-Sleep -Milliseconds 1000; Start-Process -FilePath '{}' -ArgumentList '/S'",
+                    bin_path.to_string_lossy()
+                )
+            }
+            UpdateType::BinaryReplace => {
+                format!(
+                    "Start-Sleep -Milliseconds 1000; Copy-Item -Force -LiteralPath '{}' -Destination '{}'; Start-Process -FilePath '{}'",
+                    bin_path.to_string_lossy(),
+                    current_exe.to_string_lossy(),
+                    current_exe.to_string_lossy()
+                )
+            }
+        };
 
         let _ = Command::new("powershell")
             .args(["-WindowStyle", "Hidden", "-NoProfile", "-Command", &script])
@@ -312,7 +409,9 @@ pub async fn check_for_updates(
 
     let resp = client
         .get(&endpoint)
-        .header("User-Agent", "Twin-Windows-Updater")
+        .header("User-Agent", "Twin-Windows-Updater/1.1")
+        .header("Accept", "application/vnd.github.v3+json")
+        .header("Cache-Control", "no-cache")
         .send()
         .await;
 
@@ -350,15 +449,10 @@ pub async fn check_for_updates(
         return Ok(build_payload(&guard));
     }
 
-    // New version is available! Find suitable asset.
-    let asset = release_info
-        .assets
-        .iter()
-        .find(|a| a.name.ends_with(".exe") || a.name.ends_with(".zip"))
-        .cloned();
-
-    let asset = match asset {
-        Some(a) => a,
+    // New version is available! Select suitable executable asset based on environment.
+    let is_installed = is_installed_app();
+    let asset = match select_update_asset(&release_info.assets, is_installed) {
+        Some(a) => a.clone(),
         None => {
             let mut guard = updater_state().lock().await;
             guard.busy = false;
@@ -368,6 +462,12 @@ pub async fn check_for_updates(
             };
             return Ok(build_payload(&guard));
         }
+    };
+
+    let update_type = if asset.name.to_lowercase().contains("setup") {
+        UpdateType::SetupInstaller
+    } else {
+        UpdateType::BinaryReplace
     };
 
     // Auto-download update payload in background (JioTV Max autoDownload pattern)
@@ -380,11 +480,16 @@ pub async fn check_for_updates(
     }
 
     let download_dir = updates_dir(app);
-    let target_bin = download_dir.join(format!("twin-v{remote_ver}.exe"));
+    let target_bin = download_dir.join(if update_type == UpdateType::SetupInstaller {
+        format!("Twin_{remote_ver}_setup.exe")
+    } else {
+        format!("Twin_{remote_ver}.exe")
+    });
 
     let dl_resp = client
         .get(&asset.browser_download_url)
-        .header("User-Agent", "Twin-Windows-Updater")
+        .header("User-Agent", "Twin-Windows-Updater/1.1")
+        .header("Accept", "application/octet-stream")
         .timeout(DOWNLOAD_TIMEOUT)
         .send()
         .await;
@@ -395,6 +500,17 @@ pub async fn check_for_updates(
                 let err_msg = format!("Failed to read update stream: {e}");
                 AppError::Network(err_msg)
             })?;
+
+            // Strict PE magic header validation ('MZ' = 0x4D, 0x5A)
+            if bytes.len() < 2 || &bytes[0..2] != b"MZ" {
+                let err_msg = format!(
+                    "Downloaded asset {} is not a valid Windows executable (PE header check failed)",
+                    asset.name
+                );
+                error!("{err_msg}");
+                set_error(err_msg.clone()).await;
+                return Err(AppError::Other(err_msg));
+            }
 
             if let Err(e) = std::fs::write(&target_bin, &bytes) {
                 let err_msg = format!("Failed to write update binary to disk: {e}");
@@ -407,6 +523,7 @@ pub async fn check_for_updates(
                 downloaded_at: chrono::DateTime::<chrono::Utc>::from(SystemTime::now()).to_rfc3339(),
                 binary_path: target_bin.to_string_lossy().to_string(),
                 release_notes: release_info.body.clone(),
+                update_type: Some(update_type),
             };
             let pending_file = pending_path(app);
             let _ = write_pending(&pending_file, &pending);
@@ -463,26 +580,57 @@ pub async fn install_now(app: &tauri::AppHandle) -> Result<(), AppError> {
         )));
     }
 
+    // Verify PE magic header
+    if let Ok(bytes) = std::fs::read(&new_bin) {
+        if bytes.len() < 2 || &bytes[0..2] != b"MZ" {
+            let _ = std::fs::remove_file(&new_bin);
+            clear_pending(&pending_file);
+            return Err(AppError::Other(
+                "Update binary failed PE check; discarding corrupted payload".to_string(),
+            ));
+        }
+    }
+
     let current_exe = std::env::current_exe()
         .map_err(|e| AppError::Other(format!("Failed to get current_exe: {e}")))?;
 
+    let update_type = pending.update_type.unwrap_or_else(|| {
+        if new_bin.to_string_lossy().to_lowercase().contains("setup") {
+            UpdateType::SetupInstaller
+        } else {
+            UpdateType::BinaryReplace
+        }
+    });
+
     info!(
-        "Applying in-place update: replacing {} with {}",
-        current_exe.display(),
-        new_bin.display()
+        "Applying update ({:?}): {} -> {}",
+        update_type,
+        new_bin.display(),
+        current_exe.display()
     );
 
-    // Detached in-place replace and restart command.
+    // Detached update and restart command.
     // Gives the running process 1.5s (matching PANEL_PAINT_DELAY_MS in JioTV Max) to terminate cleanly.
     #[cfg(windows)]
     {
         use std::process::Command;
-        let script = format!(
-            "Start-Sleep -Milliseconds 1500; Copy-Item -Force -LiteralPath '{}' -Destination '{}'; Start-Process -FilePath '{}'",
-            new_bin.to_string_lossy(),
-            current_exe.to_string_lossy(),
-            current_exe.to_string_lossy()
-        );
+        let script = match update_type {
+            UpdateType::SetupInstaller => {
+                // Silently run NSIS installer: updates files, registry uninstall keys, and restarts app cleanly
+                format!(
+                    "Start-Sleep -Milliseconds 1500; Start-Process -FilePath '{}' -ArgumentList '/S'",
+                    new_bin.to_string_lossy()
+                )
+            }
+            UpdateType::BinaryReplace => {
+                format!(
+                    "Start-Sleep -Milliseconds 1500; Copy-Item -Force -LiteralPath '{}' -Destination '{}'; Start-Process -FilePath '{}'",
+                    new_bin.to_string_lossy(),
+                    current_exe.to_string_lossy(),
+                    current_exe.to_string_lossy()
+                )
+            }
+        };
 
         let spawn_res = Command::new("powershell")
             .args(["-WindowStyle", "Hidden", "-NoProfile", "-Command", &script])

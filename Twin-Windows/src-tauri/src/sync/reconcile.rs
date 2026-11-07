@@ -901,6 +901,7 @@ mod tests {
             drive_folder_id: "root_drive_id".into(),
             mode,
             enabled:        true,
+            deletion:       None,
         }
     }
 

@@ -191,9 +191,22 @@ export function SettingsScreen() {
       const res = await updateCheck();
       setUpdateState(res);
       if (res.ready_version) {
-        toast.success(`Twin v${res.ready_version} is downloaded and ready to apply!`);
+        toast.success(`Update v${res.ready_version} Ready`, {
+          action: {
+            label: "Restart",
+            onClick: () => {
+              void handleInstallUpdate();
+            },
+          },
+        });
+      } else if (res.status.status === "downloading" || res.status.status === "update-available") {
+        toast.info(`Downloading update v${(res.status as any).version ?? "available"} in background…`);
       } else if (res.status.status === "up-to-date") {
-        toast.info("Twin is up to date");
+        toast.info(`Twin is up to date (v${res.current_version})`);
+      } else if (res.status.status === "error") {
+        toast.error(`Update check error: ${(res.status as any).error}`);
+      } else {
+        toast.info("Update check completed");
       }
     } catch (e) {
       toast.error(`Update check error: ${String(e)}`);

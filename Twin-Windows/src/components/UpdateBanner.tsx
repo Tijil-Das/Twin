@@ -62,10 +62,7 @@ export function UpdateBanner() {
 
       <div className="flex flex-col min-w-0">
         <span className="text-xs font-semibold text-white tracking-tight">
-          Twin v{displayVersion} is ready to apply
-        </span>
-        <span className="text-[11px] text-[var(--text-muted)]">
-          Downloaded seamlessly in background
+          Update v{displayVersion} Ready
         </span>
       </div>
 
@@ -82,7 +79,7 @@ export function UpdateBanner() {
               Applying…
             </>
           ) : (
-            "Restart & Apply"
+            "Restart"
           )}
         </button>
 

@@ -23,6 +23,7 @@ fn make_pair(id: &str, local: &str, mode: PairMode) -> PairEntry {
         drive_folder_id: "root".to_string(),
         mode,
         enabled: true,
+        deletion: None,
     }
 }
 
