@@ -25,6 +25,17 @@ const UPLOAD_BASE: &str = "https://www.googleapis.com/upload/drive/v3";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_RETRIES: u32 = 5;
 
+static GLOBAL_PATH_CACHE: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
+static PATH_ENSURE_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+
+fn global_path_cache() -> &'static Mutex<HashMap<String, String>> {
+    GLOBAL_PATH_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn path_ensure_lock() -> &'static Mutex<()> {
+    PATH_ENSURE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
 // DriveClient
 
 /// Shared Drive API client. Clone-friendly (Arc inside).
@@ -34,7 +45,7 @@ pub struct DriveClient {
     pub(crate) base_url: String,
     pub(crate) upload_base_url: String,
     /// Cache: Drive folder path -> folder id, keyed by (pair_id, rel_dir).
-    path_cache: Arc<Mutex<HashMap<String, String>>>,
+    _path_cache: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl DriveClient {
@@ -53,7 +64,7 @@ impl DriveClient {
             http,
             base_url: API_BASE.into(),
             upload_base_url: UPLOAD_BASE.into(),
-            path_cache: Arc::new(Mutex::new(HashMap::new())),
+            _path_cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -63,7 +74,7 @@ impl DriveClient {
             http,
             upload_base_url: base_url.clone(),
             base_url,
-            path_cache: Arc::new(Mutex::new(HashMap::new())),
+            _path_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -149,14 +160,45 @@ impl DriveClient {
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[
                     ("q", q.as_str()),
-                    ("fields", "files(id,md5Checksum,modifiedTime,size,mimeType)"),
-                    ("pageSize", "2"),
+                    ("fields", "files(id,name,md5Checksum,modifiedTime,size,mimeType)"),
+                    ("pageSize", "10"),
+                    ("supportsAllDrives", "true"),
+                    ("includeItemsFromAllDrives", "true"),
                 ])
         }).await?;
 
-        let mut list: FileList = resp.json().await
+        let list: FileList = resp.json().await
             .map_err(|e| AppError::Drive(format!("find_child parse: {e}")))?;
-        Ok(list.files.pop())
+        Ok(list.files.into_iter().next())
+    }
+
+    /// Find an existing non-trashed folder by name inside a parent folder.
+    pub async fn find_child_folder(
+        &self,
+        parent_id: &str,
+        name: &str,
+    ) -> Result<Option<DriveFile>, AppError> {
+        let token = auth::access_token().await?;
+        let q = format!(
+            "'{parent_id}' in parents and name='{n}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            n = name.replace('\'', "\\'")
+        );
+        let url = format!("{}/files", self.base_url);
+        let resp = self.execute_with_retry(|| {
+            self.http.get(&url)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .query(&[
+                    ("q", q.as_str()),
+                    ("fields", "files(id,name,mimeType)"),
+                    ("pageSize", "10"),
+                    ("supportsAllDrives", "true"),
+                    ("includeItemsFromAllDrives", "true"),
+                ])
+        }).await?;
+
+        let list: FileList = resp.json().await
+            .map_err(|e| AppError::Drive(format!("find_child_folder parse: {e}")))?;
+        Ok(list.files.into_iter().next())
     }
 
     /// List all non-trashed children of a Drive folder (non-recursive, pageSize=1000).
@@ -172,7 +214,7 @@ impl DriveClient {
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[
                     ("q",                         q.as_str()),
-                    ("fields",                    "files(id,name,mimeType,md5Checksum,modifiedTime,size,description,starred,parents)"),
+                    ("fields",                    "files(id,name,mimeType,md5Checksum,modifiedTime,size,description,starred,parents,folderColorRgb)"),
                     ("pageSize",                  "1000"),
                     ("supportsAllDrives",         "true"),
                 ])
@@ -201,7 +243,7 @@ impl DriveClient {
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[
                     ("q",                         q.as_str()),
-                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred,shared)"),
+                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred,shared,folderColorRgb)"),
                     ("pageSize",                  "1000"),
                     ("orderBy",                   "name"),
                     ("supportsAllDrives",         "true"),
@@ -226,7 +268,7 @@ impl DriveClient {
             self.http.get(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[
-                    ("fields", "id,name,mimeType,modifiedTime,parents,starred,shared"),
+                    ("fields", "id,name,mimeType,modifiedTime,parents,starred,shared,folderColorRgb"),
                     ("supportsAllDrives", "true"),
                 ])
         }).await?;
@@ -248,7 +290,7 @@ impl DriveClient {
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[
                     ("q",                         q),
-                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred,shared)"),
+                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred,shared,folderColorRgb)"),
                     ("pageSize",                  "1000"),
                     ("orderBy",                   "name"),
                     ("supportsAllDrives",         "true"),
@@ -275,7 +317,7 @@ impl DriveClient {
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[
                     ("q",                         q),
-                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred,shared)"),
+                    ("fields",                    "files(id,name,mimeType,modifiedTime,parents,starred,shared,folderColorRgb)"),
                     ("pageSize",                  "1000"),
                     ("orderBy",                   "name"),
                     ("supportsAllDrives",         "true"),
@@ -305,24 +347,55 @@ impl DriveClient {
     ) -> Result<String, AppError> {
         let token = auth::access_token().await?;
         let url = format!("{}/files", self.base_url);
-        let body = serde_json::json!({
+        let cfg = crate::config::load().unwrap_or_default();
+        let mut body_map = serde_json::json!({
             "name": name,
             "mimeType": "application/vnd.google-apps.folder",
             "parents": [parent_id],
         });
+        if cfg.app.color_drive_folders {
+            if let Some(obj) = body_map.as_object_mut() {
+                obj.insert("folderColorRgb".to_string(), serde_json::json!("#4285f4"));
+            }
+        }
         let resp = self.execute_with_retry(|| {
             self.http.post(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .query(&[("fields", "id")])
-                .json(&body)
+                .query(&[("fields", "id"), ("supportsAllDrives", "true")])
+                .json(&body_map)
         }).await?;
         let created: DriveFile = resp.json().await
             .map_err(|e| AppError::Drive(format!("create_folder parse: {e}")))?;
         Ok(created.id)
     }
 
+    /// Set folder color on Google Drive (folderColorRgb). If None or empty, clears color.
+    pub async fn set_folder_color(
+        &self,
+        folder_id: &str,
+        color_rgb: Option<&str>,
+    ) -> Result<(), AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{}/files/{folder_id}", self.base_url);
+        let body = match color_rgb {
+            Some(c) if !c.trim().is_empty() => serde_json::json!({
+                "folderColorRgb": c.trim()
+            }),
+            _ => serde_json::json!({
+                "folderColorRgb": serde_json::Value::Null
+            }),
+        };
+        self.execute_with_retry(|| {
+            self.http.patch(&url)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .query(&[("supportsAllDrives", "true")])
+                .json(&body)
+        }).await?;
+        Ok(())
+    }
+
     /// Ensure all directories in `rel_dir` exist under `root_id`.
-    /// Uses path cache; creates missing folders in order.
+    /// Uses global synchronized path cache; creates missing folders in order without racing.
     pub async fn ensure_path(
         &self,
         pair_id: &str,
@@ -335,7 +408,18 @@ impl DriveClient {
 
         let cache_key = format!("{pair_id}|{rel_dir}");
         {
-            let cache = self.path_cache.lock().await;
+            let cache = global_path_cache().lock().await;
+            if let Some(id) = cache.get(&cache_key) {
+                return Ok(id.clone());
+            }
+        }
+
+        // Acquire lock so parallel transfer workers don't race to create duplicate folders.
+        let _guard = path_ensure_lock().lock().await;
+
+        // Re-check cache under the lock in case another worker just finished ensuring this path.
+        {
+            let cache = global_path_cache().lock().await;
             if let Some(id) = cache.get(&cache_key) {
                 return Ok(id.clone());
             }
@@ -352,26 +436,19 @@ impl DriveClient {
             let ck = format!("{pair_id}|{cumulative}");
 
             let folder_id = {
-                let cache = self.path_cache.lock().await;
+                let cache = global_path_cache().lock().await;
                 cache.get(&ck).cloned()
             };
 
             let folder_id = match folder_id {
                 Some(id) => id,
                 None => {
-                    // `find_child` matches by name only; make sure it is
-                    // actually a folder, otherwise create one (Drive allows
-                    // a file and a folder to share a name).
-                    let id = match self.find_child(&parent, component).await? {
-                        Some(f)
-                            if f.mime_type.as_deref()
-                                == Some("application/vnd.google-apps.folder") =>
-                        {
-                            f.id
-                        }
-                        _ => self.create_folder(&parent, component).await?,
+                    // Check if folder already exists in Drive (exact folder search).
+                    let id = match self.find_child_folder(&parent, component).await? {
+                        Some(f) => f.id,
+                        None => self.create_folder(&parent, component).await?,
                     };
-                    let mut cache = self.path_cache.lock().await;
+                    let mut cache = global_path_cache().lock().await;
                     cache.insert(ck, id.clone());
                     id
                 }
@@ -380,7 +457,7 @@ impl DriveClient {
             parent = folder_id;
         }
 
-        let mut cache = self.path_cache.lock().await;
+        let mut cache = global_path_cache().lock().await;
         cache.insert(cache_key, parent.clone());
         Ok(parent)
     }
@@ -393,7 +470,7 @@ impl DriveClient {
         self.execute_with_retry(|| {
             self.http.patch(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .query(&[("fields", "id")])
+                .query(&[("fields", "id"), ("supportsAllDrives", "true")])
                 .json(&body)
         }).await?;
         Ok(())
@@ -406,7 +483,38 @@ impl DriveClient {
         self.execute_with_retry(|| {
             self.http.delete(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .query(&[("supportsAllDrives", "true")])
         }).await?;
+        Ok(())
+    }
+
+    /// Move a file or folder from old_parent to new_parent in Google Drive.
+    pub async fn move_file_parent(
+        &self,
+        file_id: &str,
+        new_parent: &str,
+        old_parent: &str,
+    ) -> Result<(), AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{}/files/{file_id}", self.base_url);
+        let resp = self
+            .execute_with_retry(|| {
+                self.http
+                    .patch(&url)
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .query(&[
+                        ("addParents", new_parent),
+                        ("removeParents", old_parent),
+                        ("supportsAllDrives", "true"),
+                    ])
+            })
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AppError::Drive(format!("move_file_parent {status}: {body}")));
+        }
         Ok(())
     }
 
@@ -455,7 +563,7 @@ impl DriveClient {
             self.http.request(method.clone(), &url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .header(header::CONTENT_TYPE, &content_type)
-                .query(&[("fields", "id,md5Checksum,modifiedTime,headRevisionId")])
+                .query(&[("fields", "id,md5Checksum,modifiedTime,headRevisionId"), ("supportsAllDrives", "true")])
                 .body(body.clone())
         }).await?;
 
@@ -496,7 +604,7 @@ impl DriveClient {
             .header(header::CONTENT_TYPE, "application/json")
             .header("X-Upload-Content-Type", mime)
             .header("X-Upload-Content-Length", total_size.to_string())
-            .query(&[("fields", "id,md5Checksum,modifiedTime,headRevisionId")])
+            .query(&[("fields", "id,md5Checksum,modifiedTime,headRevisionId"), ("supportsAllDrives", "true")])
             .json(&meta)
             .send()
             .await
@@ -765,6 +873,8 @@ pub struct DriveFile {
     pub parents: Option<Vec<String>>,
     #[serde(default)]
     pub shared: Option<bool>,
+    #[serde(default)]
+    pub folder_color_rgb: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

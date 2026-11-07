@@ -1,6 +1,7 @@
 /**
- * Pro Dashboard Home Screen — Overview metrics, live batch progress,
- * and elegant synced folder pair cards.
+ * Overview & Folder Pairs Dashboard
+ * Clean, native desktop interface for live sync state, real-time queues,
+ * and folder pair configuration.
  */
 import { useState } from "react";
 import {
@@ -9,16 +10,16 @@ import {
   Play,
   Pause,
   RefreshCw,
-  FolderSync,
   Folder,
   Cloud,
   ArrowLeftRight,
   CloudUpload,
   FlipHorizontal2,
-  Layers,
   Copy,
   Check,
   AlertCircle,
+  HardDrive,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -39,177 +40,29 @@ import { AddPairDialog } from "@/components/AddPairDialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-// ── Metric Stat Card ──────────────────────────────────────────────────────────
+// ── Sync Mode Definitions ─────────────────────────────────────────────────────
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  subtext,
-  iconColor,
-  glowColor,
-}: {
-  icon: typeof FolderSync;
-  label: string;
-  value: string;
-  subtext: string;
-  iconColor: string;
-  glowColor: string;
-}) {
-  return (
-    <div className="p-3.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] shadow-sm hover:border-[var(--border-subtle)] transition-all flex flex-col justify-between">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-          {label}
-        </span>
-        <div
-          className={cn(
-            "w-7 h-7 rounded-lg flex items-center justify-center border",
-            iconColor
-          )}
-          style={{ boxShadow: glowColor }}
-        >
-          <Icon size={14} />
-        </div>
-      </div>
-      <div className="mt-2">
-        <div className="text-xl font-bold tracking-tight text-[var(--text)]">{value}</div>
-        <p className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">{subtext}</p>
-      </div>
-    </div>
-  );
-}
-
-function parseGovInfo(gov: any, parallelTransfers: number) {
-  const rawKind = gov?.kind || gov?.state || "running";
-  const kind = String(rawKind).toLowerCase();
-  const reason = gov?.reason ? String(gov.reason) : null;
-
-  if (kind === "running") {
-    return {
-      title: "Running",
-      desc: `${parallelTransfers} parallel workers`,
-      isPaused: false,
-      color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-      glow: "0 0 12px rgba(16,185,129,0.15)",
-    };
-  }
-  if (kind === "user_paused" || kind === "paused") {
-    return {
-      title: "Paused",
-      desc: "Manually paused by user",
-      isPaused: true,
-      color: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-      glow: "0 0 12px rgba(245,158,11,0.15)",
-    };
-  }
-  if (kind.includes("throttle")) {
-    const reasonText = reason ? reason.toUpperCase() : "LOAD";
-    return {
-      title: "Throttled",
-      desc: `Engine paused (${reasonText})`,
-      isPaused: true,
-      color: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-      glow: "0 0 12px rgba(245,158,11,0.15)",
-    };
-  }
-  if (kind === "scheduled") {
-    return {
-      title: "Scheduled",
-      desc: "Outside active sync hours",
-      isPaused: true,
-      color: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-      glow: "0 0 12px rgba(59,130,246,0.15)",
-    };
-  }
-  return {
-    title: "Running",
-    desc: `${parallelTransfers} parallel workers`,
-    isPaused: false,
-    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    glow: "0 0 12px rgba(16,185,129,0.15)",
-  };
-}
-
-// ── Batch sync progress bar ────────────────────────────────────────────────────
-
-function BatchBar() {
-  const progress = useStore((s) => s.progress) ?? {};
-  const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, done: 0, failed: 0 };
-
-  // Only count in-flight events that are actively transferring
-  const activeEvents = (Object.values(progress) as ProgressEvent[]).filter(
-    (e) => e && e.bytes_total > 0 && e.bytes_done < e.bytes_total
-  );
-
-  const isSyncing = queueStatus.running > 0 || queueStatus.queued > 0;
-  if (!isSyncing && activeEvents.length === 0) return null;
-
-  // Real batch percentage calculated from completed vs total jobs
-  const totalJobs = (queueStatus.done ?? 0) + queueStatus.queued + queueStatus.running;
-  const batchPct = totalJobs > 0 ? Math.min(99.9, ((queueStatus.done ?? 0) / totalJobs) * 100) : 0;
-
-  // Active in-flight bytes
-  const activeDone = activeEvents.reduce((a, e) => a + e.bytes_done, 0);
-  const activeTotal = activeEvents.reduce((a, e) => a + e.bytes_total, 0);
-  const inFlightPct = activeTotal > 0 ? Math.min(99.9, (activeDone / activeTotal) * 100) : 0;
-
-  const displayPct = queueStatus.queued > 0 ? batchPct : (activeTotal > 0 ? inFlightPct : batchPct);
-  const startMs = activeEvents.length > 0 ? Math.min(...activeEvents.map((e) => e.start_ms)) : Date.now();
-
-  return (
-    <div className="mb-5 p-4 rounded-xl bg-gradient-to-r from-blue-950/20 via-[var(--surface)] to-indigo-950/20 border border-blue-500/25 shadow-sm">
-      <div className="flex items-center justify-between mb-2.5">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-          <span className="text-[13px] font-semibold text-[var(--text)]">
-            Synchronizing batch ({queueStatus.running} active, {queueStatus.queued} queued)
-          </span>
-        </div>
-        <span className="text-xs font-mono font-medium text-blue-400">
-          {displayPct.toFixed(0)}%
-        </span>
-      </div>
-
-      <Progress value={displayPct} aria-label="Batch sync progress" />
-
-      <div className="flex items-center justify-between mt-2.5 text-[11px] font-mono text-[var(--text-muted)]">
-        <span>
-          {activeTotal > 0
-            ? progressLabel(activeDone, activeTotal, startMs)
-            : totalJobs > 0
-            ? `${queueStatus.done ?? 0} of ${totalJobs} files synced`
-            : "Processing transfers..."}
-        </span>
-        <span>
-          {queueStatus.running} active transfer{queueStatus.running === 1 ? "" : "s"}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ── Pair Card ─────────────────────────────────────────────────────────────────
-
-const MODE_CONFIG = {
+const SYNC_MODES = {
   two_way: {
-    label: "Two-Way Sync",
+    label: "Two-Way",
+    description: "Bidirectional continuous sync",
     Icon: ArrowLeftRight,
-    badgeClass: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   },
   upload: {
-    label: "Cloud Backup",
+    label: "Backup",
+    description: "Local to cloud upload only",
     Icon: CloudUpload,
-    badgeClass: "bg-purple-500/10 text-purple-400 border-purple-500/20",
   },
   mirror: {
-    label: "Cloud Mirror",
+    label: "Mirror",
+    description: "Exact cloud mirror of local state",
     Icon: FlipHorizontal2,
-    badgeClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   },
 };
 
-function PairCard({
+// ── Folder Pair Item ──────────────────────────────────────────────────────────
+
+function FolderPairCard({
   id,
   local,
   drive_folder_id,
@@ -223,40 +76,37 @@ function PairCard({
   enabled: boolean;
 }) {
   const progress = useStore((s) => s.progress) ?? {};
-  const status = useStore((s) => s.pairStatuses[id]);
   const setConfig = useStore((s) => s.setConfig);
   const config = useStore((s) => s.config);
 
   const [syncing, setSyncing] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Extract folder name from path
   const folderName = local.replace(/[/\\]$/, "").split(/[/\\]/).pop() || local;
-
-  const modeInfo = MODE_CONFIG[mode as keyof typeof MODE_CONFIG] ?? MODE_CONFIG.two_way;
+  const modeInfo = SYNC_MODES[mode as keyof typeof SYNC_MODES] ?? SYNC_MODES.two_way;
   const ModeIcon = modeInfo.Icon;
 
-  // Find active in-flight progress events for this pair
+  // Active in-flight events for this pair
   const pairEvents = Object.values(progress).filter(
-    (e): e is ProgressEvent => Boolean(e && (e as ProgressEvent).pair_id === id && (e as ProgressEvent).bytes_done < (e as ProgressEvent).bytes_total)
+    (e): e is ProgressEvent =>
+      Boolean(
+        e &&
+          (e as ProgressEvent).pair_id === id &&
+          (e as ProgressEvent).bytes_done < (e as ProgressEvent).bytes_total
+      )
   );
+
   const totalDone = pairEvents.reduce((a, e) => a + e.bytes_done, 0);
   const totalBytes = pairEvents.reduce((a, e) => a + e.bytes_total, 0);
   const pct = totalBytes > 0 ? (totalDone / totalBytes) * 100 : 0;
   const startMs = pairEvents.length > 0 ? Math.min(...pairEvents.map((e) => e.start_ms)) : 0;
-
-  const hasInFlight = pairEvents.length > 0;
-  const isSyncing = syncing || hasInFlight || (status?.running ?? 0) > 0;
-  const isQueued = (status?.queued ?? 0) > 0;
-  const hasFailed = (status?.failed ?? 0) > 0;
-  const hasConflict = (status?.conflict ?? 0) > 0;
-  const isPerfectlySynced = enabled && !isSyncing && !isQueued && !hasFailed && !hasConflict && (status?.is_synced ?? false);
+  const isCurrentlySyncing = syncing || pairEvents.length > 0;
 
   async function handleSync() {
     setSyncing(true);
     try {
       await runSyncCycle(id);
-      toast.success(`Sync cycle completed for ${folderName}`);
+      toast.success(`Sync cycle completed for "${folderName}"`);
     } catch (e) {
       toast.error(`Sync error: ${String(e)}`);
     } finally {
@@ -269,7 +119,9 @@ function PairCard({
     try {
       const currentPairs = Array.isArray(config.pairs)
         ? config.pairs
-        : (Array.isArray((config as any).pair) ? (config as any).pair : []);
+        : Array.isArray((config as any).pair)
+        ? (config as any).pair
+        : [];
       const nextPairs = currentPairs.map((p: PairEntry) =>
         p.id === id ? { ...p, enabled: enable } : p
       );
@@ -277,7 +129,7 @@ function PairCard({
       await updateConfig(nextCfg);
       const reloaded = await getConfig();
       setConfig(reloaded);
-      toast.info(enable ? `Enabled sync for ${folderName}` : `Paused sync for ${folderName}`);
+      toast.info(enable ? `Resumed sync for "${folderName}"` : `Paused sync for "${folderName}"`);
     } catch (e) {
       toast.error(`Failed to update pair: ${String(e)}`);
     }
@@ -288,7 +140,7 @@ function PairCard({
       await removePair(id);
       const cfg = await getConfig();
       setConfig(cfg);
-      toast.success(`Removed ${folderName}`);
+      toast.success(`Removed "${folderName}"`);
     } catch (e) {
       toast.error(`Failed to remove pair: ${String(e)}`);
     }
@@ -304,113 +156,84 @@ function PairCard({
   return (
     <div
       className={cn(
-        "rounded-xl border bg-[var(--surface)] p-4 transition-all duration-150 shadow-sm",
-        enabled
-          ? "border-[var(--border)] hover:border-blue-500/30"
-          : "border-[var(--border-subtle)] opacity-70 bg-[var(--surface)]/50"
+        "desktop-card p-5 transition-all duration-150 group",
+        !enabled && "opacity-60 bg-[var(--surface)]/50"
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        {/* Left: Folder badge & Path info */}
-        <div className="flex items-start gap-3 min-w-0">
+      <div className="flex items-start justify-between gap-4">
+        {/* Left: Folder Identity & Paths */}
+        <div className="flex items-start gap-3.5 min-w-0 flex-1">
           <div
             className={cn(
-              "w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border mt-0.5",
+              "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 transition-colors",
               enabled
-                ? "bg-blue-600/10 border-blue-500/20 text-blue-400"
-                : "bg-zinc-800 border-zinc-700 text-zinc-500"
+                ? "bg-blue-500/10 border-blue-500/25 text-blue-400"
+                : "bg-white/[0.04] border-white/5 text-[var(--text-subtle)]"
             )}
           >
-            <Folder size={17} strokeWidth={2} />
+            <Folder size={22} strokeWidth={1.8} />
           </div>
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-[13.5px] text-[var(--text)] tracking-tight">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="font-bold text-base text-white tracking-tight">
                 {folderName}
               </span>
+
+              {/* Mode indicator */}
               <span
-                className={cn(
-                  "inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border",
-                  modeInfo.badgeClass
-                )}
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.08] text-[var(--text-muted)]"
+                title={modeInfo.description}
               >
-                <ModeIcon size={11} strokeWidth={2} />
+                <ModeIcon size={13} strokeWidth={1.8} className="text-[var(--text-subtle)]" />
                 {modeInfo.label}
               </span>
 
-              {/* Real-time Status Badge */}
-              {isPerfectlySynced ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.18)]">
-                  <Check size={11} strokeWidth={2.5} />
-                  Synced
-                </span>
-              ) : isSyncing ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                  <RefreshCw size={10} className="animate-spin text-blue-400" />
-                  Syncing{status?.running ? ` (${status.running})` : ""}
-                </span>
-              ) : isQueued ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                  Queued ({status!.queued})
-                </span>
-              ) : hasFailed ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-                  <AlertCircle size={10} />
-                  {status!.failed} failed
-                </span>
-              ) : null}
-
               {!enabled && (
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                  Disabled
+                <span className="text-xs font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                  Paused
                 </span>
               )}
             </div>
 
-            {/* Local path with copy button */}
-            <div className="flex items-center gap-1.5 mt-1 text-[11.5px] text-[var(--text-muted)] font-mono">
-              <span className="truncate max-w-[340px]" title={local}>
-                {local}
-              </span>
-              <button
-                onClick={handleCopyPath}
-                className="hover:text-[var(--text)] p-0.5 rounded transition-colors"
-                title="Copy folder path"
-              >
-                {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-              </button>
-            </div>
+            {/* Path breakdown */}
+            <div className="mt-2.5 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs code-text text-[var(--text)]">
+                <HardDrive size={14} className="text-[var(--text-subtle)] shrink-0" />
+                <span className="truncate select-all" title={local}>
+                  {local}
+                </span>
+                <button
+                  onClick={handleCopyPath}
+                  className="hover:text-white text-[var(--text-subtle)] p-0.5 rounded transition-colors cursor-pointer"
+                  title="Copy path"
+                >
+                  {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                </button>
+              </div>
 
-            {/* Google Drive target info & verified sync count */}
-            <div className="flex items-center gap-2 mt-1 text-[11px] text-[var(--text-subtle)] flex-wrap">
-              <div className="flex items-center gap-1.5">
-                <Cloud size={12} className="text-blue-400/80 shrink-0" />
-                <span className="font-mono truncate max-w-[240px]" title={drive_folder_id}>
-                  Drive ID: {drive_folder_id}
+              <div className="flex items-center gap-2 text-xs code-text text-[var(--text-muted)]">
+                <Cloud size={14} className="text-[var(--text-subtle)] shrink-0" />
+                <span className="truncate" title={`Google Drive ID: ${drive_folder_id}`}>
+                  Drive: {drive_folder_id}
                 </span>
               </div>
-              {status && (
-                <span className="font-mono text-[var(--text-muted)]">
-                  • {status.synced} {status.synced === 1 ? "file" : "files"} in sync
-                </span>
-              )}
             </div>
           </div>
         </div>
 
-        {/* Right: Actions & Switch */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right: Quick Actions */}
+        <div className="flex items-center gap-2 shrink-0 pt-1">
           <Button
             variant="ghost"
             size="iconSm"
             onClick={handleSync}
             disabled={!enabled || isCurrentlySyncing}
-            title="Run sync cycle now"
-            className="hover:text-blue-400"
+            title="Sync this folder now"
+            className="text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-2)]"
           >
             <RefreshCw
-              size={14}
+              size={15}
               strokeWidth={1.8}
               className={cn(isCurrentlySyncing && "animate-spin text-blue-400")}
             />
@@ -421,9 +244,9 @@ function PairCard({
             size="iconSm"
             onClick={handleRemove}
             title="Remove folder pair"
-            className="hover:text-red-400"
+            className="text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10"
           >
-            <Trash2 size={14} strokeWidth={1.8} />
+            <Trash2 size={15} strokeWidth={1.8} />
           </Button>
 
           <div className="w-[1px] h-4 bg-[var(--border)] mx-1" />
@@ -436,17 +259,18 @@ function PairCard({
         </div>
       </div>
 
-      {/* Progress bar only if actively transferring files with incomplete bytes */}
-      {hasInFlight && totalBytes > 0 && (
-        <div className="mt-3.5 pt-3 border-t border-[var(--border)]">
-          <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-muted)] mb-1.5">
-            <span className="truncate max-w-[280px]">
-              Syncing {pairEvents[0]?.rel_path ? pairEvents[0].rel_path.split("/").pop() : "active files"}...
+      {/* Real-time Transfer Bar */}
+      {pairEvents.length > 0 && (
+        <div className="mt-4 pt-3.5 border-t border-[var(--border-subtle)]">
+          <div className="flex items-center justify-between text-xs code-text text-[var(--text-muted)] mb-1.5">
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              Transferring active files…
             </span>
-            <span className="text-blue-400 font-semibold">{pct.toFixed(0)}%</span>
+            <span className="text-blue-400 font-bold">{pct.toFixed(0)}%</span>
           </div>
-          <Progress value={pct} aria-label={`Progress for ${folderName}`} />
-          <div className="text-[11px] font-mono text-[var(--text-subtle)] mt-1.5">
+          <Progress value={pct} aria-label={`Progress for ${folderName}`} className="h-2" />
+          <div className="text-xs code-text text-[var(--text-subtle)] mt-1.5">
             {progressLabel(totalDone, totalBytes, startMs)}
           </div>
         </div>
@@ -455,7 +279,7 @@ function PairCard({
   );
 }
 
-// ── Pro Home Screen ────────────────────────────────────────────────────────────
+// ── Overview Screen ───────────────────────────────────────────────────────────
 
 export function HomeScreen() {
   const gov = useStore((s) => s.gov) ?? { kind: "running" as const, reason: null, concurrency: 2 };
@@ -464,24 +288,41 @@ export function HomeScreen() {
   const authed = useStore((s) => s.authed);
   const config = useStore((s) => s.config);
   const setConfig = useStore((s) => s.setConfig);
+  const progress = useStore((s) => s.progress) ?? {};
 
   const [showAdd, setShowAdd] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
 
-  const govInfo = parseGovInfo(gov, config?.app?.parallel_transfers ?? 4);
-  const isPaused = govInfo.isPaused;
+  const govKind = String(gov?.kind || gov?.state || "running").toLowerCase();
+  const isPaused = govKind === "user_paused" || govKind === "paused";
+  const isThrottled = govKind.includes("throttle");
+
+  // In-flight events
+  const activeEvents = Object.values(progress).filter(
+    (e): e is ProgressEvent => Boolean(e && e.bytes_total > 0 && e.bytes_done < e.bytes_total)
+  );
+  const isBatchActive = queueStatus.running > 0 || queueStatus.queued > 0 || activeEvents.length > 0;
+  const hasFailures = (queueStatus.failed ?? 0) > 0 && !isBatchActive;
+
+  const totalJobs = (queueStatus.done ?? 0) + queueStatus.queued + queueStatus.running;
+  const batchPct = totalJobs > 0 ? Math.min(99.9, ((queueStatus.done ?? 0) / totalJobs) * 100) : 0;
+  const activeDone = activeEvents.reduce((a, e) => a + e.bytes_done, 0);
+  const activeTotal = activeEvents.reduce((a, e) => a + e.bytes_total, 0);
+  const inFlightPct = activeTotal > 0 ? (activeDone / activeTotal) * 100 : 0;
+  const displayPct = totalJobs > 0 ? batchPct : inFlightPct;
+  const startMs = activeEvents.length > 0 ? Math.min(...activeEvents.map((e) => e.start_ms)) : Date.now();
 
   async function handlePauseResume() {
     try {
       if (isPaused) {
         await govResume();
-        toast.success("Engine resumed");
+        toast.success("Sync engine resumed");
       } else {
         await govPause();
-        toast.info("Engine paused");
+        toast.info("Sync engine paused");
       }
     } catch (e) {
-      toast.error(`Failed to toggle governor: ${String(e)}`);
+      toast.error(`Engine toggle failed: ${String(e)}`);
     }
   }
 
@@ -489,152 +330,177 @@ export function HomeScreen() {
     setSyncingAll(true);
     try {
       await syncNow();
-      toast.success("Sync cycle queued for all folders");
+      toast.success("Triggered sync cycle for all folders");
     } catch (e) {
-      toast.error(`Sync failed: ${String(e)}`);
+      toast.error(`Sync cycle failed: ${String(e)}`);
     } finally {
-      setTimeout(() => setSyncingAll(false), 1000);
+      setTimeout(() => setSyncingAll(false), 800);
     }
   }
 
   async function handleAdded() {
     const cfg = await getConfig();
     setConfig(cfg);
+    void syncNow();
   }
 
+  const enabledPairsCount = pairs.filter((p) => p.enabled).length;
+
   return (
-    <div className="p-6 max-w-4xl w-full mx-auto space-y-6">
-      {/* Top Header & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[var(--border)]">
-        <div>
-          <h1 className="text-lg font-bold tracking-tight text-[var(--text)] flex items-center gap-2">
-            Overview
-            <span className="text-xs font-normal text-[var(--text-muted)]">
-              • Google Drive Continuous Sync
+    <div className="p-7 max-w-4xl w-full mx-auto space-y-6">
+      {/* ── Status Canvas & Control Bar ── */}
+      <div className="desktop-card p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+          {/* Status Indicator & Details */}
+          <div className="flex items-start sm:items-center gap-4">
+            <div
+              className={cn(
+                "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border",
+                isPaused
+                  ? "bg-zinc-500/10 border-zinc-500/20 text-zinc-400"
+                  : isThrottled
+                  ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                  : isBatchActive
+                  ? "bg-blue-500/10 border-blue-500/25 text-blue-400"
+                  : hasFailures
+                  ? "bg-rose-500/10 border-rose-500/20 text-rose-400"
+                  : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+              )}
+            >
+              {isPaused ? (
+                <Pause size={22} strokeWidth={2} />
+              ) : isThrottled ? (
+                <AlertCircle size={22} strokeWidth={2} />
+              ) : isBatchActive ? (
+                <RefreshCw size={22} className="animate-spin" strokeWidth={2} />
+              ) : hasFailures ? (
+                <AlertCircle size={22} strokeWidth={2} />
+              ) : (
+                <CheckCircle2 size={22} strokeWidth={2} />
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-lg font-bold text-white tracking-tight">
+                  {isPaused
+                    ? "Sync Engine Paused"
+                    : isThrottled
+                    ? "Engine Throttled (System Load)"
+                    : isBatchActive
+                    ? `Synchronizing ${queueStatus.running + queueStatus.queued} files…`
+                    : hasFailures
+                    ? `${queueStatus.failed} ${queueStatus.failed === 1 ? "file" : "files"} failed to sync`
+                    : "All Files Up to Date"}
+                </h1>
+                {authed && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm" title="Google Drive connected" />
+                )}
+              </div>
+
+              <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
+                {enabledPairsCount} active folder {enabledPairsCount === 1 ? "pair" : "pairs"}
+                {" • "}
+                {config?.app?.parallel_transfers ?? 4} parallel workers
+                {authed ? " • Google Drive connected" : " • Signed out"}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Group */}
+          <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
+            <Button
+              variant="secondary"
+              onClick={handlePauseResume}
+              className="flex items-center gap-2"
+            >
+              {isPaused ? (
+                <>
+                  <Play size={14} className="text-emerald-400 fill-emerald-400" />
+                  Resume
+                </>
+              ) : (
+                <>
+                  <Pause size={14} className="text-zinc-400" />
+                  Pause
+                </>
+              )}
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={handleSyncAll}
+              disabled={syncingAll || isPaused}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw
+                size={14}
+                className={cn("text-[var(--text-muted)]", syncingAll && "animate-spin text-blue-400")}
+              />
+              Sync All
+            </Button>
+
+            <Button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus size={15} strokeWidth={2.5} />
+              Add Folder
+            </Button>
+          </div>
+        </div>
+
+        {/* In-flight Batch Sync Progress Strip */}
+        {isBatchActive && (
+          <div className="mt-5 pt-4.5 border-t border-[var(--border-subtle)] space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-white flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                Active Batch Progress
+              </span>
+              <span className="code-text text-blue-400 font-bold">
+                {displayPct.toFixed(0)}%
+              </span>
+            </div>
+            <Progress value={displayPct} aria-label="Batch progress" className="h-2" />
+            <div className="flex items-center justify-between text-xs code-text text-[var(--text-subtle)]">
+              <span>
+                {totalJobs > 0
+                  ? `${queueStatus.done ?? 0} of ${totalJobs} completed`
+                  : progressLabel(activeDone, activeTotal, startMs)}
+              </span>
+              <span>
+                {queueStatus.running} active transfer{queueStatus.running === 1 ? "" : "s"}
+                {queueStatus.queued > 0 && ` • ${queueStatus.queued} queued`}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Failure alert banner if any transfers failed */}
+        {queueStatus.failed > 0 && (
+          <div className="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-300 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle size={16} className="text-red-400 shrink-0" />
+              <span className="font-medium">
+                {queueStatus.failed} transfer{queueStatus.failed === 1 ? "" : "s"} encountered errors
+              </span>
+            </div>
+            <span className="text-xs text-red-400 font-semibold hover:underline cursor-pointer">
+              View Activity ledger →
             </span>
-          </h1>
-          <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
-            Monitor real-time sync status, transfer queues, and folder pairs.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handlePauseResume}
-            className="flex items-center gap-1.5"
-          >
-            {isPaused ? (
-              <>
-                <Play size={13} className="text-emerald-400 fill-emerald-400" />
-                Resume
-              </>
-            ) : (
-              <>
-                <Pause size={13} className="text-amber-400" />
-                Pause
-              </>
-            )}
-          </Button>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleSyncAll}
-            disabled={syncingAll}
-            className="flex items-center gap-1.5"
-          >
-            <RefreshCw
-              size={13}
-              className={cn("text-blue-400", syncingAll && "animate-spin")}
-            />
-            Sync All
-          </Button>
-
-          <Button
-            onClick={() => setShowAdd(true)}
-            size="sm"
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500"
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            Add Folder
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Metrics Row (4 Cards) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          icon={FolderSync}
-          label="Engine State"
-          value={govInfo.title}
-          subtext={govInfo.desc}
-          iconColor={govInfo.color}
-          glowColor={govInfo.glow}
-        />
-
-        <StatCard
-          icon={Folder}
-          label="Folder Pairs"
-          value={String(pairs.length)}
-          subtext={`${pairs.filter((p) => p.enabled).length} active`}
-          iconColor="bg-blue-500/10 text-blue-400 border-blue-500/20"
-          glowColor="0 0 12px rgba(59,130,246,0.15)"
-        />
-
-        <StatCard
-          icon={Layers}
-          label="Queue Status"
-          value={
-            queueStatus.running > 0
-              ? `${queueStatus.running} active`
-              : queueStatus.queued > 0
-              ? `${queueStatus.queued} queued`
-              : "Idle"
-          }
-          subtext={
-            queueStatus.failed > 0
-              ? `${queueStatus.failed} failed transfer(s)`
-              : queueStatus.queued > 0
-              ? `${queueStatus.queued} pending in queue`
-              : queueStatus.running > 0
-              ? `${queueStatus.done ?? 0} files completed`
-              : "All files up to date"
-          }
-          iconColor={
-            queueStatus.failed > 0
-              ? "bg-red-500/10 text-red-400 border-red-500/20"
-              : "bg-purple-500/10 text-purple-400 border-purple-500/20"
-          }
-          glowColor="0 0 12px rgba(168,85,247,0.15)"
-        />
-
-        <StatCard
-          icon={Cloud}
-          label="Cloud Status"
-          value={authed ? "Connected" : "Signed Out"}
-          subtext={authed ? "Google Drive ready" : "Sign in to sync"}
-          iconColor={
-            authed
-              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-              : "bg-zinc-800 text-zinc-400 border-zinc-700"
-          }
-          glowColor="0 0 12px rgba(16,185,129,0.15)"
-        />
-      </div>
-
-      {/* Batch sync progress bar (appears when jobs are active) */}
-      <BatchBar />
-
-      {/* Folder Pairs Section */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-[14px] font-semibold text-[var(--text)]">
-              Folder Pairs
+      {/* ── Synced Folders Section ── */}
+      <div className="space-y-3.5">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-sm font-bold text-white tracking-tight">
+              Synced Folders
             </h2>
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border)]">
+            <span className="text-xs code-text font-semibold px-2 py-0.5 rounded-full bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border)]">
               {pairs.length}
             </span>
           </div>
@@ -642,45 +508,33 @@ export function HomeScreen() {
           {pairs.length > 0 && (
             <button
               onClick={() => setShowAdd(true)}
-              className="text-[12px] font-medium text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+              className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Plus size={13} /> Add another
+              <Plus size={14} strokeWidth={2.5} />
+              Add another
             </button>
           )}
         </div>
 
-        {/* Pairs list or Pro Empty State */}
+        {/* Pairs List or Clean Native Empty State */}
         {pairs.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface)]/60 p-8 sm:p-12 text-center flex flex-col items-center justify-center space-y-4 shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600/20 to-indigo-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
-              <FolderSync size={26} strokeWidth={1.8} />
+          <div className="desktop-card p-12 text-center flex flex-col items-center justify-center space-y-4 border-dashed">
+            <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/5 flex items-center justify-center text-[var(--text-muted)]">
+              <Folder size={26} strokeWidth={1.5} />
             </div>
 
             <div className="max-w-md space-y-1.5">
-              <h3 className="text-base font-semibold text-[var(--text)]">
-                No Synced Folders Configured
+              <h3 className="text-base font-bold text-white">
+                No synced folders configured
               </h3>
-              <p className="text-[13px] text-[var(--text-muted)] leading-relaxed">
-                Connect your local folders to Google Drive. Twin will continuously monitor for changes,
-                queue transfers, handle conflicts, and keep your files in sync.
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                Connect a local folder to Google Drive. Changes will sync continuously in real time.
               </p>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-[var(--text-muted)] pt-1">
-              <span className="px-2.5 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--border)]">
-                ⚡ Continuous live sync
-              </span>
-              <span className="px-2.5 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--border)]">
-                🛡️ Delta & conflict safe
-              </span>
-              <span className="px-2.5 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--border)]">
-                🕒 Drive versioning
-              </span>
             </div>
 
             <Button
               onClick={() => setShowAdd(true)}
-              className="mt-2 bg-blue-600 hover:bg-blue-500 px-5 py-2 h-auto text-[13px] font-medium flex items-center gap-2"
+              className="mt-2"
             >
               <Plus size={15} strokeWidth={2.5} />
               Add Your First Folder Pair
@@ -689,7 +543,7 @@ export function HomeScreen() {
         ) : (
           <div className="grid grid-cols-1 gap-3">
             {pairs.map((p) => (
-              <PairCard key={p.id} {...p} />
+              <FolderPairCard key={p.id} {...p} />
             ))}
           </div>
         )}

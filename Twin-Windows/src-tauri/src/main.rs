@@ -192,18 +192,55 @@ async fn drive_get_shared_folders() -> Result<Vec<DriveFile>, String> {
     })
 }
 
-/// Create a new folder in Google Drive.
+/// Create a new folder in Google Drive (reuses existing folder if one already exists).
 #[tauri::command]
 async fn drive_create_folder(parent_id: String, name: String) -> Result<String, String> {
-    tracing::info!("Creating Drive folder '{name}' inside '{parent_id}'");
+    tracing::info!("Ensuring Drive folder '{name}' inside '{parent_id}'");
     let drive = drive::DriveClient::new().map_err(|e| {
         tracing::error!("DriveClient::new failed: {e}");
         e.to_string()
     })?;
+    if let Ok(Some(existing)) = drive.find_child_folder(&parent_id, &name).await {
+        tracing::info!("Found existing Drive folder '{name}' ({}), reusing", existing.id);
+        return Ok(existing.id);
+    }
     drive.create_folder(&parent_id, &name).await.map_err(|e| {
         tracing::error!("drive.create_folder('{parent_id}', '{name}') failed: {e}");
         e.to_string()
     })
+}
+
+/// Colorize a single Google Drive folder.
+#[tauri::command]
+async fn drive_set_folder_color(folder_id: String, color_rgb: Option<String>) -> Result<(), String> {
+    let drive = drive::DriveClient::new().map_err(|e| e.to_string())?;
+    drive.set_folder_color(&folder_id, color_rgb.as_deref()).await.map_err(|e| e.to_string())
+}
+
+/// Colorize multiple Google Drive folders.
+#[tauri::command]
+async fn drive_set_folders_color(folder_ids: Vec<String>, color_rgb: Option<String>) -> Result<(), String> {
+    let drive = drive::DriveClient::new().map_err(|e| e.to_string())?;
+    for id in &folder_ids {
+        if let Err(e) = drive.set_folder_color(id, color_rgb.as_deref()).await {
+            tracing::warn!("Failed to set folder color for {id}: {e}");
+        }
+    }
+    Ok(())
+}
+
+/// Colorize Google Drive folders for all configured pairs.
+#[tauri::command]
+async fn drive_color_folders(color: Option<String>) -> Result<(), String> {
+    let cfg = config::load().unwrap_or_default();
+    let drive = drive::DriveClient::new().map_err(|e| e.to_string())?;
+    let color_rgb = color.unwrap_or_else(|| "#4285f4".to_string());
+    for pair in &cfg.pairs {
+        if !pair.drive_folder_id.is_empty() {
+            let _ = drive.set_folder_color(&pair.drive_folder_id, Some(&color_rgb)).await;
+        }
+    }
+    Ok(())
 }
 
 /// Open a native folder browser dialog.
@@ -347,10 +384,7 @@ async fn run_sync_cycle(
     let gov     = gov_s.0.clone();
     let echo    = Arc::new(sync::SelfWritten::new());
 
-    // 1. Scan local filesystem for new/modified/deleted files
-    let rules = rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
-
-    // 2. Scan remote Drive changes and reconcile
+    // Context for full scan and Drive reconciliation
     let ctx = sync::Ctx {
         db: db_arc,
         drive,
@@ -360,7 +394,7 @@ async fn run_sync_cycle(
         app: Some(app),
         queue: Some(q_s.0.clone()),
     };
-    let report = sync::reconcile_pair_gap(&pair, &ctx, &rules).await.map_err(|e| e.to_string())?;
+    let report = sync::run_pair_cycle(&pair, &ctx).await.map_err(|e| e.to_string())?;
 
     // 3. Wake queue worker to execute transfers immediately
     q_s.0.wake();
@@ -501,6 +535,9 @@ fn main() {
             drive_get_folders,
             drive_get_shared_folders,
             drive_create_folder,
+            drive_color_folders,
+            drive_set_folder_color,
+            drive_set_folders_color,
             pick_folder,
             list_revisions,
             restore_file_cmd,
@@ -688,15 +725,12 @@ fn main() {
             }
 
             // Start debounced file system watcher on all local folders.
+            let (local_tx, mut local_rx) = tokio::sync::mpsc::unbounded_channel::<watcher::LocalChange>();
             {
-                let (local_tx, mut local_rx) = tokio::sync::mpsc::unbounded_channel::<watcher::LocalChange>();
-                if let Ok(w) = watcher::Watcher::start(&cfg, Arc::clone(&db_arc), local_tx) {
-                    std::mem::forget(w);
-
-                    let db_watch = Arc::clone(&db_arc);
-                    let gov_watch = gov.clone();
-                    let q_watch = q.clone();
-                    tauri::async_runtime::spawn(async move {
+                let db_watch = Arc::clone(&db_arc);
+                let gov_watch = gov.clone();
+                let q_watch = q.clone();
+                tauri::async_runtime::spawn(async move {
                         while let Some(change) = local_rx.recv().await {
                             let current_cfg = config::load().unwrap_or_default();
                             let pair = match current_cfg.pairs.iter().find(|p| p.id == change.pair_id && p.enabled) {
@@ -817,27 +851,72 @@ fn main() {
                             }
                         }
                     });
-                }
             }
 
-            // Spawn remote changes polling loop for two_way and mirror pairs.
-            if let Ok(drive_poll) = drive::DriveClient::new() {
-                let db_poll = Arc::clone(&db_arc);
-                let gov_poll = gov.clone();
-                let echo_poll = Arc::new(sync::SelfWritten::new());
-                for pair in cfg.pairs.iter().filter(|p| p.enabled) {
-                    let p = pair.clone();
-                    let ctx = sync::Ctx {
-                        db: Arc::clone(&db_poll),
-                        drive: drive_poll.clone(),
-                        gov: gov_poll.clone(),
-                        echo: Arc::clone(&echo_poll),
-                        policy: cfg.policy.clone(),
-                        app: Some(handle.clone()),
-                        queue: Some(q.clone()),
-                    };
-                    tauri::async_runtime::spawn(sync::poll_changes_loop(p, ctx));
-                }
+            // Dynamic Pair Supervisor:
+            // Continuously ensures both existing and dynamically added/enabled folder pairs are
+            // automatically watched and polled for remote changes without requiring an app restart.
+            {
+                let db_sup = Arc::clone(&db_arc);
+                let gov_sup = gov.clone();
+                let q_sup = q.clone();
+                let handle_sup = handle.clone();
+                let local_tx_sup = local_tx.clone();
+                let echo_sup = Arc::new(sync::SelfWritten::new());
+
+                tauri::async_runtime::spawn(async move {
+                    let mut watched_ids = std::collections::HashSet::new();
+                    let mut polled_ids = std::collections::HashSet::new();
+                    let mut debouncers = Vec::new();
+
+                    loop {
+                        let current_cfg = config::load().unwrap_or_default();
+                        let enabled_pairs: Vec<_> = current_cfg.pairs.iter().filter(|p| p.enabled).cloned().collect();
+
+                        // 1. Dynamically attach filesystem watcher for any unmonitored pair
+                        for pair in &enabled_pairs {
+                            if !watched_ids.contains(&pair.id) {
+                                match watcher::Watcher::watch_pair_entry(
+                                    pair,
+                                    current_cfg.app.debounce_secs,
+                                    Arc::clone(&db_sup),
+                                    local_tx_sup.clone(),
+                                ) {
+                                    Ok(debouncer) => {
+                                        debouncers.push(debouncer);
+                                        watched_ids.insert(pair.id.clone());
+                                        info!("Pair supervisor: watching pair {} ({:?})", pair.id, pair.local);
+                                    }
+                                    Err(e) => {
+                                        warn!("Pair supervisor: failed to watch pair {}: {e}", pair.id);
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Dynamically spawn Google Drive changes poll loop for any unmonitored pair
+                        if let Ok(drive_client) = drive::DriveClient::new() {
+                            for pair in &enabled_pairs {
+                                if !polled_ids.contains(&pair.id) {
+                                    let ctx = sync::Ctx {
+                                        db: Arc::clone(&db_sup),
+                                        drive: drive_client.clone(),
+                                        gov: gov_sup.clone(),
+                                        echo: Arc::clone(&echo_sup),
+                                        policy: current_cfg.policy.clone(),
+                                        app: Some(handle_sup.clone()),
+                                        queue: Some(q_sup.clone()),
+                                    };
+                                    tauri::async_runtime::spawn(sync::poll_changes_loop(pair.clone(), ctx));
+                                    polled_ids.insert(pair.id.clone());
+                                    info!("Pair supervisor: changes poll loop started for pair {}", pair.id);
+                                }
+                            }
+                        }
+
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    }
+                });
             }
 
             // Error toast monitor: max 1 notification per 10 min for persistent failures.

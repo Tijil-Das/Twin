@@ -37,6 +37,7 @@ export interface GovernorConfig {
 export interface AppConfig {
   parallel_transfers: number;
   autostart: boolean;
+  color_drive_folders?: boolean;
 }
 
 export interface GitHubConfig {
@@ -79,6 +80,8 @@ export interface DriveFile {
   mimeType?: string | null;
   parents: string[] | null;
   shared?: boolean | null;
+  folderColorRgb?: string | null;
+  folder_color_rgb?: string | null;
 }
 
 export interface Revision {
@@ -187,6 +190,12 @@ export const driveGetFolders = () => invoke<DriveFile[]>("drive_get_folders");
 export const driveGetSharedFolders = () => invoke<DriveFile[]>("drive_get_shared_folders");
 export const driveCreateFolder = (parentId: string, name: string) =>
   invoke<string>("drive_create_folder", { parentId, name });
+export const driveColorFolders = (color?: string) =>
+  invoke<void>("drive_color_folders", { color: color ?? null });
+export const driveSetFolderColor = (folderId: string, color?: string | null) =>
+  invoke<void>("drive_set_folder_color", { folderId, colorRgb: color ?? null });
+export const driveSetFoldersColor = (folderIds: string[], color?: string | null) =>
+  invoke<void>("drive_set_folders_color", { folderIds, colorRgb: color ?? null });
 export const authHasFullScope = () => invoke<boolean>("auth_has_full_scope").catch(() => true);
 export const pickFolder = () => invoke<string | null>("pick_folder");
 export const listSharedDrives = () => invoke<{ id: string; name: string }[]>("list_shared_drives").catch(() => []);

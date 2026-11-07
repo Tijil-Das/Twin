@@ -238,7 +238,7 @@ pub async fn sync_now(
                     app: Some(app.clone()),
                     queue: Some(q.clone()),
                 };
-                let _ = crate::sync::reconcile_pair_gap(pair, &ctx, &rules).await;
+                let _ = crate::sync::run_pair_cycle(pair, &ctx).await;
             } else {
                 let _ = crate::watcher::scan_pair(pair, std::sync::Arc::clone(&db), &rules, &gov).await;
             }

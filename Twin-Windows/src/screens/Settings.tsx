@@ -1,6 +1,7 @@
 /**
- * Pro Settings Screen — Google Account & Drive Quota, Governor controls,
- * Bandwidth & Sync Rules, and JioTV Max Autonomous In-Place Updater.
+ * Settings & Preferences Screen
+ * Desktop preference panes for Google account, storage quota,
+ * concurrency governor, network rules, and background updates.
  */
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -11,6 +12,7 @@ import {
   authLogin,
   authLogout,
   authStatus,
+  authHasFullScope,
   appdataSyncNow,
   updateGetState,
   updateCheck,
@@ -31,6 +33,14 @@ import {
   CheckCircle2,
   Save,
   Check,
+  HardDrive,
+  Cpu,
+  Battery,
+  Wifi,
+  Shield,
+  Layers,
+  Palette,
+  AlertTriangle,
 } from "lucide-react";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -56,6 +66,8 @@ export function SettingsScreen() {
   const [syncingAppData, setSyncingAppData] = useState(false);
   const [quota, setQuota] = useState<StorageQuota | null>(null);
   const [autostart, setAutostart] = useState(false);
+  const [hasFullScope, setHasFullScope] = useState<boolean>(true);
+  const [upgradingScope, setUpgradingScope] = useState<boolean>(false);
   const [updateState, setUpdateState] = useState<UpdateStatePayload | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [installingUpdate, setInstallingUpdate] = useState(false);
@@ -74,8 +86,12 @@ export function SettingsScreen() {
 
     if (a.logged_in) {
       try {
-        const q = await invoke<StorageQuota>("get_storage_quota");
+        const [q, full] = await Promise.all([
+          invoke<StorageQuota>("get_storage_quota"),
+          authHasFullScope(),
+        ]);
         setQuota(q);
+        setHasFullScope(full);
       } catch {
         // Ignore quota query error
       }
@@ -102,9 +118,9 @@ export function SettingsScreen() {
       setConfig(cfg);
       setLocal(cfg);
       setHasChanges(false);
-      toast.success("Settings saved and reloaded live");
+      toast.success("Preferences saved successfully");
     } catch (e) {
-      toast.error(`Failed to save settings: ${String(e)}`);
+      toast.error(`Failed to save preferences: ${String(e)}`);
     } finally {
       setSaving(false);
     }
@@ -156,6 +172,20 @@ export function SettingsScreen() {
     }
   }
 
+  async function handleUpgradeScope() {
+    setUpgradingScope(true);
+    try {
+      await authLogin();
+      const full = await authHasFullScope();
+      setHasFullScope(full);
+      toast.success("Google Drive access updated!");
+    } catch (e) {
+      toast.error(`Re-authorization failed: ${String(e)}`);
+    } finally {
+      setUpgradingScope(false);
+    }
+  }
+
   async function handleCheckUpdate() {
     setCheckingUpdate(true);
     try {
@@ -176,7 +206,7 @@ export function SettingsScreen() {
   async function handleInstallUpdate() {
     setInstallingUpdate(true);
     try {
-      toast.info("Applying update and restarting Twin...");
+      toast.info("Applying update and restarting Twin…");
       await updateInstall();
     } catch (e) {
       toast.error(`Failed to apply update: ${String(e)}`);
@@ -205,13 +235,15 @@ export function SettingsScreen() {
     quota && quota.limit ? Math.min(100, Math.round((quota.usage / quota.limit) * 100)) : 0;
 
   return (
-    <div className="p-6 max-w-3xl w-full mx-auto space-y-7 pb-20">
+    <div className="p-7 max-w-3xl w-full mx-auto space-y-7 pb-28">
       {/* Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+      <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
         <div>
-          <h1 className="text-lg font-bold tracking-tight text-[var(--text)]">Preferences</h1>
-          <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
-            Configure Google Drive account, bandwidth thresholds, and governor rules.
+          <h1 className="text-lg font-bold tracking-tight text-white">
+            Preferences
+          </h1>
+          <p className="text-xs text-[var(--text-muted)] mt-1">
+            Manage Google account credentials, concurrency limits, and sync policies.
           </p>
         </div>
 
@@ -219,92 +251,121 @@ export function SettingsScreen() {
           <Button
             onClick={handleSave}
             disabled={saving}
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-500 flex items-center gap-1.5"
+            className="flex items-center gap-2"
           >
-            <Save size={13} />
+            <Save size={14} />
             {saving ? "Saving…" : "Save Changes"}
           </Button>
         )}
       </div>
 
-      {/* 1. Account Section */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          Google Cloud Account
+      {/* 1. Google Account Section */}
+      <section className="space-y-2.5">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+          Google Account & Storage
         </h2>
 
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
+        <div className="desktop-card p-5 space-y-4.5">
           {authed ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3.5 min-w-0">
                   {userProfile?.picture ? (
                     <img
                       src={userProfile.picture}
                       alt={userProfile.name ?? "User"}
-                      className="w-10 h-10 rounded-full object-cover border border-[var(--border)] shrink-0"
+                      className="w-10 h-10 rounded-full object-cover border border-white/10 shrink-0"
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-blue-600/30 border border-blue-500/30 text-blue-300 font-bold flex items-center justify-center text-sm shrink-0">
                       {userProfile?.name ? userProfile.name[0].toUpperCase() : "G"}
                     </div>
                   )}
 
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-[13.5px] text-[var(--text)] truncate">
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-bold text-sm text-white truncate">
                         {userProfile?.name ?? "Google Account"}
                       </span>
-                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        <CheckCircle2 size={11} />
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                        <CheckCircle2 size={13} />
                         Connected
                       </span>
                     </div>
-                    <p className="text-[12px] text-[var(--text-muted)] truncate">
+                    <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
                       {userProfile?.email ?? "Signed in"}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <Button
                     variant="secondary"
-                    size="sm"
                     onClick={handleAppDataSync}
                     disabled={syncingAppData}
-                    title="Sync preferences with Google Drive AppData folder"
+                    title="Sync settings with Google Drive AppData folder"
                   >
-                    <RefreshCw size={13} className={cn("mr-1.5 text-blue-400", syncingAppData && "animate-spin")} />
+                    <RefreshCw
+                      size={13}
+                      className={cn("text-[var(--text-muted)]", syncingAppData && "animate-spin text-blue-400")}
+                    />
                     {syncingAppData ? "Syncing…" : "Sync AppData"}
                   </Button>
                   <Button
                     variant="secondary"
-                    size="sm"
                     onClick={handleLogout}
                     className="hover:text-red-400"
                   >
-                    <LogOut size={13} className="mr-1.5" />
+                    <LogOut size={13} />
                     Sign out
                   </Button>
                 </div>
               </div>
 
-              {/* Storage Quota bar */}
+              {/* Storage Quota */}
               {quota && (
-                <div className="pt-3 border-t border-[var(--border)] space-y-1.5">
+                <div className="pt-3.5 border-t border-[var(--border-subtle)] space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--text-muted)]">Google Drive Storage</span>
-                    <span className="font-mono text-[var(--text)]">
+                    <span className="text-[var(--text-muted)] font-medium flex items-center gap-2">
+                      <HardDrive size={14} className="text-[var(--text-subtle)]" />
+                      Google Drive Storage
+                    </span>
+                    <span className="code-text text-xs text-white font-semibold">
                       {formatBytes(quota.usage)} of{" "}
                       {quota.limit ? formatBytes(quota.limit) : "Unlimited"} ({quotaPct}%)
                     </span>
                   </div>
-                  <Progress value={quotaPct} aria-label="Drive quota" />
-                  <div className="flex items-center gap-4 text-[11px] text-[var(--text-muted)] pt-0.5">
-                    <span>Drive: {formatBytes(quota.usageInDrive)}</span>
+                  <Progress value={quotaPct} aria-label="Drive quota" className="h-2" />
+                  <div className="flex items-center gap-4 text-xs code-text text-[var(--text-subtle)] pt-0.5">
+                    <span>Drive files: {formatBytes(quota.usageInDrive)}</span>
                     <span>Trash: {formatBytes(quota.usageInDriveTrash)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Limited Scope Warning & Upgrade Option */}
+              {!hasFullScope && authed && (
+                <div className="pt-3.5 border-t border-[var(--border-subtle)]">
+                  <div className="flex items-center justify-between p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-200">
+                    <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                      <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+                      <div className="text-xs">
+                        <p className="font-semibold text-amber-300">Limited Drive Scope Active</p>
+                        <p className="text-[var(--text-muted)] text-[11px] mt-0.5">
+                          Drive folders created outside Twin may be hidden. Upgrade to full Drive scope for seamless folder sync.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleUpgradeScope}
+                      disabled={upgradingScope}
+                      className="shrink-0 text-xs font-semibold"
+                    >
+                      {upgradingScope ? "Authorizing…" : "Upgrade Access"}
+                    </Button>
                   </div>
                 </div>
               )}
@@ -312,14 +373,14 @@ export function SettingsScreen() {
           ) : (
             <div className="flex items-center justify-between py-2">
               <div>
-                <p className="text-[13px] font-semibold text-[var(--text)]">
+                <p className="text-sm font-bold text-white">
                   Connect Your Google Account
                 </p>
-                <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
-                  Sign in with OAuth 2.0 for continuous two-way Google Drive synchronization.
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  Sign in with OAuth 2.0 to enable continuous cloud synchronization.
                 </p>
               </div>
-              <Button onClick={handleLogin} size="sm" className="bg-blue-600 hover:bg-blue-500">
+              <Button onClick={handleLogin}>
                 Sign in with Google
               </Button>
             </div>
@@ -327,89 +388,33 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      {/* 2. Autonomous Background Updater (JioTV Max Pattern) */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          Application Updates
+      {/* 2. Concurrency & Performance */}
+      <section className="space-y-2.5">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+          Sync Engine & Concurrency
         </h2>
 
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm flex items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-[13.5px] text-[var(--text)]">
-                Twin Desktop v{updateState?.current_version ?? "1.0.0"}
-              </span>
-              {updateState?.ready_version ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                  <Sparkles size={11} />
-                  v{updateState.ready_version} Downloaded & Ready
-                </span>
-              ) : (
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border)]">
-                  Up to date
-                </span>
-              )}
-            </div>
-            <p className="text-[12px] text-[var(--text-muted)]">
-              {updateState?.ready_version
-                ? "Update downloaded silently in background. Click below to restart and apply instantly."
-                : "Continuous in-place updates. Checks GitHub releases automatically in the background."}
-            </p>
-          </div>
-
-          <div>
-            {updateState?.ready_version ? (
-              <Button
-                size="sm"
-                onClick={handleInstallUpdate}
-                disabled={installingUpdate}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold flex items-center gap-1.5"
-              >
-                <ArrowDownCircle size={14} />
-                {installingUpdate ? "Applying..." : "Restart & Apply"}
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleCheckUpdate}
-                disabled={checkingUpdate}
-                className="flex items-center gap-1.5"
-              >
-                <RefreshCw size={13} className={cn("text-blue-400", checkingUpdate && "animate-spin")} />
-                {checkingUpdate ? "Checking…" : "Check for Updates"}
-              </Button>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* 3. System & Concurrency */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          System & Engine Governor
-        </h2>
-
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] divide-y divide-[var(--border)] shadow-sm">
+        <div className="desktop-card divide-y divide-[var(--border-subtle)]">
           {/* Autostart */}
-          <div className="p-4 flex items-center justify-between">
+          <div className="p-4.5 sm:p-5 flex items-center justify-between">
             <div>
-              <p className="text-[13px] font-medium text-[var(--text)]">Launch with Windows</p>
-              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                Automatically start Twin minimized in the system tray when logging in.
+              <p className="text-sm font-semibold text-white">Launch on System Startup</p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                Automatically run Twin in the background when logging into Windows.
               </p>
             </div>
             <Switch checked={autostart} onCheckedChange={handleAutostartToggle} />
           </div>
 
           {/* Parallel Transfers */}
-          <div className="p-4 space-y-2">
-            <div className="flex items-center justify-between text-[13px]">
-              <span className="font-medium text-[var(--text)]">
-                Parallel Transfers: {local.app.parallel_transfers}
+          <div className="p-4.5 sm:p-5 space-y-3">
+            <div className="flex items-center justify-between text-xs sm:text-sm">
+              <span className="font-semibold text-white flex items-center gap-2">
+                <Layers size={15} className="text-[var(--text-subtle)]" />
+                Parallel File Workers
               </span>
-              <span className="text-[11px] text-[var(--text-muted)]">
-                Max concurrent file workers
+              <span className="code-text text-xs text-blue-400 font-bold px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/20">
+                {local.app.parallel_transfers} concurrent transfers
               </span>
             </div>
             <input
@@ -423,19 +428,19 @@ export function SettingsScreen() {
                   app: { ...c.app, parallel_transfers: parseInt(e.target.value, 10) },
                 }))
               }
-              className="w-full h-1.5 bg-[var(--surface-2)] rounded-lg appearance-none cursor-pointer accent-blue-600"
+              className="w-full h-2 bg-[var(--surface-3)] rounded-lg appearance-none cursor-pointer accent-blue-600"
             />
-            <div className="flex justify-between text-[11px] font-mono text-[var(--text-muted)]">
-              <span>1 worker</span>
-              <span>4</span>
-              <span>8 workers</span>
+            <div className="flex justify-between text-xs code-text text-[var(--text-subtle)]">
+              <span>1 (Conservative)</span>
+              <span>4 (Recommended)</span>
+              <span>8 (Maximum)</span>
             </div>
           </div>
 
           {/* Bandwidth Limits */}
-          <div className="p-4 grid grid-cols-2 gap-4">
+          <div className="p-4.5 sm:p-5 grid grid-cols-2 gap-5">
             <div>
-              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
+              <label className="block text-xs font-semibold text-white mb-1.5">
                 Upload Bandwidth Cap (KB/s)
               </label>
               <Input
@@ -453,13 +458,13 @@ export function SettingsScreen() {
                 }
                 placeholder="0 = Unlimited"
               />
-              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
-                0 = Unlimited
+              <span className="text-xs text-[var(--text-subtle)] mt-1.5 block">
+                0 = Unlimited transfer speed
               </span>
             </div>
 
             <div>
-              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
+              <label className="block text-xs font-semibold text-white mb-1.5">
                 Download Bandwidth Cap (KB/s)
               </label>
               <Input
@@ -477,16 +482,26 @@ export function SettingsScreen() {
                 }
                 placeholder="0 = Unlimited"
               />
-              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
-                0 = Unlimited
+              <span className="text-xs text-[var(--text-subtle)] mt-1.5 block">
+                0 = Unlimited transfer speed
               </span>
             </div>
           </div>
+        </div>
+      </section>
 
-          {/* CPU Governor Thresholds */}
-          <div className="p-4 grid grid-cols-2 gap-4">
+      {/* 3. System Load & Battery Governor */}
+      <section className="space-y-2.5">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+          Power & Governor Rules
+        </h2>
+
+        <div className="desktop-card divide-y divide-[var(--border-subtle)]">
+          {/* CPU Thresholds */}
+          <div className="p-4.5 sm:p-5 grid grid-cols-2 gap-5">
             <div>
-              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
+              <label className="block text-xs font-semibold text-white mb-1.5 flex items-center gap-2">
+                <Cpu size={14} className="text-[var(--text-subtle)]" />
                 CPU Pause Threshold (%)
               </label>
               <Input
@@ -504,13 +519,14 @@ export function SettingsScreen() {
                   }))
                 }
               />
-              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
-                Pause sync when system CPU exceeds this %
+              <span className="text-xs text-[var(--text-subtle)] mt-1.5 block">
+                Throttle sync when CPU load exceeds this %
               </span>
             </div>
 
             <div>
-              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
+              <label className="block text-xs font-semibold text-white mb-1.5 flex items-center gap-2">
+                <Cpu size={14} className="text-[var(--text-subtle)]" />
                 CPU Resume Threshold (%)
               </label>
               <Input
@@ -528,18 +544,24 @@ export function SettingsScreen() {
                   }))
                 }
               />
-              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
+              <span className="text-xs text-[var(--text-subtle)] mt-1.5 block">
                 Resume sync when CPU drops below this %
               </span>
             </div>
           </div>
 
-          {/* Battery Governor Threshold */}
-          <div className="p-4 grid grid-cols-2 gap-4">
+          {/* Battery Governor */}
+          <div className="p-4.5 sm:p-5 flex items-center justify-between">
             <div>
-              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
-                Battery Pause Threshold (%)
-              </label>
+              <p className="text-sm font-semibold text-white flex items-center gap-2">
+                <Battery size={15} className="text-[var(--text-subtle)]" />
+                Battery Saver Pause
+              </p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                Pause sync when on battery power below threshold percentage (0 = disable).
+              </p>
+            </div>
+            <div className="w-28">
               <Input
                 type="number"
                 min={0}
@@ -554,21 +576,20 @@ export function SettingsScreen() {
                     },
                   }))
                 }
+                className="text-center code-text"
               />
-              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
-                Pause sync when on battery below this % (0 = Never pause)
-              </span>
             </div>
           </div>
 
           {/* Metered Network */}
-          <div className="p-4 flex items-center justify-between">
+          <div className="p-4.5 sm:p-5 flex items-center justify-between">
             <div>
-              <p className="text-[13px] font-medium text-[var(--text)]">
+              <p className="text-sm font-semibold text-white flex items-center gap-2">
+                <Wifi size={15} className="text-[var(--text-subtle)]" />
                 Pause on Metered Connections
               </p>
-              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                Automatically suspend sync when connected to cellular or metered Wi-Fi.
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                Automatically suspend sync on metered Wi-Fi or cellular connections.
               </p>
             </div>
             <Switch
@@ -585,15 +606,16 @@ export function SettingsScreen() {
       </section>
 
       {/* 4. Conflict & Deletion Policies */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+      <section className="space-y-2.5">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Conflict & Deletion Policy
         </h2>
 
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm grid grid-cols-2 gap-4">
+        <div className="desktop-card p-5 grid grid-cols-2 gap-5">
           <div>
-            <label className="block text-[12px] font-medium text-[var(--text)] mb-1.5">
-              Conflict Resolution
+            <label className="block text-xs font-semibold text-white mb-2 flex items-center gap-2">
+              <Shield size={14} className="text-[var(--text-subtle)]" />
+              Conflict Strategy
             </label>
             <select
               value={local.policy.conflict}
@@ -606,16 +628,17 @@ export function SettingsScreen() {
                   },
                 }))
               }
-              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-blue-500/60"
+              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-xl text-[var(--text)] focus:outline-none focus:border-blue-500/70 cursor-pointer font-medium"
             >
               <option value="newer_wins">Newer Timestamp Wins (Automatic)</option>
-              <option value="keep_both">Keep Both (Suffix with Conflict)</option>
-              <option value="ask">Interactive Prompt (Ask User)</option>
+              <option value="keep_both">Keep Both (Suffix local file)</option>
+              <option value="ask">Interactive Choice (Ask each time)</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-[12px] font-medium text-[var(--text)] mb-1.5">
+            <label className="block text-xs font-semibold text-white mb-2 flex items-center gap-2">
+              <Shield size={14} className="text-[var(--text-subtle)]" />
               Local Deletion Behavior
             </label>
             <select
@@ -629,7 +652,7 @@ export function SettingsScreen() {
                   },
                 }))
               }
-              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-blue-500/60"
+              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-xl text-[var(--text)] focus:outline-none focus:border-blue-500/70 cursor-pointer font-medium"
             >
               <option value="drive_trash">Move to Google Drive Trash (Safe)</option>
               <option value="ignore">Ignore Remote Deletions</option>
@@ -639,16 +662,74 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      {/* Floating Save Button if changes exist */}
+      {/* 5. Application Updates */}
+      <section className="space-y-2.5">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+          Software Updates
+        </h2>
+
+        <div className="desktop-card p-5 flex items-center justify-between gap-5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5">
+              <span className="font-bold text-sm text-white">
+                Twin Desktop v{updateState?.current_version ?? "1.0.0"}
+              </span>
+              {updateState?.ready_version ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  <Sparkles size={13} />
+                  v{updateState.ready_version} Ready to Apply
+                </span>
+              ) : (
+                <span className="text-xs code-text px-2 py-0.5 rounded-md bg-[var(--surface-2)] text-[var(--text-subtle)] border border-[var(--border)]">
+                  Latest version
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">
+              {updateState?.ready_version
+                ? "Update downloaded seamlessly. Click Restart to apply."
+                : "Automatic silent background update checks."}
+            </p>
+          </div>
+
+          <div>
+            {updateState?.ready_version ? (
+              <Button
+                onClick={handleInstallUpdate}
+                disabled={installingUpdate}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold flex items-center gap-2"
+              >
+                <ArrowDownCircle size={15} />
+                {installingUpdate ? "Applying…" : "Restart & Apply"}
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw
+                  size={14}
+                  className={cn("text-[var(--text-muted)]", checkingUpdate && "animate-spin text-blue-400")}
+                />
+                {checkingUpdate ? "Checking…" : "Check for Updates"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Floating Save Banner */}
       {hasChanges && (
-        <div className="fixed bottom-6 right-8 z-30">
+        <div className="fixed bottom-7 right-8 z-30 animate-in fade-in slide-in-from-bottom-2 duration-150">
           <Button
             onClick={handleSave}
             disabled={saving}
-            className="bg-blue-600 hover:bg-blue-500 shadow-xl px-5 py-2.5 h-auto text-[13px] font-medium flex items-center gap-2"
+            className="shadow-elevation px-5 py-2.5 h-10 text-xs font-bold flex items-center gap-2"
           >
-            <Check size={15} strokeWidth={2.5} />
-            {saving ? "Saving Changes…" : "Save Preferences"}
+            <Check size={16} strokeWidth={2.5} />
+            {saving ? "Saving…" : "Save Preferences"}
           </Button>
         </div>
       )}

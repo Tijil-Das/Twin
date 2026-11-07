@@ -43,6 +43,36 @@ pub struct Watcher {
 }
 
 impl Watcher {
+    /// Spawn a debounced watcher for a single pair entry.
+    pub fn watch_pair_entry(
+        pair: &PairEntry,
+        debounce_secs: u64,
+        db: Arc<Db>,
+        tx: mpsc::UnboundedSender<LocalChange>,
+    ) -> Result<Debouncer<notify_debouncer_full::notify::RecommendedWatcher, FileIdMap>, AppError> {
+        let local_path = PathBuf::from(&pair.local);
+        if !local_path.exists() {
+            return Err(AppError::Other(format!("Pair {} path {:?} does not exist", pair.id, local_path)));
+        }
+        let pair_id = pair.id.clone();
+        let debouncer = new_debouncer(
+            Duration::from_secs(debounce_secs),
+            None,
+            move |result: DebounceEventResult| {
+                handle_debounced_events(result, &pair_id, &local_path, &db, &tx);
+            },
+        )
+        .map_err(|e| AppError::Other(format!("watcher init for pair {}: {e}", pair.id)))?;
+
+        let mut d = debouncer;
+        d.watcher()
+            .watch(&PathBuf::from(&pair.local), RecursiveMode::Recursive)
+            .map_err(|e| AppError::Other(format!("watch path: {e}")))?;
+
+        info!("Watching pair {} → {:?}", pair.id, pair.local);
+        Ok(d)
+    }
+
     /// Spawn a debounced watcher for each enabled pair.
     /// Events are sent over `tx`; the caller owns the `rx`.
     pub fn start(
@@ -50,40 +80,13 @@ impl Watcher {
         db: Arc<Db>,
         tx: mpsc::UnboundedSender<LocalChange>,
     ) -> Result<Self, AppError> {
-        let debounce = Duration::from_secs(cfg.app.debounce_secs);
         let mut debouncers = Vec::new();
 
         for pair in cfg.pairs.iter().filter(|p| p.enabled) {
-            let local_path = PathBuf::from(&pair.local);
-            if !local_path.exists() {
-                warn!("Pair {} local path {:?} does not exist; skipping watch", pair.id, local_path);
-                continue;
+            match Self::watch_pair_entry(pair, cfg.app.debounce_secs, Arc::clone(&db), tx.clone()) {
+                Ok(d) => debouncers.push(d),
+                Err(e) => warn!("Pair {} watch error: {e}", pair.id),
             }
-
-            let pair_id = pair.id.clone();
-            let tx2 = tx.clone();
-            let db2 = Arc::clone(&db);
-
-            let debouncer = new_debouncer(
-                debounce,
-                None,
-                move |result: DebounceEventResult| {
-                    handle_debounced_events(result, &pair_id, &local_path, &db2, &tx2);
-                },
-            )
-            .map_err(|e| AppError::Other(format!("watcher init for pair {}: {e}", pair.id)))?;
-
-            {
-                // `watcher()` returns a &mut to the inner watcher; we watch the path.
-                // We must move the debouncer so it's not dropped.
-                let mut d = debouncer;
-                d.watcher()
-                    .watch(&PathBuf::from(&pair.local), RecursiveMode::Recursive)
-                    .map_err(|e| AppError::Other(format!("watch path: {e}")))?;
-                debouncers.push(d);
-            }
-
-            info!("Watching pair {} → {:?}", pair.id, pair.local);
         }
 
         Ok(Watcher { _debouncers: debouncers })
@@ -284,13 +287,8 @@ pub async fn scan_pair(
             let rel_str = rel.to_string_lossy().replace('\\', "/");
             seen.insert(rel_str.clone());
 
-            // Compare with DB.
-            let mut existing = db.get_file(&pair.id, &rel_str)?;
-            if existing.is_none() || existing.as_ref().and_then(|r| r.drive_id.as_ref()).is_none() {
-                if let Ok(Some(alt)) = db.find_any_file_by_rel_path(&rel_str) {
-                    existing = Some(alt);
-                }
-            }
+            // Compare with DB for this pair.
+            let existing = db.get_file(&pair.id, &rel_str)?;
             let needs_upload = match &existing {
                 None => true,
                 Some(row) => {
@@ -357,10 +355,10 @@ fn mark_missing(
             continue;
         }
 
-        // Don't resurrect rows that are already in a terminal deleted state.
+        // Don't resurrect rows that are already in a confirmed terminal deleted state.
         if matches!(
             row.state.as_str(),
-            "deleted_local" | "remote_deleted" | "deleted" | "trashed" | "conflict"
+            "remote_deleted" | "deleted" | "trashed" | "conflict"
         ) {
             continue;
         }

@@ -116,11 +116,63 @@ pub async fn reconcile_listing_with_policy(
     conflict_policy: ConflictPolicy,
     deletion_policy: DeletionPolicy,
 ) -> Result<ReconcileResult, AppError> {
-    let _ = drive; // used by callers; not needed directly here
     let mut result = ReconcileResult::default();
+    let local_root = PathBuf::from(&pair.local);
+
+    // In Mirror mode: prune rogue remote folders and merge duplicate folders.
+    if matches!(pair.mode, PairMode::Mirror) && matches!(deletion_policy, DeletionPolicy::DriveTrash | DeletionPolicy::Delete) {
+        let mut folders_by_rel: HashMap<String, Vec<&DriveEntry>> = HashMap::new();
+        for entry in entries {
+            if entry.mime_type.as_deref() == Some("application/vnd.google-apps.folder") {
+                if let Some(name) = &entry.name {
+                    folders_by_rel.entry(name.clone()).or_default().push(entry);
+                }
+            }
+        }
+
+        // Sort descending by depth so deepest subfolders are pruned before their parents
+        let mut sorted_folder_paths: Vec<String> = folders_by_rel.keys().cloned().collect();
+        sorted_folder_paths.sort_by(|a, b| b.matches('/').count().cmp(&a.matches('/').count()));
+
+        for rel_dir in sorted_folder_paths {
+            let folder_entries = &folders_by_rel[&rel_dir];
+            let local_dir = local_root.join(&rel_dir);
+            let dir_exists_locally = local_dir.is_dir();
+
+            if !dir_exists_locally {
+                // Rogue folder that does not exist locally -> trash or delete
+                for f in folder_entries {
+                    info!("Mirror reconcile: trashing rogue remote folder {} ({})", rel_dir, f.id);
+                    match deletion_policy {
+                        DeletionPolicy::DriveTrash => { let _ = drive.trash(&f.id).await; }
+                        DeletionPolicy::Delete => { let _ = drive.delete(&f.id).await; }
+                        DeletionPolicy::Ignore => {}
+                    }
+                    result.deletes += 1;
+                }
+            } else if folder_entries.len() > 1 {
+                // Duplicate folders on Drive for the same local directory!
+                // Keep the first instance as primary, migrate any contents from duplicates into primary, then trash the duplicates.
+                let primary = folder_entries[0];
+                for dup in &folder_entries[1..] {
+                    info!("Mirror reconcile: merging duplicate folder {} ({}) into primary ({})", rel_dir, dup.id, primary.id);
+                    if let Ok(child_items) = drive.list_folder(&dup.id).await {
+                        for child in child_items {
+                            let _ = drive.move_file_parent(&child.id, &primary.id, &dup.id).await;
+                        }
+                    }
+                    match deletion_policy {
+                        DeletionPolicy::DriveTrash => { let _ = drive.trash(&dup.id).await; }
+                        DeletionPolicy::Delete => { let _ = drive.delete(&dup.id).await; }
+                        DeletionPolicy::Ignore => {}
+                    }
+                    result.deletes += 1;
+                }
+            }
+        }
+    }
 
     // Build map: rel_path → DriveEntry from Drive listing.
-    let local_root = PathBuf::from(&pair.local);
     let mut remote_by_rel: HashMap<String, &DriveEntry> = HashMap::new();
 
     for entry in entries {
@@ -148,7 +200,26 @@ pub async fn reconcile_listing_with_policy(
 
         // Decision table: (local_exists, local_changed, remote_changed)
         if !local_exists {
-            if let Some(ref row) = db_row {
+            if matches!(pair.mode, PairMode::Mirror) {
+                // In mirror mode, local is source of truth:
+                // If the file does not exist locally, the remote file MUST be deleted/trashed.
+                if matches!(deletion_policy, DeletionPolicy::DriveTrash | DeletionPolicy::Delete) {
+                    db.upsert_file(FileRow {
+                        pair_id:       pair.id.clone(),
+                        rel_path:      rel.clone(),
+                        size:          None,
+                        mtime_ms:      None,
+                        md5:           None,
+                        drive_id:      Some(remote.id.clone()),
+                        drive_md5:     Some(remote_md5.to_string()),
+                        drive_mtime_ms: None,
+                        drive_rev:     None,
+                        state:         "dirty".into(),
+                    })?;
+                    apply_local_delete_inner(db, pair, rel, now, deletion_policy.clone())?;
+                    result.deletes += 1;
+                }
+            } else if let Some(ref row) = db_row {
                 // Safety: only delete remote when the row was previously tracked
                 // locally (never on initial discovery). A `synced` row whose
                 // file vanished from disk is a local deletion detected by a
@@ -192,6 +263,10 @@ pub async fn reconcile_listing_with_policy(
             if remote_md5 == local_md5 {
                 // Same content, just mark synced.
                 db.mark_state(&pair.id, rel, "synced")?;
+            } else if pair.mode == PairMode::Mirror {
+                // In mirror mode: local always wins over remote changes! Overwrite remote.
+                enqueue_upload(db, pair, rel, now)?;
+                result.uploads += 1;
             } else if matches!(pair.mode, PairMode::TwoWay) {
                 let outcome = apply_conflict_inner(db, pair, rel, remote, &local_path, now, echo, conflict_policy.clone()).await?;
                 result.uploads    += outcome.uploads;
@@ -229,12 +304,10 @@ pub async fn reconcile_listing_with_policy(
         })?;
     }
 
-    // Mirror mode: trash remote files that have no local counterpart.
-    if pair.mode == PairMode::Mirror {
+    // Ensure all local files exist on Drive (upload any missing local files in Mirror, TwoWay, or Upload).
+    if matches!(pair.mode, PairMode::Mirror | PairMode::TwoWay | PairMode::Upload) {
         let remote_rels: HashSet<&String> = remote_by_rel.keys().collect();
-        // Find all tracked files in Db.
-        let _local_files = db.list_dirty(&pair.id, usize::MAX)?;
-        // Also list synced files: re-use list_files_all helper.
+        // List all tracked files in Db.
         let all_tracked = db.list_all_files(&pair.id)?;
         for row in &all_tracked {
             if !remote_rels.contains(&&row.rel_path) {
@@ -378,10 +451,25 @@ pub async fn apply_remote_change_with_policies(
     match pair.mode {
         // Upload mode: ignore remote changes.
         PairMode::Upload => {}
-        // Mirror: local always wins, so re-upload the local file.
+        // Mirror: local always wins, so re-upload the local file or remove extra remote file.
         PairMode::Mirror => {
             if local_path.exists() {
                 enqueue_upload(db, pair, &rel_path, now)?;
+            } else if matches!(deletion_policy, DeletionPolicy::DriveTrash | DeletionPolicy::Delete) {
+                // In mirror mode, any remote file that does not exist locally must be removed from Drive.
+                db.upsert_file(FileRow {
+                    pair_id:       pair.id.clone(),
+                    rel_path:      rel_path.clone(),
+                    size:          None,
+                    mtime_ms:      None,
+                    md5:           None,
+                    drive_id:      Some(file.id.clone()),
+                    drive_md5:     Some(remote_md5.to_string()),
+                    drive_mtime_ms: None,
+                    drive_rev:     None,
+                    state:         "dirty".into(),
+                })?;
+                apply_local_delete_inner(db, pair, &rel_path, now, deletion_policy.clone())?;
             }
         }
         PairMode::TwoWay => {

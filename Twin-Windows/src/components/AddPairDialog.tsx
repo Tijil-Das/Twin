@@ -1,6 +1,7 @@
 /**
- * Pro Add-Pair Dialog — Windows Explorer style Google Drive folder selector,
- * native local folder picker, and updated sync mode icons.
+ * Add Synced Folder Pair Dialog
+ * Desktop modal for selecting local directories, traversing Google Drive
+ * folder hierarchies, and choosing sync topologies.
  */
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -13,6 +14,8 @@ import {
   X,
   FolderSearch,
   Link2,
+  Check,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,21 +46,21 @@ const MODES: {
   {
     id: "two_way",
     title: "Two-Way Sync",
-    desc: "Bidirectional continuous replication. Changes in both local and Drive propagate automatically.",
+    desc: "Bidirectional continuous replication. Changes made locally or in Google Drive propagate automatically.",
     Icon: ArrowLeftRight,
     badge: "Recommended",
   },
   {
     id: "upload",
     title: "Cloud Backup",
-    desc: "One-way upload. Local edits sync to Google Drive. Remote changes do not overwrite local files.",
+    desc: "One-way upload. Local edits sync to Google Drive. Remote changes will never alter local files.",
     Icon: CloudUpload,
     badge: "Upload Only",
   },
   {
     id: "mirror",
     title: "Cloud Mirror",
-    desc: "Strict mirror. Keeps the remote Drive folder as an exact mirror image of local folder state.",
+    desc: "Strict mirror. Keeps the remote Google Drive directory as an exact mirror image of the local folder.",
     Icon: FlipHorizontal2,
     badge: "Mirror",
   },
@@ -69,6 +72,7 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
   const [selectedDriveName, setSelectedDriveName] = useState<string>("");
   const [driveSelectionMode, setDriveSelectionMode] = useState<"explorer" | "manual">("explorer");
   const [mode, setMode] = useState<PairMode>("two_way");
+  const [deletion, setDeletion] = useState<"drive_trash" | "delete">("drive_trash");
   const [saving, setSaving] = useState(false);
   const [localErr, setLocalErr] = useState("");
   const [driveErr, setDriveErr] = useState("");
@@ -118,15 +122,17 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
         drive_folder_id: parseDriveFolderId(driveInput),
         mode,
         enabled: true,
+        deletion,
       };
       await addPair(pair);
-      toast.success("Folder pair connected successfully");
+      toast.success("Folder pair configured successfully");
       onAdded();
       onClose();
       setLocal("");
       setDriveInput("");
       setSelectedDriveName("");
       setMode("two_way");
+      setDeletion("drive_trash");
     } catch (e) {
       toast.error(`Failed to add folder pair: ${String(e)}`);
     } finally {
@@ -142,108 +148,107 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/70 z-50 animate-in fade-in duration-150" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[580px] max-w-[94vw] max-h-[92vh] overflow-y-auto bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 z-[60] shadow-2xl animate-in zoom-in-95 duration-150">
+        <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 animate-in fade-in duration-150" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] max-w-[94vw] max-h-[92vh] overflow-y-auto bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 z-[60] shadow-elevation animate-in zoom-in-95 duration-150">
           {/* Header */}
-          <div className="flex items-start justify-between mb-5">
+          <div className="flex items-start justify-between pb-3.5 border-b border-[var(--border-subtle)] mb-5">
             <div>
-              <Dialog.Title className="text-base font-bold text-[var(--text)] tracking-tight">
+              <Dialog.Title className="text-base font-bold text-white tracking-tight">
                 Add Synced Folder Pair
               </Dialog.Title>
-              <Dialog.Description className="text-[12px] text-[var(--text-muted)] mt-1">
-                Link a local folder with a Google Drive folder for continuous sync.
+              <Dialog.Description className="text-xs text-[var(--text-muted)] mt-1">
+                Link a local folder with a Google Drive directory for continuous sync.
               </Dialog.Description>
             </div>
             <button
               onClick={onClose}
-              className="text-[var(--text-muted)] hover:text-[var(--text)] p-1 rounded-lg hover:bg-[var(--surface-2)] transition-colors"
+              className="text-[var(--text-subtle)] hover:text-white p-1 rounded-lg hover:bg-[var(--surface-2)] transition-colors cursor-pointer"
             >
               <X size={16} />
             </button>
           </div>
 
-          <div className="space-y-4">
-            {/* 1. Local path input with Browse Button */}
+          <div className="space-y-5">
+            {/* 1. Local path input */}
             <div>
-              <label className="block text-[12px] font-semibold text-[var(--text)] mb-1.5 flex items-center gap-1.5">
-                <Folder size={13} className="text-blue-400" />
+              <label className="block text-xs font-semibold text-white mb-2 flex items-center gap-2">
+                <Folder size={15} className="text-blue-400" />
                 Local Folder Path
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <Input
                   value={local}
                   onChange={(e) => {
                     setLocal(e.target.value);
                     if (localErr) setLocalErr("");
                   }}
-                  placeholder="T:\MyProjects\SourceCode  or  C:\Users\You\Documents"
-                  className="font-mono text-[12px] flex-1"
+                  placeholder="e.g. C:\Users\Username\Documents\Work"
+                  className="code-text text-xs flex-1 h-9"
                 />
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={handlePickLocal}
-                  className="shrink-0 text-xs flex items-center gap-1.5 px-3 h-9"
+                  className="shrink-0 flex items-center gap-2 px-3.5 h-9"
                 >
-                  <FolderSearch size={14} className="text-blue-400" />
+                  <FolderSearch size={14} className="text-[var(--text-muted)]" />
                   <span>Browse…</span>
                 </Button>
               </div>
               {localErr && (
-                <p className="text-[11px] text-red-400 mt-1 font-medium">{localErr}</p>
+                <p className="text-xs text-red-400 mt-1.5 font-medium">{localErr}</p>
               )}
             </div>
 
-            {/* 2. Google Drive Folder Selector (Windows Explorer Style) */}
+            {/* 2. Google Drive Target */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[12px] font-semibold text-[var(--text)] flex items-center gap-1.5">
-                  <Cloud size={13} className="text-blue-400" />
-                  Google Drive Folder
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-white flex items-center gap-2">
+                  <Cloud size={15} className="text-blue-400" />
+                  Google Drive Target Folder
                 </label>
-                <div className="flex items-center gap-1 text-[11px]">
+                <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs">
                   <button
                     type="button"
                     onClick={() => setDriveSelectionMode("explorer")}
                     className={cn(
-                      "px-2 py-0.5 rounded transition-colors",
+                      "px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
                       driveSelectionMode === "explorer"
-                        ? "bg-blue-600/20 text-blue-400 font-semibold border border-blue-500/30"
-                        : "text-zinc-400 hover:text-white"
+                        ? "bg-[var(--surface)] text-white shadow-sm"
+                        : "text-[var(--text-muted)] hover:text-white"
                     )}
                   >
-                    Explorer View
+                    Drive Browser
                   </button>
                   <button
                     type="button"
                     onClick={() => setDriveSelectionMode("manual")}
                     className={cn(
-                      "px-2 py-0.5 rounded transition-colors flex items-center gap-1",
+                      "px-2.5 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer",
                       driveSelectionMode === "manual"
-                        ? "bg-blue-600/20 text-blue-400 font-semibold border border-blue-500/30"
-                        : "text-zinc-400 hover:text-white"
+                        ? "bg-[var(--surface)] text-white shadow-sm"
+                        : "text-[var(--text-muted)] hover:text-white"
                     )}
                   >
-                    <Link2 size={11} />
+                    <Link2 size={12} />
                     <span>Paste Link / ID</span>
                   </button>
                 </div>
               </div>
 
               {driveSelectionMode === "explorer" ? (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   <DriveFolderSelector
                     selectedFolderId={driveInput}
                     onSelect={handleDriveFolderSelected}
                   />
                   {selectedDriveName && (
-                    <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-blue-600/10 border border-blue-500/30 text-xs">
-                      <span className="text-zinc-400">
-                        Selected Target:{" "}
-                        <strong className="text-blue-400">{selectedDriveName}</strong>
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs">
+                      <span className="text-[var(--text-muted)]">
+                        Selected: <strong className="text-white font-semibold">{selectedDriveName}</strong>
                       </span>
-                      <span className="font-mono text-[10.5px] text-zinc-500">
-                        ID: {driveInput}
+                      <span className="code-text text-xs text-[var(--text-subtle)]">
+                        {driveInput}
                       </span>
                     </div>
                   )}
@@ -257,67 +262,67 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
                       setSelectedDriveName("");
                       if (driveErr) setDriveErr("");
                     }}
-                    placeholder="https://drive.google.com/drive/folders/1aBcD_...  or  folder ID"
-                    className="font-mono text-[12px]"
+                    placeholder="https://drive.google.com/drive/folders/… or folder ID"
+                    className="code-text text-xs h-9"
                   />
-                  <p className="text-[11px] text-[var(--text-subtle)] mt-1">
-                    Paste the direct browser link or unique folder ID from Google Drive.
+                  <p className="text-xs text-[var(--text-subtle)] mt-1.5">
+                    Paste a direct Google Drive folder URL or ID.
                   </p>
                 </div>
               )}
 
               {driveErr && (
-                <p className="text-[11px] text-red-400 mt-1 font-medium">{driveErr}</p>
+                <p className="text-xs text-red-400 mt-1.5 font-medium">{driveErr}</p>
               )}
             </div>
 
-            {/* 3. Sync Mode Selection: Visual Cards with Updated Icons */}
+            {/* 3. Sync Mode Selection */}
             <div>
-              <label className="block text-[12px] font-semibold text-[var(--text)] mb-2">
-                Synchronization Mode
+              <label className="block text-xs font-semibold text-white mb-2.5">
+                Synchronization Topology
               </label>
-              <div className="grid grid-cols-1 gap-2">
+              <div className="grid grid-cols-1 gap-2.5">
                 {MODES.map((m) => {
-                  const selected = mode === m.id;
+                  const isSelected = mode === m.id;
                   const ModeIcon = m.Icon;
                   return (
                     <div
                       key={m.id}
                       onClick={() => setMode(m.id)}
                       className={cn(
-                        "p-3 rounded-xl border text-left cursor-pointer transition-all duration-150 flex items-start gap-3",
-                        selected
-                          ? "bg-blue-600/10 border-blue-500/40 shadow-sm"
-                          : "bg-[var(--surface-2)]/40 border-[var(--border)] hover:border-zinc-600"
+                        "p-3.5 rounded-xl border text-left cursor-pointer transition-all duration-150 flex items-start gap-3.5",
+                        isSelected
+                          ? "bg-blue-500/10 border-blue-500/40 shadow-sm"
+                          : "bg-[var(--surface-2)]/40 border-[var(--border)] hover:border-white/15"
                       )}
                     >
                       <div
                         className={cn(
                           "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border mt-0.5",
-                          selected
-                            ? "bg-blue-600/20 border-blue-500/30 text-blue-400"
+                          isSelected
+                            ? "bg-blue-500/20 border-blue-500/30 text-blue-400"
                             : "bg-[var(--surface-3)] border-transparent text-[var(--text-muted)]"
                         )}
                       >
-                        <ModeIcon size={15} strokeWidth={2} />
+                        <ModeIcon size={16} strokeWidth={2} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="text-[13px] font-semibold text-[var(--text)]">
+                          <span className="text-xs font-bold text-white">
                             {m.title}
                           </span>
                           <span
                             className={cn(
-                              "text-[10px] font-semibold px-1.5 py-0.5 rounded border",
-                              selected
-                                ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                                : "bg-zinc-800 text-zinc-400 border-zinc-700"
+                              "text-xs code-text px-2 py-0.5 rounded border font-semibold",
+                              isSelected
+                                ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                                : "bg-white/[0.04] text-[var(--text-subtle)] border-white/5"
                             )}
                           >
                             {m.badge}
                           </span>
                         </div>
-                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                        <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
                           {m.desc}
                         </p>
                       </div>
@@ -326,17 +331,60 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
                 })}
               </div>
             </div>
+
+            {/* 4. Google Drive Deletion Behavior */}
+            <div>
+              <label className="block text-xs font-semibold text-white mb-2 flex items-center gap-2">
+                <Trash2 size={14} className="text-red-400" />
+                Google Drive Deletion Behavior
+              </label>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setDeletion("drive_trash")}
+                  className={cn(
+                    "p-3 rounded-xl border text-left cursor-pointer transition-all duration-150 flex flex-col gap-1",
+                    deletion === "drive_trash"
+                      ? "bg-blue-500/10 border-blue-500/40 shadow-sm"
+                      : "bg-[var(--surface-2)]/40 border-[var(--border)] hover:border-white/15"
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xs font-bold text-white">Move to Drive Trash</span>
+                    {deletion === "drive_trash" && <Check size={13} className="text-blue-400" />}
+                  </div>
+                  <span className="text-xs text-[var(--text-muted)]">30-day recovery in Google Drive</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDeletion("delete")}
+                  className={cn(
+                    "p-3 rounded-xl border text-left cursor-pointer transition-all duration-150 flex flex-col gap-1",
+                    deletion === "delete"
+                      ? "bg-red-500/10 border-red-500/40 shadow-sm"
+                      : "bg-[var(--surface-2)]/40 border-[var(--border)] hover:border-white/15"
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xs font-bold text-white">Delete Permanently</span>
+                    {deletion === "delete" && <Check size={13} className="text-red-400" />}
+                  </div>
+                  <span className="text-xs text-[var(--text-muted)]">Bypasses trash, frees quota instantly</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center justify-end gap-2.5 mt-6 pt-4 border-t border-[var(--border)]">
+          <div className="flex items-center justify-end gap-2.5 mt-6 pt-3.5 border-t border-[var(--border-subtle)]">
             <Button variant="ghost" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
             <Button
               onClick={handleAdd}
               disabled={saving}
-              className="bg-blue-600 hover:bg-blue-500 min-w-[110px]"
+              className="min-w-[110px]"
             >
               {saving ? "Connecting…" : "Create Pair"}
             </Button>

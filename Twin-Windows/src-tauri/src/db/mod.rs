@@ -427,7 +427,7 @@ impl Db {
                 .query_row(
                     "SELECT 1 FROM files WHERE pair_id=?1 AND rel_path=?2
                        AND state='synced' AND drive_id IS NOT NULL
-                       AND (md5 IS NULL OR drive_md5 IS NULL OR md5 = drive_md5)",
+                       AND md5 IS NOT NULL AND drive_md5 IS NOT NULL AND md5 = drive_md5",
                     params![job.pair_id, job.rel_path],
                     |_| Ok(()),
                 )

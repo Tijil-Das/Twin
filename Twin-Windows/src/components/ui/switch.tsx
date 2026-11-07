@@ -8,15 +8,19 @@ const Switch = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SwitchPrimitive.Root
     className={cn(
-      "peer inline-flex h-4.5 w-8 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-40 data-[state=checked]:bg-blue-600 data-[state=unchecked]:bg-[var(--surface-3)] data-[state=unchecked]:border-[var(--border)]",
+      "relative inline-flex h-[22px] w-[44px] shrink-0 cursor-pointer items-center rounded-[5px] transition-colors duration-150 select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-40",
+      "data-[state=checked]:bg-[#0067c0] data-[state=checked]:border data-[state=checked]:border-[#0067c0] data-[state=unchecked]:bg-[#202020] data-[state=unchecked]:border data-[state=unchecked]:border-white/30 hover:data-[state=unchecked]:border-white/50",
       className
     )}
     {...props}
     ref={ref}
   >
+    {/* Windows 11 Rounded Rectangular Sliding Thumb - clean, no line or circle */}
     <SwitchPrimitive.Thumb
       className={cn(
-        "pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-out data-[state=checked]:translate-x-[15px] data-[state=unchecked]:translate-x-[2px]"
+        "pointer-events-none block h-[16px] w-[16px] rounded-[3px] shadow-sm transition-transform duration-150 ease-out",
+        "data-[state=checked]:translate-x-[25px] data-[state=checked]:bg-[#1b1f28]",
+        "data-[state=unchecked]:translate-x-[3px] data-[state=unchecked]:bg-[#d1d5db]"
       )}
     />
   </SwitchPrimitive.Root>

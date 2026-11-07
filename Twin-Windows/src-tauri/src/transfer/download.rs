@@ -108,8 +108,9 @@ pub(crate) async fn run_download(
     limiter: Arc<Limiter>,
     progress: ProgressTx,
 ) -> Result<(), AppError> {
-    // Resolve pair.
-    let pair = match cfg.pairs.iter().find(|p| p.id == job.pair_id) {
+    // Resolve pair (use fresh config to pick up newly added pairs).
+    let current_cfg = crate::config::load().unwrap_or(cfg);
+    let pair = match current_cfg.pairs.iter().find(|p| p.id == job.pair_id) {
         Some(p) => p.clone(),
         None => {
             let _ = db.complete_job(job.id);
@@ -521,7 +522,8 @@ pub(crate) async fn run_restore(
     // We use `rel_path` = drive_file_id, job payload in `last_error`.
     let drive_id = job.rel_path.clone();
 
-    let pair = match cfg.pairs.iter().find(|p| p.id == job.pair_id) {
+    let current_cfg = crate::config::load().unwrap_or(cfg);
+    let pair = match current_cfg.pairs.iter().find(|p| p.id == job.pair_id) {
         Some(p) => p.clone(),
         None => {
             let _ = db.complete_job(job.id);

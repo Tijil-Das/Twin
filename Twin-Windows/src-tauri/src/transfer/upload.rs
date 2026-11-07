@@ -86,10 +86,12 @@ async fn run_upload(
     limiter: Arc<Limiter>,
     progress: ProgressTx,
 ) -> Result<(), AppError> {
-    // Find the pair config.
-    let pair = match cfg.pairs.iter().find(|p| p.id == job.pair_id) {
+    // Find the pair config (use fresh config from disk to reflect newly added pairs).
+    let current_cfg = crate::config::load().unwrap_or(cfg.clone());
+    let pair = match current_cfg.pairs.iter().find(|p| p.id == job.pair_id) {
         Some(p) => p.clone(),
         None => {
+            warn!("upload: pair {} not found in config, completing job", job.pair_id);
             let _ = db.complete_job(job.id);
             return Ok(());
         }
@@ -111,23 +113,8 @@ async fn run_upload(
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
 
-    // Get DB row for this file.
-    let mut existing = db.get_file(&job.pair_id, &job.rel_path)?;
-    if existing.as_ref().and_then(|r| r.drive_id.as_ref()).is_none() {
-        if let Ok(Some(alt)) = db.find_any_file_by_rel_path(&job.rel_path) {
-            if let Some(ref did) = alt.drive_id {
-                let _ = db.set_drive_meta(
-                    &job.pair_id,
-                    &job.rel_path,
-                    did,
-                    alt.drive_md5.as_deref(),
-                    alt.drive_mtime_ms,
-                    alt.drive_rev.as_deref(),
-                );
-                existing = db.get_file(&job.pair_id, &job.rel_path)?;
-            }
-        }
-    }
+    // Get DB row for this file within this pair.
+    let existing = db.get_file(&job.pair_id, &job.rel_path)?;
 
     // Compute local md5.
     gov.checkpoint().await;
@@ -493,10 +480,14 @@ async fn run_delete(
 ) -> Result<(), AppError> {
     use crate::config::DeletionPolicy;
 
-    if !cfg.pairs.iter().any(|p| p.id == job.pair_id) {
-        let _ = db.complete_job(job.id);
-        return Ok(());
-    }
+    let current_cfg = crate::config::load().unwrap_or(cfg);
+    let pair = match current_cfg.pairs.iter().find(|p| p.id == job.pair_id) {
+        Some(p) => p,
+        None => {
+            let _ = db.complete_job(job.id);
+            return Ok(());
+        }
+    };
 
     let existing = db.get_file(&job.pair_id, &job.rel_path)?;
     let drive_id = match existing.as_ref().and_then(|r| r.drive_id.as_deref()) {
@@ -507,7 +498,8 @@ async fn run_delete(
         }
     };
 
-    match cfg.policy.deletion {
+    let policy = pair.deletion.clone().unwrap_or(current_cfg.policy.deletion);
+    match policy {
         DeletionPolicy::Ignore => {}
         DeletionPolicy::DriveTrash => {
             drive.trash(&drive_id).await?;
@@ -519,7 +511,7 @@ async fn run_delete(
         }
     }
 
-    info!("deleted/trashed {} (policy={:?})", job.rel_path, cfg.policy.deletion);
+    info!("deleted/trashed {} (policy={:?})", job.rel_path, policy);
     Ok(())
 }
 
@@ -531,7 +523,8 @@ async fn run_mkdir(
     cfg: Config,
     drive: DriveClient,
 ) -> Result<(), AppError> {
-    let pair = match cfg.pairs.iter().find(|p| p.id == job.pair_id) {
+    let current_cfg = crate::config::load().unwrap_or(cfg);
+    let pair = match current_cfg.pairs.iter().find(|p| p.id == job.pair_id) {
         Some(p) => p,
         None => {
             let _ = db.complete_job(job.id);

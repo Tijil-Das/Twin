@@ -70,6 +70,7 @@ pub struct AppSection {
     pub github_push_mins: u64,
     pub start_hidden: bool,
     pub dry_run: bool,
+    pub color_drive_folders: bool,
 }
 
 impl Default for AppSection {
@@ -82,6 +83,7 @@ impl Default for AppSection {
             github_push_mins: 30,
             start_hidden: true,
             dry_run: false,
+            color_drive_folders: true,
         }
     }
 }
@@ -171,6 +173,8 @@ pub struct PairEntry {
     pub drive_folder_id: String,
     pub mode: PairMode,
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deletion: Option<DeletionPolicy>,
 }
 
 impl Default for PairEntry {
@@ -181,6 +185,7 @@ impl Default for PairEntry {
             drive_folder_id: String::new(),
             mode: PairMode::TwoWay,
             enabled: true,
+            deletion: None,
         }
     }
 }

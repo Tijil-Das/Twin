@@ -63,6 +63,11 @@ pub struct CycleReport {
 pub async fn run_pair_cycle(pair: &PairEntry, ctx: &Ctx) -> Result<CycleReport, AppError> {
     let mut report = CycleReport::default();
 
+    // 1. Scan local filesystem so Db has all local files, modifications, and deletions recorded.
+    let cfg = crate::config::load().unwrap_or_default();
+    let rules = crate::rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
+    let _ = crate::watcher::scan_pair(pair, Arc::clone(&ctx.db), &rules, &ctx.gov).await;
+
     // Only two_way and mirror modes participate in the Changes feed.
     let use_changes = matches!(pair.mode, PairMode::TwoWay | PairMode::Mirror);
 
@@ -85,7 +90,7 @@ pub async fn run_pair_cycle(pair: &PairEntry, ctx: &Ctx) -> Result<CycleReport, 
         &files,
         &ctx.echo,
         ctx.policy.conflict.clone(),
-        ctx.policy.deletion.clone(),
+        pair.deletion.clone().unwrap_or_else(|| ctx.policy.deletion.clone()),
     ).await?;
     report.uploads_queued   += queued.uploads;
     report.downloads_queued += queued.downloads;
@@ -136,8 +141,10 @@ pub async fn reconcile_pair_gap(
 
     // 2. Reconcile with Google Drive according to mode
     let mut report = CycleReport::default();
-    let use_changes = matches!(pair.mode, PairMode::TwoWay | PairMode::Mirror);
-    if use_changes {
+    if pair.mode == PairMode::Mirror {
+        // Mirror mode requires full listing reconciliation to guarantee remote matches local.
+        report = run_pair_cycle(pair, ctx).await?;
+    } else if matches!(pair.mode, PairMode::TwoWay) {
         let page_token = ctx.db.get_page_token(&pair.id)?;
         if let Some(token) = page_token {
             match changes::fetch_changes(&ctx.drive, &token, &pair.drive_folder_id).await {
@@ -151,7 +158,7 @@ pub async fn reconcile_pair_gap(
                             change,
                             &ctx.echo,
                             ctx.policy.conflict.clone(),
-                            ctx.policy.deletion.clone(),
+                            pair.deletion.clone().unwrap_or_else(|| ctx.policy.deletion.clone()),
                         ).await {
                             warn!("pair {}: apply change error: {e}", pair.id);
                         } else {
@@ -241,7 +248,7 @@ pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
                         change,
                         &ctx.echo,
                         ctx.policy.conflict.clone(),
-                        ctx.policy.deletion.clone(),
+                        pair.deletion.clone().unwrap_or_else(|| ctx.policy.deletion.clone()),
                     ).await {
                         warn!("pair {}: apply change error: {e}", pair.id);
                     } else {
