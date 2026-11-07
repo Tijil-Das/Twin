@@ -4,7 +4,7 @@ pub mod export;
 pub mod extras;
 pub mod revisions;
 pub mod trash;
-pub use client::{DriveClient, DriveFile};
+pub use client::{DriveClient, DriveFile, DriveFileMeta, ResumableStatus};
 pub use extras::*;
 
 #[cfg(test)]

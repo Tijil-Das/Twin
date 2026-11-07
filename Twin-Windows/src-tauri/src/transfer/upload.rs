@@ -19,7 +19,7 @@ use crate::error::AppError;
 use crate::governor::Governor;
 use crate::queue::{JobRunner, ProgressTx, ProgressUpdate};
 use crate::db::Job;
-use crate::drive::client::DriveClient;
+use crate::drive::client::{DriveClient, ResumableStatus};
 use crate::transfer::limiter::Limiter;
 
 const SMALL_FILE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5 MiB
@@ -275,50 +275,57 @@ async fn resumable_upload(
     let chunk_size = (cfg.app.chunk_mib as u64) * 1024 * 1024;
     let _now_ms = now_ms();
 
-    // Check for existing session.
-    let session_uri = match db.get_upload_session(&job.pair_id, &job.rel_path)? {
+    // Check for existing session and query offset.
+    let (session_uri, start_offset) = match db.get_upload_session(&job.pair_id, &job.rel_path)? {
         Some(uri) => {
             // Try to resume.
-            match drive.query_resumable_offset(&uri, total_size).await {
-                Ok(offset) if offset < total_size => {
+            match drive.query_resumable_status(&uri, total_size).await {
+                Ok(ResumableStatus::Complete(meta)) => {
+                    info!("upload session for {} was already completed remotely", job.rel_path);
+                    let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
+                    return Ok(meta);
+                }
+                Ok(ResumableStatus::Incomplete(offset)) if offset < total_size => {
                     info!("resuming upload {} from byte {offset}", job.rel_path);
-                    uri
+                    (uri, offset)
                 }
                 _ => {
-                    // Session gone/complete; start fresh.
+                    // Session gone, completed, or corrupted; start fresh.
                     let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
-                    init_new_session(job, total_size, modified_time, parent_id, file_name,
-                        existing_drive_id, mime, db, drive).await?
+                    let new_uri = init_new_session(
+                        job, total_size, modified_time, parent_id, file_name,
+                        existing_drive_id, mime, db, drive,
+                    ).await?;
+                    (new_uri, 0)
                 }
             }
         }
         None => {
-            init_new_session(job, total_size, modified_time, parent_id, file_name,
-                existing_drive_id, mime, db, drive).await?
+            let new_uri = init_new_session(
+                job, total_size, modified_time, parent_id, file_name,
+                existing_drive_id, mime, db, drive,
+            ).await?;
+            (new_uri, 0)
         }
     };
-
-    // Find the offset to resume from.
-    let start_offset: u64 = drive.query_resumable_offset(&session_uri, total_size).await.unwrap_or_default();
 
     // Stream chunks.
     let mut file = std::fs::File::open(local_path)
         .map_err(|e| AppError::Io(format!("open for upload: {e}")))?;
 
-    if start_offset > 0 {
-        use std::io::Seek;
-        file.seek(std::io::SeekFrom::Start(start_offset))
-            .map_err(|e| AppError::Io(format!("seek: {e}")))?;
-    }
-
     let mut offset = start_offset;
 
-    loop {
+    while offset < total_size {
         gov.checkpoint().await;
 
         let remaining = total_size - offset;
         let this_chunk = remaining.min(chunk_size) as usize;
         let mut buf = vec![0u8; this_chunk];
+
+        use std::io::Seek;
+        file.seek(std::io::SeekFrom::Start(offset))
+            .map_err(|e| AppError::Io(format!("seek to byte {offset}: {e}")))?;
+
         let mut read_bytes = 0;
         while read_bytes < this_chunk {
             let n = file.read(&mut buf[read_bytes..])
@@ -344,52 +351,99 @@ async fn resumable_upload(
             bytes_total: total_size,
         });
 
-        // Retry individual chunk on transient error (up to 3 retries).
+        // Retry individual chunk on transient error (up to 4 retries).
         let mut chunk_delay = Duration::from_millis(500);
         let mut chunk_attempts = 0;
-        let chunk_result = loop {
+        let mut chunk_done = false;
+
+        while !chunk_done {
             chunk_attempts += 1;
             match drive.upload_chunk(&session_uri, buf.clone(), offset, total_size).await {
-                Ok(r) => break Ok(r),
+                Ok(Some(meta)) => {
+                    // Upload complete!
+                    let _ = progress.send(ProgressUpdate {
+                        job_id: job.id,
+                        pair_id: job.pair_id.clone(),
+                        rel_path: job.rel_path.clone(),
+                        bytes_done: total_size,
+                        bytes_total: total_size,
+                    });
+                    let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
+                    return Ok(meta);
+                }
+                Ok(None) => {
+                    // 308 Resume Incomplete: this chunk was successfully saved by Drive.
+                    offset += read_bytes as u64;
+                    chunk_done = true;
+                }
                 Err(e) => {
-                    if chunk_attempts > 3 || e.to_string().contains("expired") || e.to_string().contains("404") {
-                        if e.to_string().contains("expired") || e.to_string().contains("404") {
+                    let err_str = e.to_string();
+                    let is_fatal_session = err_str.contains("400")
+                        || err_str.contains("404")
+                        || err_str.contains("410")
+                        || err_str.contains("expired");
+
+                    if is_fatal_session || chunk_attempts > 4 {
+                        if is_fatal_session {
+                            warn!("resumable session rejected ({err_str}), purging session cache to restart cleanly");
                             let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
                         }
-                        break Err(e);
+                        return Err(e);
                     }
-                    warn!("chunk error (attempt {chunk_attempts}), retrying: {e}");
+
+                    warn!("chunk error (attempt {chunk_attempts}), checking session offset and retrying: {e}");
                     sleep(chunk_delay).await;
                     chunk_delay = (chunk_delay * 2).min(Duration::from_secs(30));
-                    // Re-query offset in case partial data was received.
-                    if let Ok(new_offset) = drive.query_resumable_offset(&session_uri, total_size).await {
-                        if new_offset > offset {
-                            offset = new_offset;
+
+                    // Query server for the real current offset
+                    match drive.query_resumable_status(&session_uri, total_size).await {
+                        Ok(ResumableStatus::Complete(meta)) => {
+                            let _ = progress.send(ProgressUpdate {
+                                job_id: job.id,
+                                pair_id: job.pair_id.clone(),
+                                rel_path: job.rel_path.clone(),
+                                bytes_done: total_size,
+                                bytes_total: total_size,
+                            });
+                            let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
+                            return Ok(meta);
+                        }
+                        Ok(ResumableStatus::Incomplete(server_offset)) => {
+                            if server_offset >= offset + read_bytes as u64 {
+                                // Server actually received the ENTIRE chunk before the network dropped!
+                                offset = server_offset;
+                                chunk_done = true;
+                            } else if server_offset > offset {
+                                // Server received partial chunk: advance offset, break out to outer loop to re-slice file buffer
+                                offset = server_offset;
+                                break;
+                            }
+                            // If server_offset <= offset, server received nothing; retry uploading this same buffer.
+                        }
+                        Err(q_err) => {
+                            let q_str = q_err.to_string();
+                            if q_str.contains("400") || q_str.contains("404") || q_str.contains("expired") {
+                                let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
+                                return Err(q_err);
+                            }
                         }
                     }
                 }
             }
-        };
-
-        match chunk_result? {
-            Some(meta) => {
-                // Upload complete.
-                let _ = progress.send(ProgressUpdate {
-                    job_id: job.id,
-                    pair_id: job.pair_id.clone(),
-                    rel_path: job.rel_path.clone(),
-                    bytes_done: total_size,
-                    bytes_total: total_size,
-                });
-                return Ok(meta);
-            }
-            None => {
-                offset += read_bytes as u64;
-            }
         }
     }
 
-    Err(AppError::Drive("resumable upload ended without completion response".into()))
+    // Final check if server already has the complete file.
+    match drive.query_resumable_status(&session_uri, total_size).await {
+        Ok(ResumableStatus::Complete(meta)) => {
+            let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
+            Ok(meta)
+        }
+        _ => {
+            let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
+            Err(AppError::Drive("resumable upload ended without completion response".into()))
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -526,7 +526,13 @@ impl DriveClient {
         start_byte: u64,
         total_size: u64,
     ) -> Result<Option<DriveFileMeta>, AppError> {
-        let end_byte = start_byte + chunk.len() as u64 - 1;
+        if chunk.is_empty() {
+            return Err(AppError::Drive("upload_chunk called with empty buffer".into()));
+        }
+        if start_byte >= total_size {
+            return Err(AppError::Drive(format!("upload_chunk start_byte {start_byte} >= total_size {total_size}")));
+        }
+        let end_byte = (start_byte + chunk.len() as u64 - 1).min(total_size.saturating_sub(1));
         let content_range = format!("bytes {start_byte}-{end_byte}/{total_size}");
         debug!("upload_chunk {content_range}");
 
@@ -560,6 +566,18 @@ impl DriveClient {
         session_uri: &str,
         total_size: u64,
     ) -> Result<u64, AppError> {
+        match self.query_resumable_status(session_uri, total_size).await? {
+            ResumableStatus::Incomplete(offset) => Ok(offset),
+            ResumableStatus::Complete(_) => Ok(total_size),
+        }
+    }
+
+    /// Query the status of an ongoing resumable upload session on Google Drive.
+    pub async fn query_resumable_status(
+        &self,
+        session_uri: &str,
+        total_size: u64,
+    ) -> Result<ResumableStatus, AppError> {
         let resp = self.http.put(session_uri)
             .header("Content-Range", format!("bytes */{total_size}"))
             .header(header::CONTENT_LENGTH, "0")
@@ -577,9 +595,11 @@ impl DriveClient {
                 .and_then(|s| s.parse::<u64>().ok())
                 .map(|n| n + 1)
                 .unwrap_or(0);
-            Ok(next)
+            Ok(ResumableStatus::Incomplete(next))
         } else if status.is_success() {
-            Ok(total_size) // already complete
+            let meta: DriveFileMeta = resp.json().await
+                .map_err(|e| AppError::Drive(format!("query_status parse meta: {e}")))?;
+            Ok(ResumableStatus::Complete(meta))
         } else if status == StatusCode::NOT_FOUND {
             Err(AppError::Drive("resumable session expired (404)".into()))
         } else {
@@ -749,6 +769,15 @@ pub struct DriveFileMeta {
     pub modified_time: Option<String>,
     #[serde(default)]
     pub head_revision_id: Option<String>,
+}
+
+/// Status of an in-flight Google Drive resumable upload session.
+#[derive(Debug, Clone)]
+pub enum ResumableStatus {
+    /// Incomplete upload; indicates the next byte offset the server expects.
+    Incomplete(u64),
+    /// File upload completed; contains finalized Drive file metadata.
+    Complete(DriveFileMeta),
 }
 
 #[derive(Debug, Deserialize)]
