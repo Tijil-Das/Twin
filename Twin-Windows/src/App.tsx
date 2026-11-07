@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster, toast } from "sonner";
 import { useStore, type ProgressEvent } from "@/store";
-import { getConfig, authStatus, govState, queueStatus, updateInstall } from "@/lib/tauri";
+import { getConfig, authStatus, govState, queueStatus, getPairStatuses, updateInstall } from "@/lib/tauri";
 import type { GovStatePayload } from "@/lib/tauri";
 import { Sidebar, type Screen } from "@/components/Sidebar";
 import { ConflictDialog } from "@/components/ConflictDialog";
@@ -25,6 +25,7 @@ export default function App() {
   const setProgress = useStore((s) => s.setProgress);
   const setGov = useStore((s) => s.setGov);
   const setQueueStatus = useStore((s) => s.setQueueStatus);
+  const setPairStatuses = useStore((s) => s.setPairStatuses);
   const conflicts = useStore((s) => s.conflicts) ?? [];
   const addConflict = useStore((s) => s.addConflict);
 
@@ -33,43 +34,48 @@ export default function App() {
   useEffect(() => {
     function onVisChange() {
       visibleRef.current = document.visibilityState === "visible";
-      // Refresh queue status on show
+      // Refresh status on show
       if (visibleRef.current) {
         void queueStatus().then(setQueueStatus).catch(() => undefined);
+        void getPairStatuses().then(setPairStatuses).catch(() => undefined);
       }
     }
     document.addEventListener("visibilitychange", onVisChange);
     return () => document.removeEventListener("visibilitychange", onVisChange);
-  }, [setQueueStatus]);
+  }, [setQueueStatus, setPairStatuses]);
 
-  // Boot: load config + auth status + gov state
+  // Boot: load config + auth status + gov state + pair sync statuses
   useEffect(() => {
     void (async () => {
       try {
-        const [cfg, a, g, qs] = await Promise.all([
+        const [cfg, a, g, qs, ps] = await Promise.all([
           getConfig(),
           authStatus(),
           govState(),
           queueStatus(),
+          getPairStatuses(),
         ]);
         setConfig(cfg);
         setAuthed(a.logged_in);
         setUserProfile(a.user ?? null);
         setGov(g);
         setQueueStatus(qs);
+        setPairStatuses(ps);
       } catch {
         // Will surface as missing data in UI
       }
     })();
-  }, [setConfig, setAuthed, setGov, setQueueStatus]);
+  }, [setConfig, setAuthed, setGov, setQueueStatus, setPairStatuses]);
 
-  // Poll queue status every 5s
+  // Poll queue status and per-pair sync statuses every 2s
   useEffect(() => {
     const id = setInterval(() => {
+      if (!visibleRef.current) return;
       void queueStatus().then(setQueueStatus).catch(() => undefined);
-    }, 5000);
+      void getPairStatuses().then(setPairStatuses).catch(() => undefined);
+    }, 2000);
     return () => clearInterval(id);
-  }, [setQueueStatus]);
+  }, [setQueueStatus, setPairStatuses]);
 
   // Subscribe to Tauri events
   useEffect(() => {

@@ -3,7 +3,7 @@
  * Holds all shared UI state: pairs, activity, progress, gov, auth, conflicts.
  */
 import { create } from "zustand";
-import type { Activity, Config, GovStatePayload, QueueStatus, PairEntry, GoogleUserProfile } from "@/lib/tauri";
+import type { Activity, Config, GovStatePayload, QueueStatus, PairSyncStatus, PairEntry, GoogleUserProfile } from "@/lib/tauri";
 
 // ── Progress event payload ─────────────────────────────────────────────────────
 
@@ -52,6 +52,10 @@ interface AppState {
   // Queue status (queued/running/failed counts)
   queueStatus: QueueStatus;
   setQueueStatus: (q: QueueStatus) => void;
+
+  // Per-pair real-time sync statuses
+  pairStatuses: Record<string, PairSyncStatus>;
+  setPairStatuses: (statuses: Record<string, PairSyncStatus>) => void;
 
   // Conflicts waiting for user resolution
   conflicts: ConflictRecord[];
@@ -110,6 +114,9 @@ export const useStore = create<AppState>((set) => ({
 
   queueStatus: { queued: 0, running: 0, failed: 0 },
   setQueueStatus: (queueStatus) => set({ queueStatus }),
+
+  pairStatuses: {},
+  setPairStatuses: (pairStatuses) => set({ pairStatuses }),
 
   conflicts: [],
   addConflict: (c) =>

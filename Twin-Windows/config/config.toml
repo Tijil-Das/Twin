@@ -34,9 +34,16 @@ conflict = "newer_wins"
 deletion = "drive_trash"
 
 [[pair]]
-id = "0119ae13-bba5-4ed9-8e33-961e22b82561"
+id = "cf935fb4-b54c-4814-99bd-260fc77ca4da"
 local = 'D:\DOCUMENTS'
 drive_folder_id = "1RxclVsw61iSZFiGazPf23kJXCDo56FZH"
+mode = "mirror"
+enabled = true
+
+[[pair]]
+id = "8225efea-db97-4922-bade-af10afcf3cd3"
+local = 'D:\MUSIC'
+drive_folder_id = "1WXlyFFegaGptY153gITUha9a2uzSJ2Qh"
 mode = "mirror"
 enabled = true
 

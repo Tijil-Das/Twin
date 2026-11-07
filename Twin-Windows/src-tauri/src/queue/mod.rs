@@ -200,12 +200,13 @@ pub struct QueueStatus {
 
 // ── Tauri commands ────────────────────────────────────────────────────────────
 
-/// Trigger an immediate scan + re-queue for one or all pairs.
+/// Trigger an immediate scan + reconciliation + re-queue for one or all pairs.
 #[tauri::command]
 pub async fn sync_now(
     state: tauri::State<'_, QueueState>,
     db_state: tauri::State<'_, crate::db::DbState>,
     gov_state: tauri::State<'_, crate::governor::GovState2>,
+    app: tauri::AppHandle,
     pair_id: Option<String>,
 ) -> Result<(), String> {
     let cfg = crate::config::load().unwrap_or_default();
@@ -217,6 +218,8 @@ pub async fn sync_now(
     };
     let gov = gov_state.0.clone();
     let q = state.0.clone();
+    let drive_opt = crate::drive::DriveClient::new().ok();
+    let echo = std::sync::Arc::new(crate::sync::SelfWritten::new());
 
     tokio::spawn(async move {
         for pair in cfg.pairs.iter().filter(|p| p.enabled) {
@@ -225,7 +228,20 @@ pub async fn sync_now(
                     continue;
                 }
             }
-            let _ = crate::watcher::scan_pair(pair, std::sync::Arc::clone(&db), &rules, &gov).await;
+            if let Some(ref drive) = drive_opt {
+                let ctx = crate::sync::Ctx {
+                    db: std::sync::Arc::clone(&db),
+                    drive: drive.clone(),
+                    gov: gov.clone(),
+                    echo: std::sync::Arc::clone(&echo),
+                    policy: cfg.policy.clone(),
+                    app: Some(app.clone()),
+                    queue: Some(q.clone()),
+                };
+                let _ = crate::sync::reconcile_pair_gap(pair, &ctx, &rules).await;
+            } else {
+                let _ = crate::watcher::scan_pair(pair, std::sync::Arc::clone(&db), &rules, &gov).await;
+            }
         }
         q.wake();
     });

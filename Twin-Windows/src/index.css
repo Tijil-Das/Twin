@@ -3,101 +3,135 @@
 @tailwind utilities;
 
 :root {
-  --bg: #090a0d;
-  --surface: #111319;
-  --surface-2: #181b24;
-  --surface-3: #222634;
-  --border: #242836;
-  --border-subtle: #191c26;
-  --text: #f3f5fa;
-  --text-muted: #8a93a6;
-  --text-subtle: #596173;
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-glow: rgba(59, 130, 246, 0.2);
-  --accent-surface: rgba(59, 130, 246, 0.1);
-  --success: #10b981;
-  --success-glow: rgba(16, 185, 129, 0.2);
-  --warning: #f59e0b;
-  --danger: #ef4444;
-}
+  color-scheme: dark;
 
-.dark {
-  --bg: #090a0d;
-  --surface: #111319;
-  --surface-2: #181b24;
-  --surface-3: #222634;
-  --border: #242836;
-  --border-subtle: #191c26;
-  --text: #f3f5fa;
-  --text-muted: #8a93a6;
-  --text-subtle: #596173;
+  /* Modern obsidian desktop palette */
+  --bg: #0d0f12;
+  --surface: #14171d;
+  --surface-2: #1c2028;
+  --surface-3: #242934;
+  --surface-hover: #1e222a;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.045);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --text: #f3f4f6;
+  --text-muted: #9aa1b0;
+  --text-subtle: #626875;
+
+  /* Restrained, authoritative blue accent */
   --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-glow: rgba(59, 130, 246, 0.2);
-  --accent-surface: rgba(59, 130, 246, 0.1);
+  --accent-hover: #60a5fa;
+  --accent-pressed: #2563eb;
+  --accent-contrast: #ffffff;
+  --accent-subtle: rgba(59, 130, 246, 0.09);
+  --accent-border: rgba(59, 130, 246, 0.28);
+
   --success: #10b981;
-  --success-glow: rgba(16, 185, 129, 0.2);
+  --success-subtle: rgba(16, 185, 129, 0.09);
   --warning: #f59e0b;
+  --warning-subtle: rgba(245, 158, 11, 0.09);
   --danger: #ef4444;
+  --danger-subtle: rgba(239, 68, 68, 0.09);
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow-flyout: 0 18px 48px -8px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 * {
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
   width: 100%;
   background-color: var(--bg);
   color: var(--text);
-  font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  font-size: 13.5px;
+  font-family: "Segoe UI Variable Text", "Segoe UI Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    system-ui, sans-serif;
+  font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
+  overflow: hidden;
 }
 
-input, textarea, select {
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+input,
+textarea,
+select {
   color: var(--text);
-  background-color: #12141d;
+  background-color: var(--surface-2);
 }
 
-/* Sleek native-feel scrollbars */
+::selection {
+  color: #ffffff;
+  background: rgba(59, 130, 246, 0.45);
+}
+
+/* Custom Sleek Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.22);
 }
 
-/* Subtle glow utilities */
-.glow-accent {
-  box-shadow: 0 0 16px -2px var(--accent-glow);
-}
-.glow-success {
-  box-shadow: 0 0 14px -2px var(--success-glow);
-}
+@layer components {
+  /* Desktop native card with subtle top light refraction */
+  .desktop-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+    transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  }
 
-/* Pulsing dot animation */
-@keyframes pulse-ring {
-  0% { transform: scale(0.95); opacity: 0.8; }
-  50% { transform: scale(1.15); opacity: 0.4; }
-  100% { transform: scale(0.95); opacity: 0.8; }
-}
-.animate-pulse-ring {
-  animation: pulse-ring 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  .desktop-card:hover {
+    border-color: var(--border-strong);
+  }
+
+  .desktop-input {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .desktop-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-subtle);
+  }
+
+  /* Monospace badge / code font */
+  .code-text {
+    font-family: "Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", monospace;
+    font-variant-ligatures: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

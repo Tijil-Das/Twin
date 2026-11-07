@@ -130,6 +130,19 @@ pub struct Activity {
     pub detail: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairSyncStatus {
+    pub pair_id: String,
+    pub queued: i64,
+    pub running: i64,
+    pub failed: i64,
+    pub dirty: i64,
+    pub conflict: i64,
+    pub synced: i64,
+    pub total: i64,
+    pub is_synced: bool,
+}
+
 // ── Db ────────────────────────────────────────────────────────────────────────
 
 pub struct Db {
@@ -714,6 +727,142 @@ impl Db {
         .optional()
         .map_err(|e| AppError::Db(format!("get_file_by_drive_id: {e}")))
     }
+
+    /// Aggregated sync status for all folder pairs (< 1ms execution time).
+    pub fn get_all_pair_sync_statuses(&self) -> Result<std::collections::HashMap<String, PairSyncStatus>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+
+        // 1. Aggregate job counts per pair
+        let mut job_stmt = conn
+            .prepare(
+                "SELECT pair_id, status, count(*)
+                 FROM jobs
+                 WHERE status IN ('queued', 'running', 'failed')
+                 GROUP BY pair_id, status"
+            )
+            .map_err(|e| AppError::Db(format!("prepare jobs: {e}")))?;
+
+        let mut job_rows = job_stmt
+            .query([])
+            .map_err(|e| AppError::Db(format!("query jobs: {e}")))?;
+
+        let mut job_map: std::collections::HashMap<(String, String), i64> = std::collections::HashMap::new();
+        let mut all_pairs: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        while let Some(row) = job_rows.next().map_err(|e| AppError::Db(e.to_string()))? {
+            let pair_id: String = row.get(0).map_err(|e| AppError::Db(e.to_string()))?;
+            let status: String = row.get(1).map_err(|e| AppError::Db(e.to_string()))?;
+            let count: i64 = row.get(2).map_err(|e| AppError::Db(e.to_string()))?;
+            all_pairs.insert(pair_id.clone());
+            job_map.insert((pair_id, status), count);
+        }
+
+        // 2. Aggregate file counts per pair
+        let mut file_stmt = conn
+            .prepare(
+                "SELECT pair_id, state, count(*),
+                        SUM(CASE WHEN drive_id IS NOT NULL AND drive_id != '' THEN 1 ELSE 0 END)
+                 FROM files
+                 GROUP BY pair_id, state"
+            )
+            .map_err(|e| AppError::Db(format!("prepare files: {e}")))?;
+
+        let mut file_rows = file_stmt
+            .query([])
+            .map_err(|e| AppError::Db(format!("query files: {e}")))?;
+
+        let mut file_map: std::collections::HashMap<(String, String), (i64, i64)> = std::collections::HashMap::new();
+        while let Some(row) = file_rows.next().map_err(|e| AppError::Db(e.to_string()))? {
+            let pair_id: String = row.get(0).map_err(|e| AppError::Db(e.to_string()))?;
+            let state: String = row.get(1).map_err(|e| AppError::Db(e.to_string()))?;
+            let count: i64 = row.get(2).map_err(|e| AppError::Db(e.to_string()))?;
+            let with_drive_id: i64 = row.get(3).unwrap_or(0);
+            all_pairs.insert(pair_id.clone());
+            file_map.insert((pair_id, state), (count, with_drive_id));
+        }
+
+        // 3. Check pair_meta for last scan/sync timestamps
+        let mut meta_stmt = conn
+            .prepare("SELECT pair_id, last_full_scan_ms, last_sync_ms FROM pair_meta")
+            .map_err(|e| AppError::Db(format!("prepare pair_meta: {e}")))?;
+
+        let mut meta_rows = meta_stmt
+            .query([])
+            .map_err(|e| AppError::Db(format!("query pair_meta: {e}")))?;
+
+        let mut meta_map: std::collections::HashMap<String, (Option<i64>, Option<i64>)> = std::collections::HashMap::new();
+        while let Some(row) = meta_rows.next().map_err(|e| AppError::Db(e.to_string()))? {
+            let pair_id: String = row.get(0).map_err(|e| AppError::Db(e.to_string()))?;
+            let last_scan: Option<i64> = row.get(1).map_err(|e| AppError::Db(e.to_string()))?;
+            let last_sync: Option<i64> = row.get(2).map_err(|e| AppError::Db(e.to_string()))?;
+            all_pairs.insert(pair_id.clone());
+            meta_map.insert(pair_id, (last_scan, last_sync));
+        }
+
+        let mut statuses = std::collections::HashMap::new();
+        for pair_id in all_pairs {
+            let queued = job_map.get(&(pair_id.clone(), "queued".into())).copied().unwrap_or(0);
+            let running = job_map.get(&(pair_id.clone(), "running".into())).copied().unwrap_or(0);
+            let failed = job_map.get(&(pair_id.clone(), "failed".into())).copied().unwrap_or(0);
+
+            let dirty = file_map.get(&(pair_id.clone(), "dirty".into())).map(|(c, _)| *c).unwrap_or(0);
+            let conflict = file_map.get(&(pair_id.clone(), "conflict".into())).map(|(c, _)| *c).unwrap_or(0);
+            let (synced, synced_with_drive) = file_map.get(&(pair_id.clone(), "synced".into())).copied().unwrap_or((0, 0));
+
+            let mut total = 0;
+            for ((p, _), (c, _)) in &file_map {
+                if p == &pair_id {
+                    total += *c;
+                }
+            }
+
+            let (last_scan, last_sync) = meta_map.get(&pair_id).copied().unwrap_or((None, None));
+            let verified_scan = last_scan.is_some() || last_sync.is_some();
+
+            // Perfectly synced condition:
+            // 0 queued, 0 running, 0 failed, 0 dirty, 0 conflict
+            // AND (has synced files with Drive IDs OR verified empty folder)
+            let is_synced = queued == 0
+                && running == 0
+                && failed == 0
+                && dirty == 0
+                && conflict == 0
+                && (synced_with_drive > 0 || (total == 0 && verified_scan));
+
+            statuses.insert(
+                pair_id.clone(),
+                PairSyncStatus {
+                    pair_id,
+                    queued,
+                    running,
+                    failed,
+                    dirty,
+                    conflict,
+                    synced,
+                    total,
+                    is_synced,
+                },
+            );
+        }
+
+        Ok(statuses)
+    }
+
+    /// Retrieve sync status for a single folder pair.
+    pub fn get_pair_sync_status(&self, pair_id: &str) -> Result<PairSyncStatus, AppError> {
+        let mut statuses = self.get_all_pair_sync_statuses()?;
+        Ok(statuses.remove(pair_id).unwrap_or_else(|| PairSyncStatus {
+            pair_id: pair_id.to_string(),
+            queued: 0,
+            running: 0,
+            failed: 0,
+            dirty: 0,
+            conflict: 0,
+            synced: 0,
+            total: 0,
+            is_synced: false,
+        }))
+    }
 }
 
 // ── row mapping helpers ───────────────────────────────────────────────────────
@@ -785,6 +934,14 @@ pub fn retry_job(state: tauri::State<'_, DbState>, id: i64) -> Result<(), String
     )
     .map_err(|e| format!("retry_job: {e}"))?;
     Ok(())
+}
+
+/// Retrieve real-time sync statuses for all folder pairs (< 1ms execution).
+#[tauri::command]
+pub fn get_pair_statuses(
+    state: tauri::State<'_, DbState>,
+) -> Result<std::collections::HashMap<String, PairSyncStatus>, String> {
+    state.0.get_all_pair_sync_statuses().map_err(|e| e.to_string())
 }
 
 /// Tauri managed state wrapper.

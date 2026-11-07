@@ -349,7 +349,6 @@ async fn run_sync_cycle(
 
     // 1. Scan local filesystem for new/modified/deleted files
     let rules = rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
-    let _ = watcher::scan_pair(&pair, Arc::clone(&db_arc), &rules, &gov).await;
 
     // 2. Scan remote Drive changes and reconcile
     let ctx = sync::Ctx {
@@ -359,8 +358,9 @@ async fn run_sync_cycle(
         echo,
         policy: cfg.policy.clone(),
         app: Some(app),
+        queue: Some(q_s.0.clone()),
     };
-    let report = sync::run_pair_cycle(&pair, &ctx).await.map_err(|e| e.to_string())?;
+    let report = sync::reconcile_pair_gap(&pair, &ctx, &rules).await.map_err(|e| e.to_string())?;
 
     // 3. Wake queue worker to execute transfers immediately
     q_s.0.wake();
@@ -489,6 +489,7 @@ fn main() {
             auth::auth_has_full_scope,
             db::get_activity,
             db::retry_job,
+            db::get_pair_statuses,
             governor::gov_state,
             governor::gov_pause,
             governor::gov_resume,
@@ -647,18 +648,39 @@ fn main() {
                 });
             }
 
-            // Initial scan on startup: scan all enabled pairs so newly added / unscanned files are enqueued.
+            // Initial auto-gap check on startup: scan local disk AND reconcile remote Google Drive for all enabled pairs.
             {
                 let db_init = Arc::clone(&db_arc);
                 let gov_init = gov.clone();
                 let q_init = q.clone();
                 let pairs_init = cfg.pairs.clone();
                 let rules_init = rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
+                let policy_init = cfg.policy.clone();
+                let handle_init = handle.clone();
+                let echo_init = Arc::new(sync::SelfWritten::new());
+
                 tauri::async_runtime::spawn(async move {
+                    let drive_opt = drive::DriveClient::new().ok();
                     for pair in pairs_init.iter().filter(|p| p.enabled) {
-                        info!("Starting initial scan for pair {} ({})", pair.id, pair.local);
-                        if let Err(e) = watcher::scan_pair(pair, Arc::clone(&db_init), &rules_init, &gov_init).await {
-                            warn!("Initial scan error for pair {}: {e}", pair.id);
+                        info!("Starting initial auto-gap check for pair {} ({})", pair.id, pair.local);
+
+                        if let Some(ref drive) = drive_opt {
+                            let ctx = sync::Ctx {
+                                db: Arc::clone(&db_init),
+                                drive: drive.clone(),
+                                gov: gov_init.clone(),
+                                echo: Arc::clone(&echo_init),
+                                policy: policy_init.clone(),
+                                app: Some(handle_init.clone()),
+                                queue: Some(q_init.clone()),
+                            };
+                            if let Err(e) = sync::reconcile_pair_gap(pair, &ctx, &rules_init).await {
+                                warn!("Initial auto-gap check error for pair {}: {e}", pair.id);
+                            }
+                        } else {
+                            if let Err(e) = watcher::scan_pair(pair, Arc::clone(&db_init), &rules_init, &gov_init).await {
+                                warn!("Initial local scan error for pair {}: {e}", pair.id);
+                            }
                         }
                     }
                     q_init.wake();
@@ -812,6 +834,7 @@ fn main() {
                         echo: Arc::clone(&echo_poll),
                         policy: cfg.policy.clone(),
                         app: Some(handle.clone()),
+                        queue: Some(q.clone()),
                     };
                     tauri::async_runtime::spawn(sync::poll_changes_loop(p, ctx));
                 }

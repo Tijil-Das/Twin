@@ -18,6 +18,7 @@ import {
   Layers,
   Copy,
   Check,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -151,9 +152,9 @@ function BatchBar() {
   // Active in-flight bytes
   const activeDone = activeEvents.reduce((a, e) => a + e.bytes_done, 0);
   const activeTotal = activeEvents.reduce((a, e) => a + e.bytes_total, 0);
-  const inFlightPct = activeTotal > 0 ? (activeDone / activeTotal) * 100 : 0;
+  const inFlightPct = activeTotal > 0 ? Math.min(99.9, (activeDone / activeTotal) * 100) : 0;
 
-  const displayPct = totalJobs > 0 ? batchPct : inFlightPct;
+  const displayPct = queueStatus.queued > 0 ? batchPct : (activeTotal > 0 ? inFlightPct : batchPct);
   const startMs = activeEvents.length > 0 ? Math.min(...activeEvents.map((e) => e.start_ms)) : Date.now();
 
   return (
@@ -174,9 +175,11 @@ function BatchBar() {
 
       <div className="flex items-center justify-between mt-2.5 text-[11px] font-mono text-[var(--text-muted)]">
         <span>
-          {totalJobs > 0
+          {activeTotal > 0
+            ? progressLabel(activeDone, activeTotal, startMs)
+            : totalJobs > 0
             ? `${queueStatus.done ?? 0} of ${totalJobs} files synced`
-            : progressLabel(activeDone, activeTotal, startMs)}
+            : "Processing transfers..."}
         </span>
         <span>
           {queueStatus.running} active transfer{queueStatus.running === 1 ? "" : "s"}
@@ -220,6 +223,7 @@ function PairCard({
   enabled: boolean;
 }) {
   const progress = useStore((s) => s.progress) ?? {};
+  const status = useStore((s) => s.pairStatuses[id]);
   const setConfig = useStore((s) => s.setConfig);
   const config = useStore((s) => s.config);
 
@@ -240,7 +244,13 @@ function PairCard({
   const totalBytes = pairEvents.reduce((a, e) => a + e.bytes_total, 0);
   const pct = totalBytes > 0 ? (totalDone / totalBytes) * 100 : 0;
   const startMs = pairEvents.length > 0 ? Math.min(...pairEvents.map((e) => e.start_ms)) : 0;
-  const isCurrentlySyncing = syncing || pairEvents.length > 0;
+
+  const hasInFlight = pairEvents.length > 0;
+  const isSyncing = syncing || hasInFlight || (status?.running ?? 0) > 0;
+  const isQueued = (status?.queued ?? 0) > 0;
+  const hasFailed = (status?.failed ?? 0) > 0;
+  const hasConflict = (status?.conflict ?? 0) > 0;
+  const isPerfectlySynced = enabled && !isSyncing && !isQueued && !hasFailed && !hasConflict && (status?.is_synced ?? false);
 
   async function handleSync() {
     setSyncing(true);
@@ -315,7 +325,7 @@ function PairCard({
           </div>
 
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-[13.5px] text-[var(--text)] tracking-tight">
                 {folderName}
               </span>
@@ -328,6 +338,29 @@ function PairCard({
                 <ModeIcon size={11} strokeWidth={2} />
                 {modeInfo.label}
               </span>
+
+              {/* Real-time Status Badge */}
+              {isPerfectlySynced ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.18)]">
+                  <Check size={11} strokeWidth={2.5} />
+                  Synced
+                </span>
+              ) : isSyncing ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <RefreshCw size={10} className="animate-spin text-blue-400" />
+                  Syncing{status?.running ? ` (${status.running})` : ""}
+                </span>
+              ) : isQueued ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  Queued ({status!.queued})
+                </span>
+              ) : hasFailed ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                  <AlertCircle size={10} />
+                  {status!.failed} failed
+                </span>
+              ) : null}
+
               {!enabled && (
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
                   Disabled
@@ -349,12 +382,19 @@ function PairCard({
               </button>
             </div>
 
-            {/* Google Drive target info */}
-            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-[var(--text-subtle)]">
-              <Cloud size={12} className="text-blue-400/80 shrink-0" />
-              <span className="font-mono truncate max-w-[280px]" title={drive_folder_id}>
-                Drive ID: {drive_folder_id}
-              </span>
+            {/* Google Drive target info & verified sync count */}
+            <div className="flex items-center gap-2 mt-1 text-[11px] text-[var(--text-subtle)] flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <Cloud size={12} className="text-blue-400/80 shrink-0" />
+                <span className="font-mono truncate max-w-[240px]" title={drive_folder_id}>
+                  Drive ID: {drive_folder_id}
+                </span>
+              </div>
+              {status && (
+                <span className="font-mono text-[var(--text-muted)]">
+                  • {status.synced} {status.synced === 1 ? "file" : "files"} in sync
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -396,11 +436,13 @@ function PairCard({
         </div>
       </div>
 
-      {/* Progress bar if actively transferring */}
-      {pairEvents.length > 0 && (
+      {/* Progress bar only if actively transferring files with incomplete bytes */}
+      {hasInFlight && totalBytes > 0 && (
         <div className="mt-3.5 pt-3 border-t border-[var(--border)]">
           <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-muted)] mb-1.5">
-            <span>Syncing active files...</span>
+            <span className="truncate max-w-[280px]">
+              Syncing {pairEvents[0]?.rel_path ? pairEvents[0].rel_path.split("/").pop() : "active files"}...
+            </span>
             <span className="text-blue-400 font-semibold">{pct.toFixed(0)}%</span>
           </div>
           <Progress value={pct} aria-label={`Progress for ${folderName}`} />

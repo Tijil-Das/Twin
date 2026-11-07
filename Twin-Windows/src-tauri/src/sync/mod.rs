@@ -39,6 +39,8 @@ pub struct Ctx {
     pub policy: PolicySection,
     /// Optional window handle used to surface interactive conflicts.
     pub app:    Option<tauri::AppHandle>,
+    /// Optional queue reference to wake dispatcher when jobs are enqueued.
+    pub queue:  Option<crate::queue::Queue>,
 }
 
 /// Summary of one sync cycle.
@@ -102,6 +104,91 @@ pub async fn run_pair_cycle(pair: &PairEntry, ctx: &Ctx) -> Result<CycleReport, 
         report.deletes_queued,
     );
 
+    // Record last sync timestamp
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let _ = ctx.db.upsert_pair_meta(&pair.id, None, Some(now));
+
+    if let Some(ref q) = ctx.queue {
+        q.wake();
+    }
+
+    Ok(report)
+}
+
+/// Comprehensive gap-check and reconciliation for a folder pair:
+/// 1. Local filesystem scan via `watcher::scan_pair` (detects additions, modifications, and deletions).
+/// 2. Remote Google Drive gap check respecting `pair.mode`:
+///    - For `Upload`: local files are uploaded; Drive changes are ignored.
+///    - For `TwoWay` and `Mirror`:
+///      - If `page_token` exists: fetch incremental changes via `changes::fetch_changes` and apply them.
+///      - If no `page_token` or token expired (410 Gone / startPageToken): run full `run_pair_cycle`.
+/// 3. Wake queue worker to start transfers immediately.
+pub async fn reconcile_pair_gap(
+    pair: &PairEntry,
+    ctx: &Ctx,
+    rules: &crate::rules::Rules,
+) -> Result<CycleReport, AppError> {
+    // 1. Scan local filesystem
+    let _ = crate::watcher::scan_pair(pair, Arc::clone(&ctx.db), rules, &ctx.gov).await;
+
+    // 2. Reconcile with Google Drive according to mode
+    let mut report = CycleReport::default();
+    let use_changes = matches!(pair.mode, PairMode::TwoWay | PairMode::Mirror);
+    if use_changes {
+        let page_token = ctx.db.get_page_token(&pair.id)?;
+        if let Some(token) = page_token {
+            match changes::fetch_changes(&ctx.drive, &token, &pair.drive_folder_id).await {
+                Ok(result) => {
+                    let mut applied = 0;
+                    for change in &result.changes {
+                        ctx.gov.checkpoint().await;
+                        if let Err(e) = reconcile::apply_remote_change_with_policies(
+                            &ctx.db,
+                            pair,
+                            change,
+                            &ctx.echo,
+                            ctx.policy.conflict.clone(),
+                            ctx.policy.deletion.clone(),
+                        ).await {
+                            warn!("pair {}: apply change error: {e}", pair.id);
+                        } else {
+                            applied += 1;
+                        }
+                    }
+                    emit_conflict_events(ctx, pair);
+
+                    if let Some(ref new_token) = result.new_start_page_token {
+                        let _ = ctx.db.set_page_token(&pair.id, new_token);
+                    } else if let Some(ref next) = result.next_page_token {
+                        let _ = ctx.db.set_page_token(&pair.id, next);
+                    }
+                    report.downloads_queued += applied;
+                }
+                Err(e) => {
+                    info!("pair {}: incremental changes check failed ({e}), running full cycle", pair.id);
+                    report = run_pair_cycle(pair, ctx).await?;
+                }
+            }
+        } else {
+            report = run_pair_cycle(pair, ctx).await?;
+        }
+    }
+
+    // Record last sync timestamp
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let _ = ctx.db.upsert_pair_meta(&pair.id, None, Some(now));
+
+    // 3. Wake queue dispatcher immediately
+    if let Some(ref q) = ctx.queue {
+        q.wake();
+    }
+
     Ok(report)
 }
 
@@ -112,25 +199,39 @@ pub async fn run_pair_cycle(pair: &PairEntry, ctx: &Ctx) -> Result<CycleReport, 
 pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
     info!("pair {}: changes poll loop started", pair.id);
 
+    // Initial check after 5 seconds instead of waiting full 60 seconds
+    sleep(Duration::from_secs(5)).await;
+
     loop {
-        // Wait 60 s between polls (await checkpoint for governor respect).
-        sleep(Duration::from_secs(60)).await;
         ctx.gov.checkpoint().await;
 
         let page_token = match ctx.db.get_page_token(&pair.id) {
             Ok(Some(t)) => t,
             Ok(None) => {
-                // Not bootstrapped yet; skip.
-                continue;
+                // Not bootstrapped yet: bootstrap start page token
+                match changes::get_start_page_token(&ctx.drive).await {
+                    Ok(token) => {
+                        let _ = ctx.db.set_page_token(&pair.id, &token);
+                        info!("pair {}: auto-bootstrapped Changes start token", pair.id);
+                        token
+                    }
+                    Err(e) => {
+                        warn!("pair {}: get_start_page_token error: {e}", pair.id);
+                        sleep(Duration::from_secs(30)).await;
+                        continue;
+                    }
+                }
             }
             Err(e) => {
                 warn!("pair {}: get_page_token error: {e}", pair.id);
+                sleep(Duration::from_secs(30)).await;
                 continue;
             }
         };
 
         match changes::fetch_changes(&ctx.drive, &page_token, &pair.drive_folder_id).await {
             Ok(result) => {
+                let mut applied = 0;
                 // Apply each change through the decision table.
                 for change in &result.changes {
                     ctx.gov.checkpoint().await;
@@ -143,9 +244,18 @@ pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
                         ctx.policy.deletion.clone(),
                     ).await {
                         warn!("pair {}: apply change error: {e}", pair.id);
+                    } else {
+                        applied += 1;
                     }
                 }
                 emit_conflict_events(&ctx, &pair);
+
+                // Wake queue immediately if any jobs were enqueued
+                if applied > 0 {
+                    if let Some(ref q) = ctx.queue {
+                        q.wake();
+                    }
+                }
 
                 // Persist new token only after all changes applied (crash safety).
                 if let Some(ref new_token) = result.new_start_page_token {
@@ -160,8 +270,19 @@ pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
             }
             Err(e) => {
                 warn!("pair {}: fetch_changes error: {e}", pair.id);
+                let err_str = e.to_string();
+                if err_str.contains("410") || err_str.contains("startPageToken") || err_str.contains("Invalid token") {
+                    info!("pair {}: token expired or invalid; running full cycle to resync", pair.id);
+                    let _ = run_pair_cycle(&pair, &ctx).await;
+                    if let Some(ref q) = ctx.queue {
+                        q.wake();
+                    }
+                }
             }
         }
+
+        // Wait 60 s between polls (await checkpoint for governor respect).
+        sleep(Duration::from_secs(60)).await;
     }
 }
 

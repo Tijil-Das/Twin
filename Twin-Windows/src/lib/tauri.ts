@@ -117,13 +117,25 @@ export interface CycleReport {
   errors: string[];
 }
 
-// ── Queue ─────────────────────────────────────────────────────────────────────
+// ── Queue & Per-Pair Status ───────────────────────────────────────────────────
 
 export interface QueueStatus {
   queued: number;
   running: number;
   done?: number;
   failed: number;
+}
+
+export interface PairSyncStatus {
+  pair_id: string;
+  queued: number;
+  running: number;
+  failed: number;
+  dirty: number;
+  conflict: number;
+  synced: number;
+  total: number;
+  is_synced: boolean;
 }
 
 // ── Invokes ───────────────────────────────────────────────────────────────────
@@ -163,6 +175,8 @@ export const govResume = () => invoke<void>("gov_resume");
 
 export const syncNow = () => invoke<void>("sync_now");
 export const queueStatus = () => invoke<QueueStatus>("queue_status");
+export const getPairStatuses = () =>
+  invoke<Record<string, PairSyncStatus>>("get_pair_statuses");
 
 export const driveList = (folderId: string) => invoke<DriveFile[]>("drive_list", { folderId });
 export const driveListSubfolders = (parentId: string) =>
