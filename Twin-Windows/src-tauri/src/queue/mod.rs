@@ -194,6 +194,7 @@ fn now_ms() -> i64 {
 pub struct QueueStatus {
     pub queued: i64,
     pub running: i64,
+    pub done: i64,
     pub failed: i64,
 }
 
@@ -201,10 +202,34 @@ pub struct QueueStatus {
 
 /// Trigger an immediate scan + re-queue for one or all pairs.
 #[tauri::command]
-pub fn sync_now(
+pub async fn sync_now(
     state: tauri::State<'_, QueueState>,
-    _pair_id: Option<String>,
+    db_state: tauri::State<'_, crate::db::DbState>,
+    gov_state: tauri::State<'_, crate::governor::GovState2>,
+    pair_id: Option<String>,
 ) -> Result<(), String> {
+    let cfg = crate::config::load().unwrap_or_default();
+    let rules = crate::rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
+    let db_path = db_state.db_path();
+    let db = match crate::db::Db::open(&db_path) {
+        Ok(d) => std::sync::Arc::new(d),
+        Err(e) => return Err(e.to_string()),
+    };
+    let gov = gov_state.0.clone();
+    let q = state.0.clone();
+
+    tokio::spawn(async move {
+        for pair in cfg.pairs.iter().filter(|p| p.enabled) {
+            if let Some(ref target_id) = pair_id {
+                if &pair.id != target_id {
+                    continue;
+                }
+            }
+            let _ = crate::watcher::scan_pair(pair, std::sync::Arc::clone(&db), &rules, &gov).await;
+        }
+        q.wake();
+    });
+
     state.0.wake();
     Ok(())
 }
@@ -214,15 +239,18 @@ pub fn sync_now(
 pub fn queue_status(db: tauri::State<'_, crate::db::DbState>) -> Result<QueueStatus, String> {
     let queued = db.0.count_jobs_by_status("queued").unwrap_or(0);
     let running = db.0.count_jobs_by_status("running").unwrap_or(0);
+    let done = db.0.count_jobs_by_status("done").unwrap_or(0);
     let failed = db.0.count_jobs_by_status("failed").unwrap_or(0);
     Ok(QueueStatus {
         queued,
         running,
+        done,
         failed,
     })
 }
 
 /// Tauri managed state wrapper.
+#[derive(Clone)]
 pub struct QueueState(pub Queue);
 
 // ── tests ─────────────────────────────────────────────────────────────────────

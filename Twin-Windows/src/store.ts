@@ -88,7 +88,16 @@ export const useStore = create<AppState>((set) => ({
 
   progress: {},
   setProgress: (ev) =>
-    set((s) => ({ progress: { ...s.progress, [ev.job_id]: ev } })),
+    set((s) => {
+      const next = { ...s.progress };
+      if (ev.bytes_done >= ev.bytes_total && ev.bytes_total > 0) {
+        setTimeout(() => {
+          useStore.getState().clearProgress(ev.job_id);
+        }, 500);
+      }
+      next[ev.job_id] = ev;
+      return { progress: next };
+    }),
   clearProgress: (jobId) =>
     set((s) => {
       const next = { ...s.progress };

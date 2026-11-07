@@ -99,7 +99,7 @@ impl JobRunner for DownloadRunner {
 
 // ── download ──────────────────────────────────────────────────────────────────
 
-async fn run_download(
+pub(crate) async fn run_download(
     job: Job,
     db: Arc<Db>,
     cfg: Config,
@@ -506,7 +506,7 @@ async fn download_single(
 
 // ── restore ───────────────────────────────────────────────────────────────────
 
-async fn run_restore(
+pub(crate) async fn run_restore(
     job: Job,
     db: Arc<Db>,
     cfg: Config,

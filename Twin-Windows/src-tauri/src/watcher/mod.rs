@@ -220,19 +220,23 @@ pub async fn scan_pair(
                 Err(_) => continue,
             };
 
-            if meta.is_dir() {
-                stack.push(path);
-                continue;
-            }
-
             let rel = match path.strip_prefix(&root) {
                 Ok(r) => r.to_path_buf(),
                 Err(_) => continue,
             };
 
+            if meta.is_dir() {
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                if rules.is_dir_excluded(&rel_str) {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+
             let size = meta.len();
 
-            if !rules.allowed(&rel, size) {
+            if !rules.allowed_path(Some(&path), &rel, size) {
                 continue;
             }
 
@@ -251,7 +255,10 @@ pub async fn scan_pair(
             let needs_upload = match &existing {
                 None => true,
                 Some(row) => {
-                    row.mtime_ms != Some(mtime_ms) || row.size != Some(size as i64)
+                    row.state != "synced"
+                        || row.drive_id.is_none()
+                        || row.mtime_ms != Some(mtime_ms)
+                        || row.size != Some(size as i64)
                 }
             };
 

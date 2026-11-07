@@ -79,19 +79,82 @@ function StatCard({
   );
 }
 
+function parseGovInfo(gov: any, parallelTransfers: number) {
+  const rawKind = gov?.kind || gov?.state || "running";
+  const kind = String(rawKind).toLowerCase();
+  const reason = gov?.reason ? String(gov.reason) : null;
+
+  if (kind === "running") {
+    return {
+      title: "Running",
+      desc: `${parallelTransfers} parallel workers`,
+      isPaused: false,
+      color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+      glow: "0 0 12px rgba(16,185,129,0.15)",
+    };
+  }
+  if (kind === "user_paused" || kind === "paused") {
+    return {
+      title: "Paused",
+      desc: "Manually paused by user",
+      isPaused: true,
+      color: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+      glow: "0 0 12px rgba(245,158,11,0.15)",
+    };
+  }
+  if (kind.includes("throttle")) {
+    const reasonText = reason ? reason.toUpperCase() : "LOAD";
+    return {
+      title: "Throttled",
+      desc: `Engine paused (${reasonText})`,
+      isPaused: true,
+      color: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+      glow: "0 0 12px rgba(245,158,11,0.15)",
+    };
+  }
+  if (kind === "scheduled") {
+    return {
+      title: "Scheduled",
+      desc: "Outside active sync hours",
+      isPaused: true,
+      color: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+      glow: "0 0 12px rgba(59,130,246,0.15)",
+    };
+  }
+  return {
+    title: "Running",
+    desc: `${parallelTransfers} parallel workers`,
+    isPaused: false,
+    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    glow: "0 0 12px rgba(16,185,129,0.15)",
+  };
+}
+
 // ── Batch sync progress bar ────────────────────────────────────────────────────
 
 function BatchBar() {
   const progress = useStore((s) => s.progress) ?? {};
-  const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, failed: 0 };
-  const events = Object.values(progress) as ProgressEvent[];
+  const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, done: 0, failed: 0 };
 
-  if (events.length === 0 && queueStatus.running === 0) return null;
+  // Only count in-flight events that are actively transferring
+  const activeEvents = (Object.values(progress) as ProgressEvent[]).filter(
+    (e) => e && e.bytes_total > 0 && e.bytes_done < e.bytes_total
+  );
 
-  const totalDone = events.reduce((a, e) => a + e.bytes_done, 0);
-  const totalBytes = events.reduce((a, e) => a + e.bytes_total, 0);
-  const pct = totalBytes > 0 ? (totalDone / totalBytes) * 100 : 0;
-  const startMs = events.length > 0 ? Math.min(...events.map((e) => e.start_ms)) : Date.now();
+  const isSyncing = queueStatus.running > 0 || queueStatus.queued > 0;
+  if (!isSyncing && activeEvents.length === 0) return null;
+
+  // Real batch percentage calculated from completed vs total jobs
+  const totalJobs = (queueStatus.done ?? 0) + queueStatus.queued + queueStatus.running;
+  const batchPct = totalJobs > 0 ? Math.min(99.9, ((queueStatus.done ?? 0) / totalJobs) * 100) : 0;
+
+  // Active in-flight bytes
+  const activeDone = activeEvents.reduce((a, e) => a + e.bytes_done, 0);
+  const activeTotal = activeEvents.reduce((a, e) => a + e.bytes_total, 0);
+  const inFlightPct = activeTotal > 0 ? (activeDone / activeTotal) * 100 : 0;
+
+  const displayPct = totalJobs > 0 ? batchPct : inFlightPct;
+  const startMs = activeEvents.length > 0 ? Math.min(...activeEvents.map((e) => e.start_ms)) : Date.now();
 
   return (
     <div className="mb-5 p-4 rounded-xl bg-gradient-to-r from-blue-950/20 via-[var(--surface)] to-indigo-950/20 border border-blue-500/25 shadow-sm">
@@ -103,15 +166,21 @@ function BatchBar() {
           </span>
         </div>
         <span className="text-xs font-mono font-medium text-blue-400">
-          {pct.toFixed(0)}%
+          {displayPct.toFixed(0)}%
         </span>
       </div>
 
-      <Progress value={pct} aria-label="Batch sync progress" />
+      <Progress value={displayPct} aria-label="Batch sync progress" />
 
       <div className="flex items-center justify-between mt-2.5 text-[11px] font-mono text-[var(--text-muted)]">
-        <span>{progressLabel(totalDone, totalBytes, startMs)}</span>
-        <span>{events.length} active transfer{events.length === 1 ? "" : "s"}</span>
+        <span>
+          {totalJobs > 0
+            ? `${queueStatus.done ?? 0} of ${totalJobs} files synced`
+            : progressLabel(activeDone, activeTotal, startMs)}
+        </span>
+        <span>
+          {queueStatus.running} active transfer{queueStatus.running === 1 ? "" : "s"}
+        </span>
       </div>
     </div>
   );
@@ -121,17 +190,17 @@ function BatchBar() {
 
 const MODE_CONFIG = {
   two_way: {
-    label: "Two-way Sync",
+    label: "Two-Way Sync",
     Icon: ArrowLeftRight,
     badgeClass: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   },
   upload: {
-    label: "Backup (Upload)",
+    label: "Cloud Backup",
     Icon: CloudUpload,
     badgeClass: "bg-purple-500/10 text-purple-400 border-purple-500/20",
   },
   mirror: {
-    label: "Mirror (Download)",
+    label: "Cloud Mirror",
     Icon: FlipHorizontal2,
     badgeClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   },
@@ -163,9 +232,9 @@ function PairCard({
   const modeInfo = MODE_CONFIG[mode as keyof typeof MODE_CONFIG] ?? MODE_CONFIG.two_way;
   const ModeIcon = modeInfo.Icon;
 
-  // Find active progress events for this pair
+  // Find active in-flight progress events for this pair
   const pairEvents = Object.values(progress).filter(
-    (e): e is ProgressEvent => (e as ProgressEvent)?.pair_id === id
+    (e): e is ProgressEvent => Boolean(e && (e as ProgressEvent).pair_id === id && (e as ProgressEvent).bytes_done < (e as ProgressEvent).bytes_total)
   );
   const totalDone = pairEvents.reduce((a, e) => a + e.bytes_done, 0);
   const totalBytes = pairEvents.reduce((a, e) => a + e.bytes_total, 0);
@@ -349,14 +418,16 @@ function PairCard({
 export function HomeScreen() {
   const gov = useStore((s) => s.gov) ?? { state: "Running", reason: null, concurrency: 2 };
   const pairs = useStore((s) => s.pairs) ?? [];
-  const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, failed: 0 };
+  const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, done: 0, failed: 0 };
   const authed = useStore((s) => s.authed);
+  const config = useStore((s) => s.config);
   const setConfig = useStore((s) => s.setConfig);
 
   const [showAdd, setShowAdd] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
 
-  const isPaused = gov.state === "Paused";
+  const govInfo = parseGovInfo(gov, config?.app?.parallel_transfers ?? 4);
+  const isPaused = govInfo.isPaused;
 
   async function handlePauseResume() {
     try {
@@ -455,22 +526,10 @@ export function HomeScreen() {
         <StatCard
           icon={FolderSync}
           label="Engine State"
-          value={gov.state}
-          subtext={
-            gov.reason
-              ? gov.reason
-              : `${gov.concurrency} concurrent threads`
-          }
-          iconColor={
-            gov.state === "Running"
-              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-          }
-          glowColor={
-            gov.state === "Running"
-              ? "0 0 12px rgba(16,185,129,0.15)"
-              : "0 0 12px rgba(245,158,11,0.15)"
-          }
+          value={govInfo.title}
+          subtext={govInfo.desc}
+          iconColor={govInfo.color}
+          glowColor={govInfo.glow}
         />
 
         <StatCard
@@ -488,12 +547,18 @@ export function HomeScreen() {
           value={
             queueStatus.running > 0
               ? `${queueStatus.running} active`
-              : `${queueStatus.queued} queued`
+              : queueStatus.queued > 0
+              ? `${queueStatus.queued} queued`
+              : "Idle"
           }
           subtext={
             queueStatus.failed > 0
-              ? `${queueStatus.failed} failed jobs`
-              : "All jobs completed"
+              ? `${queueStatus.failed} failed transfer(s)`
+              : queueStatus.queued > 0
+              ? `${queueStatus.queued} pending in queue`
+              : queueStatus.running > 0
+              ? `${queueStatus.done ?? 0} files completed`
+              : "All files up to date"
           }
           iconColor={
             queueStatus.failed > 0

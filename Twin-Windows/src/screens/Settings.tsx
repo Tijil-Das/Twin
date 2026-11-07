@@ -534,6 +534,33 @@ export function SettingsScreen() {
             </div>
           </div>
 
+          {/* Battery Governor Threshold */}
+          <div className="p-4 grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[12px] font-medium text-[var(--text)] mb-1">
+                Battery Pause Threshold (%)
+              </label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={local.governor.battery_pause_pct ?? 0}
+                onChange={(e) =>
+                  patchLocal((c) => ({
+                    ...c,
+                    governor: {
+                      ...c.governor,
+                      battery_pause_pct: parseInt(e.target.value, 10) || 0,
+                    },
+                  }))
+                }
+              />
+              <span className="text-[10.5px] text-[var(--text-muted)] mt-1 block">
+                Pause sync when on battery below this % (0 = Never pause)
+              </span>
+            </div>
+          </div>
+
           {/* Metered Network */}
           <div className="p-4 flex items-center justify-between">
             <div>

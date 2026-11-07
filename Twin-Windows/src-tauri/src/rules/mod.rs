@@ -27,22 +27,22 @@ impl Rules {
 
     /// Return `true` if the file at `rel` (relative path, any slash direction)
     /// with `size` bytes is allowed to be synced.
-    ///
-    /// Rules (in order):
-    /// 1. Hidden / system attribute → denied.
-    /// 2. Max size exceeded → denied.
-    /// 3. Exclude glob matches → denied.
-    /// 4. Include glob matches (or include list is empty) → allowed.
-    /// 5. Otherwise → denied.
     pub fn allowed(&self, rel: &Path, size: u64) -> bool {
+        self.allowed_path(None, rel, size)
+    }
+
+    /// Return `true` if the file at `rel` (with optional `full_path` for accurate Windows attributes)
+    /// with `size` bytes is allowed to be synced.
+    pub fn allowed_path(&self, full_path: Option<&Path>, rel: &Path, size: u64) -> bool {
         // Normalise to forward-slash string for glob matching.
         let fwd = rel
             .to_string_lossy()
             .replace('\\', "/");
         let rel_fwd = Path::new(&fwd);
 
-        // 1. Hidden / system attributes (Windows).
-        if is_hidden_or_system(rel) {
+        // 1. Hidden / system attributes (Windows). Check absolute path if provided.
+        let target = full_path.unwrap_or(rel);
+        if is_hidden_or_system(target) {
             return false;
         }
 
@@ -61,6 +61,17 @@ impl Rules {
             return true;
         }
         self.include.is_match(rel_fwd)
+    }
+
+    /// Return `true` if a directory should be skipped completely during tree traversal.
+    pub fn is_dir_excluded(&self, rel_dir: &str) -> bool {
+        let fwd = rel_dir.replace('\\', "/");
+        let trimmed = fwd.trim_matches('/');
+        if trimmed.is_empty() {
+            return false;
+        }
+        let with_slash = format!("{trimmed}/");
+        self.exclude.is_match(Path::new(trimmed)) || self.exclude.is_match(Path::new(&with_slash))
     }
 }
 

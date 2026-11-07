@@ -64,10 +64,12 @@ impl JobRunner for UploadRunner {
             }
 
             match job.kind.as_str() {
-                "upload" => run_upload(job, db, cfg, gov, drive, limiter, progress).await,
-                "delete" => run_delete(job, db, cfg, drive).await,
-                "mkdir"  => run_mkdir(job, db, cfg, drive).await,
-                other    => Err(AppError::Other(format!("unknown job kind: {other}"))),
+                "upload"   => run_upload(job, db, cfg, gov, drive, limiter, progress).await,
+                "delete"   => run_delete(job, db, cfg, drive).await,
+                "mkdir"    => run_mkdir(job, db, cfg, drive).await,
+                "download" => crate::transfer::download::run_download(job, db, cfg, gov, drive, limiter, progress).await,
+                "restore"  => crate::transfer::download::run_restore(job, db, cfg, gov, drive, limiter, progress).await,
+                other      => Err(AppError::Other(format!("unknown job kind: {other}"))),
             }
         }
     }

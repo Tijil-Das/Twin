@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::Manager;
-use tracing::info;
+use tracing::{info, warn};
 use twin_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, updater, watcher, setup_tray};
 use twin_lib::drive::revisions::Revision;
 use twin_lib::drive::client::DriveFile;
@@ -334,6 +334,7 @@ async fn run_sync_cycle(
     pair_id:  String,
     gov_s:    tauri::State<'_, governor::GovState2>,
     db_s:     tauri::State<'_, db::DbState>,
+    q_s:      tauri::State<'_, queue::QueueState>,
 ) -> Result<sync::CycleReport, String> {
     let cfg = config::load().unwrap_or_default();
     let pair = cfg.pairs.iter()
@@ -347,8 +348,18 @@ async fn run_sync_cycle(
     let gov     = gov_s.0.clone();
     let echo    = Arc::new(sync::SelfWritten::new());
 
+    // 1. Scan local filesystem for new/modified/deleted files
+    let rules = rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
+    let _ = watcher::scan_pair(&pair, Arc::clone(&db_arc), &rules, &gov).await;
+
+    // 2. Scan remote Drive changes and reconcile
     let ctx = sync::Ctx { db: db_arc, drive, gov, echo };
-    sync::run_pair_cycle(&pair, &ctx).await.map_err(|e| e.to_string())
+    let report = sync::run_pair_cycle(&pair, &ctx).await.map_err(|e| e.to_string())?;
+
+    // 3. Wake queue worker to execute transfers immediately
+    q_s.0.wake();
+
+    Ok(report)
 }
 
 /// Resolve a pending conflict.
@@ -567,7 +578,7 @@ fn main() {
             // Spawn progress relay -- emits transfer://progress events.
             let app_handle = handle.clone();
             tauri::async_runtime::spawn(transfer::relay_progress(prog_rx, app_handle));
-            app.manage(queue::QueueState(q));
+            app.manage(queue::QueueState(q.clone()));
 
             // Spawn Google Drive AppData config sync loop (zero-config cloud sync).
             {
@@ -628,6 +639,174 @@ fn main() {
                         }
                     });
                 });
+            }
+
+            // Initial scan on startup: scan all enabled pairs so newly added / unscanned files are enqueued.
+            {
+                let db_init = Arc::clone(&db_arc);
+                let gov_init = gov.clone();
+                let q_init = q.clone();
+                let pairs_init = cfg.pairs.clone();
+                let rules_init = rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
+                tauri::async_runtime::spawn(async move {
+                    for pair in pairs_init.iter().filter(|p| p.enabled) {
+                        info!("Starting initial scan for pair {} ({})", pair.id, pair.local);
+                        if let Err(e) = watcher::scan_pair(pair, Arc::clone(&db_init), &rules_init, &gov_init).await {
+                            warn!("Initial scan error for pair {}: {e}", pair.id);
+                        }
+                    }
+                    q_init.wake();
+                });
+            }
+
+            // Start debounced file system watcher on all local folders.
+            {
+                let (local_tx, mut local_rx) = tokio::sync::mpsc::unbounded_channel::<watcher::LocalChange>();
+                if let Ok(w) = watcher::Watcher::start(&cfg, Arc::clone(&db_arc), local_tx) {
+                    std::mem::forget(w);
+
+                    let db_watch = Arc::clone(&db_arc);
+                    let gov_watch = gov.clone();
+                    let q_watch = q.clone();
+                    tauri::async_runtime::spawn(async move {
+                        while let Some(change) = local_rx.recv().await {
+                            let current_cfg = config::load().unwrap_or_default();
+                            let pair = match current_cfg.pairs.iter().find(|p| p.id == change.pair_id && p.enabled) {
+                                Some(p) => p.clone(),
+                                None => continue,
+                            };
+                            let rules = rules::Rules::new(&current_cfg.rules.include, &current_cfg.rules.exclude, current_cfg.rules.max_file_mb);
+                            let root = std::path::PathBuf::from(&pair.local);
+                            let full_path = root.join(&change.rel_path);
+                            let rel_str = change.rel_path.to_string_lossy().replace('\\', "/");
+
+                            match change.kind {
+                                watcher::ChangeKind::Modified => {
+                                    if let Ok(meta) = full_path.metadata() {
+                                        if meta.is_file() && rules.allowed_path(Some(&full_path), &change.rel_path, meta.len()) {
+                                            let size = meta.len() as i64;
+                                            let mtime_ms = meta.modified()
+                                                .ok()
+                                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                                .map(|d| d.as_millis() as i64)
+                                                .unwrap_or(0);
+                                            let md5 = watcher::compute_md5(&full_path, &gov_watch).await.ok();
+                                            let existing = db_watch.get_file(&pair.id, &rel_str).ok().flatten();
+                                            let skip = existing.as_ref().and_then(|r| r.md5.as_deref()) == md5.as_deref();
+                                            if !skip {
+                                                let row = db::FileRow {
+                                                    pair_id: pair.id.clone(),
+                                                    rel_path: rel_str.clone(),
+                                                    size: Some(size),
+                                                    mtime_ms: Some(mtime_ms),
+                                                    md5,
+                                                    drive_id: existing.as_ref().and_then(|r| r.drive_id.clone()),
+                                                    drive_md5: existing.as_ref().and_then(|r| r.drive_md5.clone()),
+                                                    drive_mtime_ms: existing.as_ref().and_then(|r| r.drive_mtime_ms),
+                                                    drive_rev: existing.as_ref().and_then(|r| r.drive_rev.clone()),
+                                                    state: "dirty".into(),
+                                                };
+                                                let _ = db_watch.upsert_file(row);
+                                                let now_ms = std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_millis() as i64;
+                                                let _ = db_watch.enqueue(db::NewJob {
+                                                    pair_id: pair.id.clone(),
+                                                    kind: "upload".into(),
+                                                    rel_path: rel_str,
+                                                    priority: 1,
+                                                    created_ms: now_ms,
+                                                });
+                                                q_watch.wake();
+                                            }
+                                        }
+                                    }
+                                }
+                                watcher::ChangeKind::Deleted => {
+                                    let _ = db_watch.mark_state(&pair.id, &rel_str, "deleted_local");
+                                    let now_ms = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis() as i64;
+                                    let _ = db_watch.enqueue(db::NewJob {
+                                        pair_id: pair.id.clone(),
+                                        kind: "delete".into(),
+                                        rel_path: rel_str,
+                                        priority: 1,
+                                        created_ms: now_ms,
+                                    });
+                                    q_watch.wake();
+                                }
+                                watcher::ChangeKind::Renamed { from } => {
+                                    let from_rel = from.strip_prefix(&root).unwrap_or(&from);
+                                    let from_rel_str = from_rel.to_string_lossy().replace('\\', "/");
+                                    let now_ms = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis() as i64;
+                                    let _ = db_watch.mark_state(&pair.id, &from_rel_str, "deleted_local");
+                                    let _ = db_watch.enqueue(db::NewJob {
+                                        pair_id: pair.id.clone(),
+                                        kind: "delete".into(),
+                                        rel_path: from_rel_str,
+                                        priority: 1,
+                                        created_ms: now_ms,
+                                    });
+                                    if let Ok(meta) = full_path.metadata() {
+                                        if meta.is_file() && rules.allowed_path(Some(&full_path), &change.rel_path, meta.len()) {
+                                            let size = meta.len() as i64;
+                                            let mtime_ms = meta.modified()
+                                                .ok()
+                                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                                .map(|d| d.as_millis() as i64)
+                                                .unwrap_or(0);
+                                            let md5 = watcher::compute_md5(&full_path, &gov_watch).await.ok();
+                                            let row = db::FileRow {
+                                                pair_id: pair.id.clone(),
+                                                rel_path: rel_str.clone(),
+                                                size: Some(size),
+                                                mtime_ms: Some(mtime_ms),
+                                                md5,
+                                                drive_id: None,
+                                                drive_md5: None,
+                                                drive_mtime_ms: None,
+                                                drive_rev: None,
+                                                state: "dirty".into(),
+                                            };
+                                            let _ = db_watch.upsert_file(row);
+                                            let _ = db_watch.enqueue(db::NewJob {
+                                                pair_id: pair.id.clone(),
+                                                kind: "upload".into(),
+                                                rel_path: rel_str,
+                                                priority: 1,
+                                                created_ms: now_ms,
+                                            });
+                                        }
+                                    }
+                                    q_watch.wake();
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+
+            // Spawn remote changes polling loop for two_way and mirror pairs.
+            if let Ok(drive_poll) = drive::DriveClient::new() {
+                let db_poll = Arc::clone(&db_arc);
+                let gov_poll = gov.clone();
+                let echo_poll = Arc::new(sync::SelfWritten::new());
+                for pair in cfg.pairs.iter().filter(|p| p.enabled) {
+                    let p = pair.clone();
+                    let ctx = sync::Ctx {
+                        db: Arc::clone(&db_poll),
+                        drive: drive_poll.clone(),
+                        gov: gov_poll.clone(),
+                        echo: Arc::clone(&echo_poll),
+                    };
+                    tauri::async_runtime::spawn(sync::poll_changes_loop(p, ctx));
+                }
             }
 
             // Error toast monitor: max 1 notification per 10 min for persistent failures.

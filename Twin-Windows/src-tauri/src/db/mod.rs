@@ -185,6 +185,13 @@ impl Db {
             let db = Db { conn: Mutex::new(conn), path: path.to_path_buf() };
             db.migrate()?;
 
+            // Re-queue any jobs left in 'running' from a previous crash/shutdown
+            if let Ok(count) = db.reset_stale_running_jobs() {
+                if count > 0 {
+                    tracing::info!("Startup: recovered {count} interrupted running job(s) back to queued");
+                }
+            }
+
             Ok(db)
         })();
 
@@ -333,10 +340,10 @@ impl Db {
     pub fn enqueue(&self, job: NewJob) -> Result<i64, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
 
-        // Dedupe: return existing id if already queued.
+        // Dedupe: return existing id if already queued or running.
         let existing: Option<i64> = conn
             .query_row(
-                "SELECT id FROM jobs WHERE pair_id=?1 AND kind=?2 AND rel_path=?3 AND status='queued'",
+                "SELECT id FROM jobs WHERE pair_id=?1 AND kind=?2 AND rel_path=?3 AND (status='queued' OR status='running')",
                 params![job.pair_id, job.kind, job.rel_path],
                 |r| r.get(0),
             )
@@ -391,6 +398,14 @@ impl Db {
         )
         .map_err(|e| AppError::Db(format!("complete_job: {e}")))?;
         Ok(())
+    }
+
+    /// Reset any leftover 'running' jobs back to 'queued' so interrupted transfers resume immediately.
+    pub fn reset_stale_running_jobs(&self) -> Result<usize, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let count = conn.execute("UPDATE jobs SET status='queued' WHERE status='running'", [])
+            .map_err(|e| AppError::Db(format!("reset running jobs: {e}")))?;
+        Ok(count)
     }
 
     /// Exponential backoff: `2^attempts` seconds, capped at `MAX_BACKOFF_SECS`.

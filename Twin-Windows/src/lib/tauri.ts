@@ -97,10 +97,13 @@ export interface TrashedFile {
 
 // ── Governor ───────────────────────────────────────────────────────────────────
 
+export type GovStateKind = "running" | "throttled" | "scheduled" | "user_paused";
+
 export interface GovStatePayload {
-  state: "Running" | "Throttled" | "Paused";
-  reason: string | null;
-  concurrency: number;
+  kind?: GovStateKind;
+  state?: string;
+  reason?: string | null;
+  concurrency?: number;
 }
 
 // ── Sync ───────────────────────────────────────────────────────────────────────
@@ -118,6 +121,7 @@ export interface CycleReport {
 export interface QueueStatus {
   queued: number;
   running: number;
+  done?: number;
   failed: number;
 }
 
