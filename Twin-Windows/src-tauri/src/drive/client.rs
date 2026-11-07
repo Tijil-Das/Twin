@@ -553,8 +553,16 @@ impl DriveClient {
             }
             308 => Ok(None), // continue
             _ => {
+                let retry_after = resp.headers()
+                    .get("Retry-After")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok());
                 let body = resp.text().await.unwrap_or_default();
-                Err(AppError::Drive(format!("upload_chunk HTTP {status}: {body}")))
+                if let Some(secs) = retry_after {
+                    Err(AppError::Drive(format!("upload_chunk HTTP {status} (retry-after: {secs}s): {body}")))
+                } else {
+                    Err(AppError::Drive(format!("upload_chunk HTTP {status}: {body}")))
+                }
             }
         }
     }

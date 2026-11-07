@@ -351,8 +351,8 @@ async fn resumable_upload(
             bytes_total: total_size,
         });
 
-        // Retry individual chunk on transient error (up to 4 retries).
-        let mut chunk_delay = Duration::from_millis(500);
+        // Retry individual chunk on transient error (up to 8 retries).
+        let mut chunk_delay = Duration::from_millis(1500);
         let mut chunk_attempts = 0;
         let mut chunk_done = false;
 
@@ -383,7 +383,7 @@ async fn resumable_upload(
                         || err_str.contains("410")
                         || err_str.contains("expired");
 
-                    if is_fatal_session || chunk_attempts > 4 {
+                    if is_fatal_session || chunk_attempts > 8 {
                         if is_fatal_session {
                             warn!("resumable session rejected ({err_str}), purging session cache to restart cleanly");
                             let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
@@ -391,9 +391,26 @@ async fn resumable_upload(
                         return Err(e);
                     }
 
-                    warn!("chunk error (attempt {chunk_attempts}), checking session offset and retrying: {e}");
-                    sleep(chunk_delay).await;
-                    chunk_delay = (chunk_delay * 2).min(Duration::from_secs(30));
+                    // Extract Retry-After if provided by Google Drive
+                    let retry_after_secs = if let Some(idx) = err_str.find("retry-after: ") {
+                        let rest = &err_str[idx + 13..];
+                        rest.split('s').next().and_then(|s| s.parse::<u64>().ok())
+                    } else {
+                        None
+                    };
+
+                    let sleep_dur = if let Some(secs) = retry_after_secs {
+                        Duration::from_secs(secs)
+                    } else {
+                        chunk_delay
+                    };
+
+                    warn!("chunk error (attempt {chunk_attempts}/8), backing off {sleep_dur:?}: {e}");
+                    sleep(sleep_dur).await;
+
+                    // Exponential backoff with pseudo-jitter based on job and attempt
+                    let jitter_ms = (job.id as u64 * 37 + chunk_attempts as u64 * 113) % 750;
+                    chunk_delay = (chunk_delay * 2 + Duration::from_millis(jitter_ms)).min(Duration::from_secs(32));
 
                     // Query server for the real current offset
                     match drive.query_resumable_status(&session_uri, total_size).await {
