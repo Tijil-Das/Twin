@@ -13,6 +13,7 @@ export interface PairEntry {
   drive_folder_id: string;
   mode: PairMode;
   enabled: boolean;
+  deletion?: "ignore" | "drive_trash" | "delete";
 }
 
 export interface PolicyConfig {

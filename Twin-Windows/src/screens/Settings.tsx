@@ -34,13 +34,11 @@ import {
   CheckCircle2,
   Save,
   Check,
-  HardDrive,
   Cpu,
   Battery,
   Wifi,
   Shield,
   Layers,
-  Palette,
   AlertTriangle,
 } from "lucide-react";
 import { formatBytes } from "@/lib/format";

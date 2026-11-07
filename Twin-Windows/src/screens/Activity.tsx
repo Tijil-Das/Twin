@@ -6,7 +6,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useStore } from "@/store";
 import { getActivity, retryJob } from "@/lib/tauri";
-import type { Activity } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import { formatTime, formatRelTime } from "@/lib/format";
 import { toast } from "sonner";

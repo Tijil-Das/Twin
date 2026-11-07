@@ -25,20 +25,15 @@ import { toast } from "sonner";
 import {
   Folder,
   FileText,
-  ChevronRight,
   Search,
   Star,
   Share2,
-  HardDrive,
   Clock,
   RotateCcw,
   Trash2,
   Download,
   RefreshCw,
   X,
-  FileCode,
-  FileSpreadsheet,
-  Image as ImageIcon,
   Lock,
   Palette,
   CheckSquare,
@@ -453,7 +448,11 @@ function FileBrowser() {
             <div className="flex items-center gap-2 shrink-0">
               {/* GitHub style search input */}
               <div className="relative">
-                <Search size={12} className="absolute left-2.5 top-2 text-[#7d8590]" />
+                {isSearching ? (
+                  <RefreshCw size={12} className="absolute left-2.5 top-2 text-[#58a6ff] animate-spin" />
+                ) : (
+                  <Search size={12} className="absolute left-2.5 top-2 text-[#7d8590]" />
+                )}
                 <input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
