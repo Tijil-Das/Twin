@@ -72,7 +72,7 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Twin v${{ github.ref_name }}
+          name: Twin ${{ github.ref_name }}
           body_path: release-notes.md
           files: release_assets/*
           draft: false
