@@ -112,7 +112,7 @@ export async function createReleaseCommit(
   }
 
   // Stage Website files if present
-  for (const webFile of ['Website/index.html', 'Website/main.js', 'Website/privacy.html', 'Website/terms.html']) {
+  for (const webFile of ['Website/index.html', 'Website/main.js', 'Website/privacy.html', 'Website/terms.html', 'Website/assets/icon.svg']) {
     if (fs.existsSync(path.join(gitRoot, webFile))) {
       await execa('git', ['add', webFile], { cwd: gitRoot })
     }
