@@ -10,8 +10,6 @@ import {
   Play,
   Pause,
   RefreshCw,
-  Folder,
-  Cloud,
   ArrowLeftRight,
   CloudUpload,
   FlipHorizontal2,
@@ -61,9 +59,24 @@ const SYNC_MODES = {
   },
 };
 
-// ── Folder Pair Item ──────────────────────────────────────────────────────────
+// ── GitHub Octicon Folder Icon ────────────────────────────────────────────────
 
-function FolderPairCard({
+function GithubFolderIcon({ color, className }: { color?: string | null; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={cn("w-4 h-4 shrink-0 fill-current", className)}
+      style={color ? { color } : undefined}
+      aria-hidden="true"
+    >
+      <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z" />
+    </svg>
+  );
+}
+
+// ── Folder Pair Row (GitHub Repository Table Presentation) ───────────────────
+
+function FolderPairRow({
   id,
   local,
   drive_folder_id,
@@ -157,105 +170,140 @@ function FolderPairCard({
   return (
     <div
       className={cn(
-        "desktop-card p-5 transition-all duration-150 group",
-        !enabled && "opacity-60 bg-[var(--surface)]/50"
+        "group transition-colors",
+        !enabled ? "bg-[#0d1117]/60 opacity-75" : "bg-[#0d1117] hover:bg-[#161b22]"
       )}
     >
-      <div className="flex items-start justify-between gap-4">
-        {/* Left: Folder Identity & Paths */}
-        <div className="flex items-start gap-3.5 min-w-0 flex-1">
-          <div
+      <div className="px-4 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs select-none">
+        {/* Left: GitHub Octicon + Folder Name + Mode */}
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <GithubFolderIcon
             className={cn(
-              "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 transition-colors",
-              enabled
-                ? "bg-blue-500/10 border-blue-500/25 text-blue-400"
-                : "bg-white/[0.04] border-white/5 text-[var(--text-subtle)]"
+              "w-4 h-4 shrink-0 transition-colors",
+              enabled ? "text-[#54aeff]" : "text-[#7d8590]"
             )}
+          />
+
+          <span
+            className={cn(
+              "font-medium text-[13px] truncate group-hover:text-[#58a6ff] group-hover:underline",
+              enabled ? "text-[#e6edf3]" : "text-[#7d8590]"
+            )}
+            title={folderName}
           >
-            <Folder size={22} strokeWidth={1.8} />
-          </div>
+            {folderName}
+          </span>
 
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="font-bold text-base text-white tracking-tight">
-                {folderName}
-              </span>
+          {/* Mode Pill Badge */}
+          <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-[#21262d] text-[#8b949e] border border-[#30363d] shrink-0"
+            title={modeInfo.description}
+          >
+            <ModeIcon size={11} strokeWidth={1.8} className="text-[#7d8590]" />
+            {modeInfo.label}
+          </span>
 
-              {/* Mode indicator */}
-              <span
-                className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.08] text-[var(--text-muted)]"
-                title={modeInfo.description}
+          {!enabled && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-[#30363d]/60 border border-[#d29922]/40 text-[#d29922] shrink-0">
+              Paused
+            </span>
+          )}
+
+          {/* Path Mapping: Local ⇄ Remote Google Drive (Desktop layout) */}
+          <div className="hidden lg:flex items-center gap-2 text-xs font-mono text-[#7d8590] min-w-0 flex-1 ml-2">
+            <span className="text-[#30363d]">|</span>
+            <div className="flex items-center gap-1.5 min-w-0 truncate text-[#c9d1d9]" title={local}>
+              <HardDrive size={13} className="text-[#7d8590] shrink-0" />
+              <span className="truncate select-all">{local}</span>
+              <button
+                type="button"
+                onClick={handleCopyPath}
+                className="text-[#7d8590] hover:text-[#e6edf3] p-0.5 rounded transition-colors cursor-pointer shrink-0"
+                title="Copy local path"
               >
-                <ModeIcon size={13} strokeWidth={1.8} className="text-[var(--text-subtle)]" />
-                {modeInfo.label}
-              </span>
-
-              {!enabled && (
-                <span className="text-xs font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                  Paused
-                </span>
-              )}
+                {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+              </button>
             </div>
 
-            {/* Path breakdown */}
-            <div className="mt-2.5 space-y-1.5">
-              <div className="flex items-center gap-2 text-xs code-text text-[var(--text)]">
-                <HardDrive size={14} className="text-[var(--text-subtle)] shrink-0" />
-                <span className="truncate select-all" title={local}>
-                  {local}
-                </span>
-                <button
-                  onClick={handleCopyPath}
-                  className="hover:text-white text-[var(--text-subtle)] p-0.5 rounded transition-colors cursor-pointer"
-                  title="Copy path"
-                >
-                  {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-                </button>
-              </div>
+            <span className="text-[#484f58] shrink-0">⇄</span>
 
-              <div className="flex items-center gap-2 text-xs code-text text-[var(--text-muted)]">
-                <img
-                  src={gdLogo}
-                  alt="Google Drive"
-                  style={{ width: 14, height: 14, minWidth: 14, maxWidth: 14 }}
-                  className="w-3.5 h-3.5 object-contain shrink-0"
-                />
-                <span className="truncate" title={`Google Drive ID: ${drive_folder_id}`}>
-                  Drive: {drive_folder_id}
-                </span>
-              </div>
+            <div
+              className="flex items-center gap-1.5 min-w-0 truncate text-[#8b949e]"
+              title={`Google Drive ID: ${drive_folder_id}`}
+            >
+              <img
+                src={gdLogo}
+                alt="Google Drive"
+                style={{ width: 13, height: 13, minWidth: 13, maxWidth: 13 }}
+                className="w-3.5 h-3.5 object-contain shrink-0"
+              />
+              <span className="truncate font-mono text-[11px]">Drive: {drive_folder_id}</span>
             </div>
           </div>
         </div>
 
+        {/* Path Mapping for Narrower Screens */}
+        <div className="flex lg:hidden items-center gap-2 text-xs font-mono text-[#7d8590] pl-6 flex-wrap">
+          <div className="flex items-center gap-1.5 min-w-0 truncate text-[#c9d1d9]" title={local}>
+            <HardDrive size={12} className="text-[#7d8590] shrink-0" />
+            <span className="truncate select-all">{local}</span>
+            <button
+              type="button"
+              onClick={handleCopyPath}
+              className="text-[#7d8590] hover:text-[#e6edf3] p-0.5 rounded transition-colors cursor-pointer shrink-0"
+              title="Copy local path"
+            >
+              {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+            </button>
+          </div>
+          <span className="text-[#484f58] shrink-0">⇄</span>
+          <div
+            className="flex items-center gap-1.5 min-w-0 truncate text-[#8b949e]"
+            title={`Google Drive ID: ${drive_folder_id}`}
+          >
+            <img
+              src={gdLogo}
+              alt="Google Drive"
+              style={{ width: 13, height: 13, minWidth: 13, maxWidth: 13 }}
+              className="w-3.5 h-3.5 object-contain shrink-0"
+            />
+            <span className="truncate font-mono text-[11px]">Drive: {drive_folder_id}</span>
+          </div>
+        </div>
+
         {/* Right: Quick Actions */}
-        <div className="flex items-center gap-2 shrink-0 pt-1">
-          <Button
-            variant="ghost"
-            size="iconSm"
+        <div className="flex items-center gap-2 shrink-0 self-end md:self-auto pl-6 md:pl-0">
+          {isCurrentlySyncing && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-mono text-[#58a6ff] mr-1">
+              <RefreshCw size={11} className="animate-spin" />
+              <span>{pct > 0 ? `${pct.toFixed(0)}%` : "Syncing"}</span>
+            </span>
+          )}
+
+          <button
+            type="button"
             onClick={handleSync}
             disabled={!enabled || isCurrentlySyncing}
             title="Sync this folder now"
-            className="text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-2)]"
+            className="p-1.5 rounded-md text-[#7d8590] hover:text-[#e6edf3] hover:bg-[#21262d] transition-colors cursor-pointer disabled:opacity-40"
           >
             <RefreshCw
-              size={15}
+              size={13}
               strokeWidth={1.8}
-              className={cn(isCurrentlySyncing && "animate-spin text-blue-400")}
+              className={cn(isCurrentlySyncing && "animate-spin text-[#58a6ff]")}
             />
-          </Button>
+          </button>
 
-          <Button
-            variant="ghost"
-            size="iconSm"
+          <button
+            type="button"
             onClick={handleRemove}
             title="Remove folder pair"
-            className="text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10"
+            className="p-1.5 rounded-md text-[#7d8590] hover:text-[#f85149] hover:bg-[#f85149]/10 transition-colors cursor-pointer"
           >
-            <Trash2 size={15} strokeWidth={1.8} />
-          </Button>
+            <Trash2 size={13} strokeWidth={1.8} />
+          </button>
 
-          <div className="w-[1px] h-4 bg-[var(--border)] mx-1" />
+          <div className="w-[1px] h-3.5 bg-[#30363d] mx-1" />
 
           <Switch
             checked={enabled}
@@ -265,18 +313,18 @@ function FolderPairCard({
         </div>
       </div>
 
-      {/* Real-time Transfer Bar */}
+      {/* Real-time Transfer Bar (attached GitHub Action/Job progress strip) */}
       {pairEvents.length > 0 && (
-        <div className="mt-4 pt-3.5 border-t border-[var(--border-subtle)]">
-          <div className="flex items-center justify-between text-xs code-text text-[var(--text-muted)] mb-1.5">
-            <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+        <div className="px-4 py-2 bg-[#161b22]/70 border-t border-[#21262d] space-y-1">
+          <div className="flex items-center justify-between text-[11px] font-mono text-[#7d8590]">
+            <span className="flex items-center gap-1.5 text-[#58a6ff]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />
               Transferring active files…
             </span>
-            <span className="text-blue-400 font-bold">{pct.toFixed(0)}%</span>
+            <span className="text-[#58a6ff] font-bold">{pct.toFixed(0)}%</span>
           </div>
-          <Progress value={pct} aria-label={`Progress for ${folderName}`} className="h-2" />
-          <div className="text-xs code-text text-[var(--text-subtle)] mt-1.5">
+          <Progress value={pct} aria-label={`Progress for ${folderName}`} className="h-1.5 bg-[#21262d]" />
+          <div className="text-[11px] font-mono text-[#7d8590]">
             {progressLabel(totalDone, totalBytes, startMs)}
           </div>
         </div>
@@ -499,57 +547,71 @@ export function HomeScreen() {
         )}
       </div>
 
-      {/* ── Synced Folders Section ── */}
-      <div className="space-y-3.5">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-sm font-bold text-white tracking-tight">
+      {/* ── Synced Folders (GitHub Repository Presentation) ── */}
+      <div className="rounded-md border border-[#30363d] bg-[#0d1117] overflow-hidden shadow-sm">
+        {/* GitHub Header Bar */}
+        <div className="bg-[#161b22] px-3.5 py-2.5 border-b border-[#30363d] flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <GithubFolderIcon className="w-4 h-4 text-[#7d8590]" />
+            <span className="font-semibold text-xs text-[#e6edf3]">
               Synced Folders
-            </h2>
-            <span className="text-xs code-text font-semibold px-2 py-0.5 rounded-full bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border)]">
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-xs font-mono font-medium bg-[#21262d] text-[#7d8590] border border-[#30363d]">
               {pairs.length}
             </span>
           </div>
 
-          {pairs.length > 0 && (
+          <div className="flex items-center gap-2">
+            {pairs.length > 0 && (
+              <button
+                type="button"
+                onClick={handleSyncAll}
+                disabled={syncingAll || isPaused}
+                className="px-2.5 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white border border-[#30363d] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                title="Trigger sync for all pairs"
+              >
+                <RefreshCw size={12} className={cn(syncingAll && "animate-spin text-[#58a6ff]")} />
+                <span>Sync All</span>
+              </button>
+            )}
+
             <button
+              type="button"
               onClick={() => setShowAdd(true)}
-              className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[rgba(240,246,252,0.1)] shadow-sm"
+              title="Add a new folder pair"
             >
-              <Plus size={14} strokeWidth={2.5} />
-              Add another
+              <Plus size={13} strokeWidth={2.5} />
+              <span>Add Folder</span>
             </button>
-          )}
+          </div>
         </div>
 
-        {/* Pairs List or Clean Native Empty State */}
+        {/* Pairs List or GitHub Clean Empty State */}
         {pairs.length === 0 ? (
-          <div className="desktop-card p-12 text-center flex flex-col items-center justify-center space-y-4 border-dashed">
-            <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/5 flex items-center justify-center text-[var(--text-muted)]">
-              <Folder size={26} strokeWidth={1.5} />
-            </div>
-
-            <div className="max-w-md space-y-1.5">
-              <h3 className="text-base font-bold text-white">
+          <div className="p-12 text-center flex flex-col items-center justify-center space-y-3 bg-[#0d1117]">
+            <GithubFolderIcon className="w-10 h-10 text-[#7d8590]/40" />
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-[#e6edf3]">
                 No synced folders configured
               </h3>
-              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                Connect a local folder to Google Drive. Changes will sync continuously in real time.
+              <p className="text-xs text-[#7d8590]">
+                Connect a local folder to Google Drive to begin continuous synchronization.
               </p>
             </div>
-
-            <Button
+            <button
+              type="button"
               onClick={() => setShowAdd(true)}
-              className="mt-2"
+              className="mt-2 px-3 py-1.5 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer border border-[rgba(240,246,252,0.1)]"
             >
-              <Plus size={15} strokeWidth={2.5} />
-              Add Your First Folder Pair
-            </Button>
+              <Plus size={14} strokeWidth={2.5} />
+              <span>Add Folder Pair</span>
+            </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3">
+          <div className="divide-y divide-[#21262d]">
             {pairs.map((p) => (
-              <FolderPairCard key={p.id} {...p} />
+              <FolderPairRow key={p.id} {...p} />
             ))}
           </div>
         )}
