@@ -113,7 +113,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
                   Twin
                 </span>
                 <span className="text-xs text-[var(--text-subtle)] font-mono px-1.5 py-0.2 rounded bg-white/5 border border-white/5">
-                  v1.0
+                  v1.1
                 </span>
               </div>
               <p className="text-xs text-[var(--text-muted)] leading-tight mt-0.5">

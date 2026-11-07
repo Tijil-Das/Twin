@@ -5,6 +5,34 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.1.0] - 2026-11-07
+
+### 🚀 Feature Release — Google Drive Colorizer & GitHub Repository Presentation
+
+#### ✨ Added & Enhanced
+- **Google Drive Folder Colorizer**:
+  - Interactive 24-color Google Drive official palette picker.
+  - Supports colorizing individual folders as well as batch multi-selection.
+  - Folder colors dynamically rendered in the tree view and Drive Explorer.
+- **GitHub-Style Repository Item Viewer**:
+  - Complete overhaul of remote Drive Explorer (`RestoreScreen`) with GitHub repo table layout (`#0d1117`, `#161b22`, `#30363d`), breadcrumbs, and `..` parent navigation.
+  - Synced Folders table (`HomeScreen`) rebuilt as single-row GitHub file tree items with Octicon icons, mode badges, and attached sync progress strips.
+  - Cleaned up raw alphanumeric Drive IDs and metadata from list items.
+- **Continuous Startup & Delta Loop**:
+  - Automatically reconciles folder differences on startup and background periodic loops.
+  - Live synchronized tick badge indicating real-time parity.
+- **Multi-Layer Deduplication Engine**:
+  - MD5 hash, filename, and parent folder deduplication before upload to prevent remote file duplication.
+- **Dynamic Mirror Pruning**:
+  - Automatically detects and removes rogue remote directories in Mirror mode to ensure true 1:1 mirroring.
+- **Hardened Error Recovery & Rate Limiting**:
+  - Exponential jittered backoff with native `Retry-After` header parsing for Drive 503 and 429 responses.
+  - Auto-discard of orphaned jobs when pairs are removed.
+- **Strict Brand Sizing**:
+  - Official Google Drive logo asset integration with strict inline pixel bounds across all views.
+
+---
+
 ## [1.0.0] - 2026-11-03
 
 ### 🚀 Major Release — Official Launch of Twin Desktop
