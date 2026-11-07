@@ -290,6 +290,9 @@ function FolderPairRow({
   );
 }
 
+// Backward-compatible alias for Vite HMR and dynamic references
+export const FolderPairCard = FolderPairRow;
+
 // ── Overview Screen ───────────────────────────────────────────────────────────
 
 export function HomeScreen() {
