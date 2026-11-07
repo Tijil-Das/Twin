@@ -263,7 +263,12 @@ export function SettingsScreen() {
       {/* 1. Google Account Section */}
       <section className="space-y-2.5">
         <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1 flex items-center gap-1.5">
-          <img src={gdLogo} alt="Google Drive" className="w-3.5 h-3.5 object-contain shrink-0" />
+          <img
+            src={gdLogo}
+            alt="Google Drive"
+            style={{ width: 16, height: 16, minWidth: 16, maxWidth: 16 }}
+            className="w-4 h-4 object-contain shrink-0"
+          />
           <span>Google Account & Drive Storage</span>
         </h2>
 
@@ -330,7 +335,12 @@ export function SettingsScreen() {
                 <div className="pt-3.5 border-t border-[var(--border-subtle)] space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-[var(--text-muted)] font-medium flex items-center gap-2">
-                      <img src={gdLogo} alt="Google Drive" className="w-3.5 h-3.5 object-contain shrink-0" />
+                      <img
+                        src={gdLogo}
+                        alt="Google Drive"
+                        style={{ width: 14, height: 14, minWidth: 14, maxWidth: 14 }}
+                        className="w-3.5 h-3.5 object-contain shrink-0"
+                      />
                       Google Drive Storage
                     </span>
                     <span className="code-text text-xs text-white font-semibold">

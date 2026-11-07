@@ -387,7 +387,12 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
 
         {/* Location Switcher */}
         <div className="flex items-center gap-1.5 bg-[var(--surface)] border border-[var(--border)] rounded-md px-2 py-1 shrink-0 hover:border-white/20">
-          <img src={gdLogo} alt="Google Drive" className="w-3.5 h-3.5 object-contain shrink-0" />
+          <img
+            src={gdLogo}
+            alt="Google Drive"
+            style={{ width: 14, height: 14, minWidth: 14, maxWidth: 14 }}
+            className="w-3.5 h-3.5 object-contain shrink-0"
+          />
           <select
             value={activeLocation}
             onChange={(e) => handleLocationChange(e.target.value)}

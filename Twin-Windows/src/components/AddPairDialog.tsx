@@ -205,7 +205,12 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-semibold text-white flex items-center gap-2">
-                  <img src={gdLogo} alt="Google Drive" className="w-4 h-4 object-contain shrink-0" />
+                  <img
+                    src={gdLogo}
+                    alt="Google Drive"
+                    style={{ width: 16, height: 16, minWidth: 16, maxWidth: 16 }}
+                    className="w-4 h-4 object-contain shrink-0"
+                  />
                   Google Drive Target Folder
                 </label>
                 <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs">

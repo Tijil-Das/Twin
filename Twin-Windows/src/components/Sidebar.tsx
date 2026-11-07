@@ -144,8 +144,9 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
                     <img
                       src={gdLogo}
                       alt="Google Drive"
+                      style={{ width: 18, height: 18, minWidth: 18, minHeight: 18, maxWidth: 18, maxHeight: 18 }}
                       className={cn(
-                        "w-4.5 h-4.5 object-contain shrink-0 transition-opacity",
+                        "w-[18px] h-[18px] object-contain shrink-0 transition-opacity",
                         isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"
                       )}
                     />
@@ -225,7 +226,12 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
                 {userProfile?.name ?? "Google User"}
               </p>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <img src={gdLogo} alt="Google Drive" className="w-3 h-3 object-contain shrink-0" />
+                <img
+                  src={gdLogo}
+                  alt="Google Drive"
+                  style={{ width: 14, height: 14, minWidth: 14, maxWidth: 14 }}
+                  className="w-3.5 h-3.5 object-contain shrink-0"
+                />
                 <p className="text-xs text-[var(--text-muted)] truncate leading-tight">
                   {userProfile?.email ?? "Connected"}
                 </p>
