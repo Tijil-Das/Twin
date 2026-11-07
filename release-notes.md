@@ -1,32 +1,22 @@
-# Twin v1.1.0
+# Twin v1.1.1
 
-Major feature release introducing the **Google Drive Folder Colorizer**, a comprehensive **GitHub-Style Repository Item Viewer** for both Drive Explorer and Synced Folders, automated continuous startup delta synchronization, multi-layer deduplication, and hardened transfer resilience.
+Critical stability release hardening the in-app updater engine to prevent binary corruption, introducing silent NSIS background updates, concise notification alerts, responsive update-checking feedback, and refined GitHub-style directory presentation.
 
 ---
 
-### ✨ What's New in v1.1.0
+### 🛡️ Critical Fixes & Enhancements in v1.1.1
 
-#### 🎨 Google Drive Folder Colorizer
-- **Interactive 24-Color Palette**: Customize Google Drive folder colors using Google's official color palette directly within Twin.
-- **Single & Multi-Folder Selection**: Colorize individual folders or select multiple directories to apply uniform color theming in a single click.
-- **Drive Color Swatches**: Folder colors are rendered natively across the Drive Explorer tree and directory browser.
+#### 🔒 In-App Updater Hardening & Corruption Prevention
+- **Safe Asset Selection**: Resolved a critical issue where the updater could select a `.zip` archive or mismatched binary. Installed setups now strictly download the official NSIS installer (`Twin_{ver}_x64-setup.exe`), while portable builds strictly target `Twin.exe`.
+- **Silent NSIS Execution**: For installed applications, updates now execute the NSIS installer silently (`/S`). This safely updates binaries, refreshes Windows Registry uninstaller entries (`DisplayVersion`), and maintains full integration in Windows Installed Apps.
+- **PE Magic Header Verification**: All downloaded update payloads are validated against the standard Windows PE executable signature (`0x4D, 0x5A` / `b"MZ"`) before staging. Corrupted or invalid files are rejected and purged immediately.
+- **GitHub API Cache Prevention**: Requests to GitHub Releases now enforce `Cache-Control: no-cache` and strict `Accept` headers to guarantee instant discovery of new releases.
 
-#### 🐙 GitHub-Style Repository Presentation
-- **Drive Explorer Overhaul**: Redesigned remote file viewer matching GitHub's repository tree interface (`#0d1117` canvas, `#161b22` header bar, `#30363d` subtle borders, breadcrumb navigation, and `..` parent directory traversal).
-- **Synced Folders Table**: Modern single-row presentation for active folder pairs on the Overview dashboard with Octicon folder icons, mode badges (`Mirror`, `Two-Way`, `Backup`), and inline controls.
-- **Clean Layout**: Completely eliminated raw alphanumeric Drive IDs and metadata clutter from list items.
+#### 💬 Concise Update Notifications & Feedback
+- **JioTV Max-Style Alerts**: Streamlined update notification toasts and banners to a clean, actionable prompt: **`Update vX.Y.Z Ready`** with a 1-click **`Restart`** button.
+- **Immediate "Check for Updates" Feedback**: Fixed unhandled downloading states in Settings so clicking "Check for Updates" always provides real-time feedback (`downloading`, `ready`, `up to date`, or `error`).
 
-#### 🔄 Autonomous Delta Loop & Startup Gap Sync
-- **Continuous Gap Reconciliation**: Automatically scans and detects unsynced or modified files on startup and runs in an automated background loop.
-- **Live Sync Tick Badge**: Real-time indicator displaying synchronized health status without requiring manual "Sync All" triggers.
-
-#### 🛡️ Multi-Layer Deduplication & Mirror Pruning
-- **Zero-Duplicate Upload Engine**: MD5 checksum, filename, and parent folder deduplication ensures cloud folders are never duplicated during uploads or network interruptions.
-- **Rogue Folder Pruning**: Mirror mode automatically detects and prunes extra or orphaned remote directories to maintain 1:1 local parity.
-
-#### ⚡ Transfer Resilience & Drive Rate Limiting
-- **Exponential Jittered Backoff**: Native parsing of Google Drive `Retry-After` response headers to gracefully back off and recover during transient 503 Service Unavailable and 429 Rate Limit conditions.
-- **Job Auto-Recovery**: Interrupted or in-flight transfer sessions automatically resume from where they left off without re-uploading completed chunks.
-
-#### 📐 Strict Branding & Sizing Integrity
-- Embedded official Google Drive branding across navigation, Drive selector dialogs, explorer bars, and account settings with strict pixel-bounding.
+#### 🐙 UI Polish & GitHub Repository Presentation
+- **Zero-Overlap Synced Folders**: Resolved layout overlapping in folder pair rows on the Overview dashboard.
+- **Clean Metadata**: Removed raw alphanumeric Google Drive IDs and internal links from list views for a distraction-free, professional interface.
+- **Pixel-Perfect Brand Integrity**: Enforced strict pixel bounding on Google Drive icons across navigation and explorer views.

@@ -5,6 +5,21 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.1.1] - 2026-11-07
+
+### 🛡️ Critical Fixes — In-App Updater Hardening, Silent NSIS Updates & UI Refinements
+
+#### 🔒 Fixed & Hardened
+- **Safe Asset Selection**: Installed setups strictly download NSIS `Twin_{ver}_x64-setup.exe`; portable builds strictly download `Twin.exe`. Disallowed `.zip` and `.msi` to prevent binary corruption.
+- **Silent NSIS Execution**: Installed applications execute setup installer silently with `/S`, preserving Windows Installed Apps registration, Registry uninstaller entries, and desktop shortcuts.
+- **PE Magic Header Verification**: Added pre-installation byte verification (`0x4D, 0x5A` / `MZ`). Corrupted or invalid downloads are safely rejected and erased before application.
+- **GitHub API Cache Prevention**: Added `Cache-Control: no-cache` and strict `Accept` headers to guarantee instant discovery of new releases.
+- **Concise Notifications**: Shortened update notification toast and banner to `"Update vX.Y.Z Ready"` with direct `Restart` button.
+- **Check for Updates Feedback**: Resolved unhandled downloading states in Settings so manual update checks always provide immediate feedback.
+- **Synced Folders Presentation**: Eliminated layout overlapping and removed raw alphanumeric Drive IDs from folder pair rows.
+
+---
+
 ## [1.1.0] - 2026-11-07
 
 ### 🚀 Feature Release — Google Drive Colorizer & GitHub Repository Presentation
