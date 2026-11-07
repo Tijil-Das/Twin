@@ -79,13 +79,12 @@ function GithubFolderIcon({ color, className }: { color?: string | null; classNa
 function FolderPairRow({
   id,
   local,
-  drive_folder_id,
   mode,
   enabled,
 }: {
   id: string;
   local: string;
-  drive_folder_id: string;
+  drive_folder_id?: string;
   mode: string;
   enabled: boolean;
 }) {
@@ -171,12 +170,12 @@ function FolderPairRow({
     <div
       className={cn(
         "group transition-colors",
-        !enabled ? "bg-[#0d1117]/60 opacity-75" : "bg-[#0d1117] hover:bg-[#161b22]"
+        !enabled ? "bg-[#0d1117]/60 opacity-70" : "bg-[#0d1117] hover:bg-[#161b22]"
       )}
     >
-      <div className="px-4 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs select-none">
-        {/* Left: GitHub Octicon + Folder Name + Mode */}
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+      <div className="px-4 py-2.5 flex items-center justify-between gap-4 text-xs select-none">
+        {/* Left: GitHub Octicon + Folder Name + Local Path + Mode */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <GithubFolderIcon
             className={cn(
               "w-4 h-4 shrink-0 transition-colors",
@@ -184,19 +183,38 @@ function FolderPairRow({
             )}
           />
 
+          {/* Folder Name */}
           <span
             className={cn(
-              "font-medium text-[13px] truncate group-hover:text-[#58a6ff] group-hover:underline",
-              enabled ? "text-[#e6edf3]" : "text-[#7d8590]"
+              "font-semibold text-[13px] shrink-0 transition-colors",
+              enabled ? "text-[#e6edf3] group-hover:text-[#58a6ff]" : "text-[#7d8590]"
             )}
             title={folderName}
           >
             {folderName}
           </span>
 
+          <span className="text-[#30363d] shrink-0">•</span>
+
+          {/* Local Path with Copy button */}
+          <div className="flex items-center gap-1.5 min-w-0 truncate text-[#7d8590] font-mono text-xs">
+            <HardDrive size={13} className="text-[#7d8590] shrink-0" />
+            <span className="truncate" title={local}>
+              {local}
+            </span>
+            <button
+              type="button"
+              onClick={handleCopyPath}
+              className="text-[#7d8590] hover:text-[#e6edf3] p-0.5 rounded transition-colors cursor-pointer shrink-0"
+              title="Copy local path"
+            >
+              {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+            </button>
+          </div>
+
           {/* Mode Pill Badge */}
           <span
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-[#21262d] text-[#8b949e] border border-[#30363d] shrink-0"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-[#21262d] text-[#8b949e] border border-[#30363d] shrink-0 ml-auto"
             title={modeInfo.description}
           >
             <ModeIcon size={11} strokeWidth={1.8} className="text-[#7d8590]" />
@@ -208,71 +226,10 @@ function FolderPairRow({
               Paused
             </span>
           )}
-
-          {/* Path Mapping: Local ⇄ Remote Google Drive (Desktop layout) */}
-          <div className="hidden lg:flex items-center gap-2 text-xs font-mono text-[#7d8590] min-w-0 flex-1 ml-2">
-            <span className="text-[#30363d]">|</span>
-            <div className="flex items-center gap-1.5 min-w-0 truncate text-[#c9d1d9]" title={local}>
-              <HardDrive size={13} className="text-[#7d8590] shrink-0" />
-              <span className="truncate select-all">{local}</span>
-              <button
-                type="button"
-                onClick={handleCopyPath}
-                className="text-[#7d8590] hover:text-[#e6edf3] p-0.5 rounded transition-colors cursor-pointer shrink-0"
-                title="Copy local path"
-              >
-                {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-              </button>
-            </div>
-
-            <span className="text-[#484f58] shrink-0">⇄</span>
-
-            <div
-              className="flex items-center gap-1.5 min-w-0 truncate text-[#8b949e]"
-              title={`Google Drive ID: ${drive_folder_id}`}
-            >
-              <img
-                src={gdLogo}
-                alt="Google Drive"
-                style={{ width: 13, height: 13, minWidth: 13, maxWidth: 13 }}
-                className="w-3.5 h-3.5 object-contain shrink-0"
-              />
-              <span className="truncate font-mono text-[11px]">Drive: {drive_folder_id}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Path Mapping for Narrower Screens */}
-        <div className="flex lg:hidden items-center gap-2 text-xs font-mono text-[#7d8590] pl-6 flex-wrap">
-          <div className="flex items-center gap-1.5 min-w-0 truncate text-[#c9d1d9]" title={local}>
-            <HardDrive size={12} className="text-[#7d8590] shrink-0" />
-            <span className="truncate select-all">{local}</span>
-            <button
-              type="button"
-              onClick={handleCopyPath}
-              className="text-[#7d8590] hover:text-[#e6edf3] p-0.5 rounded transition-colors cursor-pointer shrink-0"
-              title="Copy local path"
-            >
-              {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-            </button>
-          </div>
-          <span className="text-[#484f58] shrink-0">⇄</span>
-          <div
-            className="flex items-center gap-1.5 min-w-0 truncate text-[#8b949e]"
-            title={`Google Drive ID: ${drive_folder_id}`}
-          >
-            <img
-              src={gdLogo}
-              alt="Google Drive"
-              style={{ width: 13, height: 13, minWidth: 13, maxWidth: 13 }}
-              className="w-3.5 h-3.5 object-contain shrink-0"
-            />
-            <span className="truncate font-mono text-[11px]">Drive: {drive_folder_id}</span>
-          </div>
         </div>
 
         {/* Right: Quick Actions */}
-        <div className="flex items-center gap-2 shrink-0 self-end md:self-auto pl-6 md:pl-0">
+        <div className="flex items-center gap-2 shrink-0">
           {isCurrentlySyncing && (
             <span className="inline-flex items-center gap-1 text-[11px] font-mono text-[#58a6ff] mr-1">
               <RefreshCw size={11} className="animate-spin" />
@@ -452,11 +409,24 @@ export function HomeScreen() {
                 )}
               </div>
 
-              <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
-                {enabledPairsCount} active folder {enabledPairsCount === 1 ? "pair" : "pairs"}
-                {" • "}
-                {config?.app?.parallel_transfers ?? 4} parallel workers
-                {authed ? " • Google Drive connected" : " • Signed out"}
+              <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1 flex items-center flex-wrap gap-x-1.5">
+                <span>{enabledPairsCount} active folder {enabledPairsCount === 1 ? "pair" : "pairs"}</span>
+                <span>•</span>
+                <span>{config?.app?.parallel_transfers ?? 4} parallel workers</span>
+                <span>•</span>
+                {authed ? (
+                  <span className="inline-flex items-center gap-1.5 text-[#c9d1d9] font-medium">
+                    <img
+                      src={gdLogo}
+                      alt="Google Drive"
+                      style={{ width: 14, height: 14, minWidth: 14, maxWidth: 14 }}
+                      className="w-3.5 h-3.5 object-contain inline shrink-0"
+                    />
+                    Google Drive connected
+                  </span>
+                ) : (
+                  <span>Signed out</span>
+                )}
               </p>
             </div>
           </div>
