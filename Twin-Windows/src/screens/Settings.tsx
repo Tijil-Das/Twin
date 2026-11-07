@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import gdLogo from "@/assets/gd-icon.png";
 import {
   LogOut,
   RefreshCw,
@@ -261,8 +262,9 @@ export function SettingsScreen() {
 
       {/* 1. Google Account Section */}
       <section className="space-y-2.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
-          Google Account & Storage
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1 flex items-center gap-1.5">
+          <img src={gdLogo} alt="Google Drive" className="w-3.5 h-3.5 object-contain shrink-0" />
+          <span>Google Account & Drive Storage</span>
         </h2>
 
         <div className="desktop-card p-5 space-y-4.5">
@@ -328,7 +330,7 @@ export function SettingsScreen() {
                 <div className="pt-3.5 border-t border-[var(--border-subtle)] space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-[var(--text-muted)] font-medium flex items-center gap-2">
-                      <HardDrive size={14} className="text-[var(--text-subtle)]" />
+                      <img src={gdLogo} alt="Google Drive" className="w-3.5 h-3.5 object-contain shrink-0" />
                       Google Drive Storage
                     </span>
                     <span className="code-text text-xs text-white font-semibold">

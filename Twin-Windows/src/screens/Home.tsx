@@ -38,6 +38,7 @@ import {
 import { progressLabel } from "@/lib/format";
 import { AddPairDialog } from "@/components/AddPairDialog";
 import { toast } from "sonner";
+import gdLogo from "@/assets/gd-icon.png";
 import { cn } from "@/lib/utils";
 
 // ── Sync Mode Definitions ─────────────────────────────────────────────────────
@@ -213,7 +214,7 @@ function FolderPairCard({
               </div>
 
               <div className="flex items-center gap-2 text-xs code-text text-[var(--text-muted)]">
-                <Cloud size={14} className="text-[var(--text-subtle)] shrink-0" />
+                <img src={gdLogo} alt="Google Drive" className="w-3.5 h-3.5 object-contain shrink-0" />
                 <span className="truncate" title={`Google Drive ID: ${drive_folder_id}`}>
                   Drive: {drive_folder_id}
                 </span>

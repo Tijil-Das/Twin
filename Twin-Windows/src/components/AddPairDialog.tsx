@@ -24,6 +24,7 @@ import type { PairEntry, PairMode } from "@/lib/tauri";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { DriveFolderSelector } from "@/components/DriveFolderSelector";
+import gdLogo from "@/assets/gd-icon.png";
 
 interface Props {
   open: boolean;
@@ -204,7 +205,7 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-semibold text-white flex items-center gap-2">
-                  <Cloud size={15} className="text-blue-400" />
+                  <img src={gdLogo} alt="Google Drive" className="w-4 h-4 object-contain shrink-0" />
                   Google Drive Target Folder
                 </label>
                 <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs">

@@ -42,6 +42,21 @@ import {
 import type { DriveFile } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import gdLogo from "@/assets/gd-icon.png";
+
+// GitHub Octicon Folder SVG
+function GithubFolderIcon({ color, className }: { color?: string | null; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={cn("w-4 h-4 shrink-0 fill-current", className)}
+      style={color ? { color } : undefined}
+      aria-hidden="true"
+    >
+      <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z" />
+    </svg>
+  );
+}
 
 interface DriveFolder {
   id: string;
@@ -371,19 +386,22 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         </button>
 
         {/* Location Switcher */}
-        <select
-          value={activeLocation}
-          onChange={(e) => handleLocationChange(e.target.value)}
-          className="bg-[var(--surface)] text-xs text-[var(--text)] border border-[var(--border)] rounded-md px-2 py-1 outline-none font-medium shrink-0 cursor-pointer hover:border-white/20"
-        >
-          <option value="my_drive" className="bg-[var(--surface)]">My Drive</option>
-          <option value="shared_with_me" className="bg-[var(--surface)]">Shared with me</option>
-          {sharedDrives.map((d) => (
-            <option key={d.id} value={d.id} className="bg-[var(--surface)]">
-              {d.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-1.5 bg-[var(--surface)] border border-[var(--border)] rounded-md px-2 py-1 shrink-0 hover:border-white/20">
+          <img src={gdLogo} alt="Google Drive" className="w-3.5 h-3.5 object-contain shrink-0" />
+          <select
+            value={activeLocation}
+            onChange={(e) => handleLocationChange(e.target.value)}
+            className="bg-transparent text-xs text-[var(--text)] border-none outline-none font-medium cursor-pointer"
+          >
+            <option value="my_drive" className="bg-[var(--surface)]">My Drive</option>
+            <option value="shared_with_me" className="bg-[var(--surface)]">Shared with me</option>
+            {sharedDrives.map((d) => (
+              <option key={d.id} value={d.id} className="bg-[var(--surface)]">
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* Breadcrumb Path or Direct Address Input */}
         {isEditingAddress ? (
@@ -617,12 +635,11 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
                   {folder.shared ? (
                     <Users size={15} className="text-emerald-400 shrink-0" />
                   ) : (
-                    <Folder
-                      size={15}
-                      style={{ color: folder.folderColorRgb || folder.folder_color_rgb || undefined }}
+                    <GithubFolderIcon
+                      color={folder.folderColorRgb || folder.folder_color_rgb || "#54aeff"}
                       className={cn(
                         "shrink-0",
-                        !(folder.folderColorRgb || folder.folder_color_rgb) && "text-amber-400 fill-amber-400/20"
+                        !(folder.folderColorRgb || folder.folder_color_rgb) && "text-[#54aeff]"
                       )}
                     />
                   )}

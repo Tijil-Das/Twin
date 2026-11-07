@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useStore } from "@/store";
 import appLogo from "@/assets/icon.png";
+import gdLogo from "@/assets/gd-icon.png";
 
 export type Screen = "home" | "activity" | "restore" | "settings";
 
@@ -139,16 +140,27 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
                 aria-current={isActive ? "page" : undefined}
               >
                 <div className="flex items-center gap-3">
-                  <Icon
-                    size={18}
-                    strokeWidth={isActive ? 2.2 : 1.8}
-                    className={cn(
-                      "transition-colors",
-                      isActive
-                        ? "text-blue-400"
-                        : "text-[var(--text-subtle)] group-hover:text-white"
-                    )}
-                  />
+                  {id === "restore" ? (
+                    <img
+                      src={gdLogo}
+                      alt="Google Drive"
+                      className={cn(
+                        "w-4.5 h-4.5 object-contain shrink-0 transition-opacity",
+                        isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"
+                      )}
+                    />
+                  ) : (
+                    <Icon
+                      size={18}
+                      strokeWidth={isActive ? 2.2 : 1.8}
+                      className={cn(
+                        "transition-colors",
+                        isActive
+                          ? "text-blue-400"
+                          : "text-[var(--text-subtle)] group-hover:text-white"
+                      )}
+                    />
+                  )}
                   <span>{label}</span>
                 </div>
 
@@ -212,9 +224,12 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
               <p className="text-sm font-semibold text-white truncate leading-tight">
                 {userProfile?.name ?? "Google User"}
               </p>
-              <p className="text-xs text-[var(--text-muted)] truncate leading-tight mt-0.5">
-                {userProfile?.email ?? "Connected"}
-              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <img src={gdLogo} alt="Google Drive" className="w-3 h-3 object-contain shrink-0" />
+                <p className="text-xs text-[var(--text-muted)] truncate leading-tight">
+                  {userProfile?.email ?? "Connected"}
+                </p>
+              </div>
             </div>
             <ChevronRight
               size={15}

@@ -3,7 +3,7 @@
  * Native remote Google Drive browser, multi-version history inspector,
  * and trash recovery ledger.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   driveList,
@@ -50,6 +50,7 @@ import {
 } from "@/components/FolderColorDialog";
 import { formatBytes, formatRelTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import gdLogo from "@/assets/gd-icon.png";
 
 type Tab = "files" | "trash";
 
@@ -63,15 +64,31 @@ interface SharedDrive {
   name: string;
 }
 
-function getFileIcon(mime?: string | null) {
-  if (!mime) return FileText;
-  if (mime.includes("folder")) return Folder;
-  if (mime.includes("image")) return ImageIcon;
-  if (mime.includes("sheet") || mime.includes("excel") || mime.includes("csv"))
-    return FileSpreadsheet;
-  if (mime.includes("json") || mime.includes("javascript") || mime.includes("typescript"))
-    return FileCode;
-  return FileText;
+// GitHub Octicon Folder SVG (filled folder shape with tab)
+function GithubFolderIcon({ color, className }: { color?: string | null; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={cn("w-4 h-4 shrink-0 fill-current", className)}
+      style={color ? { color } : undefined}
+      aria-hidden="true"
+    >
+      <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z" />
+    </svg>
+  );
+}
+
+// GitHub Octicon File SVG (clean sheet with folded corner)
+function GithubFileIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={cn("w-4 h-4 shrink-0 fill-current text-[#7d8590]", className)}
+      aria-hidden="true"
+    >
+      <path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z" />
+    </svg>
+  );
 }
 
 export function RestoreScreen() {
@@ -81,13 +98,16 @@ export function RestoreScreen() {
     <div className="p-7 max-w-5xl w-full mx-auto space-y-6">
       {/* Header & Mode Switcher */}
       <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
-        <div>
-          <h1 className="text-lg font-bold tracking-tight text-white">
-            Drive Explorer & Restore
-          </h1>
-          <p className="text-xs text-[var(--text-muted)] mt-1">
-            Browse remote Google Drive files, inspect multi-version history, and restore data.
-          </p>
+        <div className="flex items-center gap-3">
+          <img src={gdLogo} alt="Google Drive" className="w-8 h-8 object-contain shrink-0" />
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+              Drive Explorer & Restore
+            </h1>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Browse remote Google Drive files, inspect multi-version history, and restore data.
+            </p>
+          </div>
         </div>
 
         {/* Tab switcher */}
@@ -337,80 +357,28 @@ function FileBrowser() {
     }
   }
 
-  const folders = files.filter((f) => f.mime_type === "application/vnd.google-apps.folder");
-  const items = files.filter((f) => f.mime_type !== "application/vnd.google-apps.folder");
+  const folders = useMemo(
+    () =>
+      files
+        .filter((f) => f.mime_type === "application/vnd.google-apps.folder")
+        .sort((a, b) => (a.name || "").localeCompare(b.name || "")),
+    [files]
+  );
+  const items = useMemo(
+    () =>
+      files
+        .filter((f) => f.mime_type !== "application/vnd.google-apps.folder")
+        .sort((a, b) => (a.name || "").localeCompare(b.name || "")),
+    [files]
+  );
 
   return (
     <div className="flex gap-5 items-start">
       {/* Main File Browser */}
-      <div className="flex-1 min-w-0 space-y-3.5">
-        {/* Drive Selector & Search bar */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] shrink-0">
-            <HardDrive size={15} className="text-blue-400" />
-            <select
-              value={selectedDrive}
-              onChange={(e) => void handleDriveChange(e.target.value)}
-              className="text-xs bg-transparent border-none text-[var(--text)] focus:outline-none cursor-pointer pr-1 font-semibold"
-            >
-              <option value="root" className="bg-[var(--surface-2)]">My Drive</option>
-              {sharedDrives.map((d) => (
-                <option key={d.id} value={d.id} className="bg-[var(--surface-2)]">
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 flex-1">
-            <div className="relative flex-1">
-              <Search size={14} className="absolute left-3 top-2.5 text-[var(--text-subtle)]" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search files in Google Drive…"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleSearch();
-                }}
-                className="pl-9 text-xs h-9"
-              />
-              {searchQuery && (
-                <button
-                  onClick={handleClearSearch}
-                  className="absolute right-2.5 top-2.5 text-[var(--text-subtle)] hover:text-white p-0.5"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-            <Button
-              variant="secondary"
-              onClick={() => void handleSearch()}
-            >
-              Search
-            </Button>
-            {folders.length > 0 && (
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  openMultiFolderColor(
-                    selectedFolderIds.size > 0 ? Array.from(selectedFolderIds) : undefined
-                  )
-                }
-                className="flex items-center gap-1.5 text-xs h-9 shrink-0"
-                title="Choose which folders inside this folder to colorize"
-              >
-                <Palette size={13} className="text-amber-400" />
-                <span className="hidden sm:inline">Colorize Folders ({folders.length})</span>
-                <span className="sm:hidden">Color ({folders.length})</span>
-              </Button>
-            )}
-          </div>
-        </div>
-
+      <div className="flex-1 min-w-0 space-y-3">
         {/* Fallback Root ID input if no drive loaded */}
         {!rootId && (
-          <div className="desktop-card p-4.5 flex items-center gap-3">
+          <div className="p-3 bg-[#161b22] border border-[#30363d] rounded-md flex items-center gap-3">
             <Input
               value={rootInput}
               onChange={(e) => setRootInput(e.target.value)}
@@ -418,113 +386,203 @@ function FileBrowser() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") void handleBrowse();
               }}
-              className="text-xs code-text h-9 flex-1"
+              className="text-xs code-text h-8 flex-1 bg-[#0d1117] border-[#30363d]"
             />
-            <Button onClick={() => void handleBrowse()}>
+            <Button size="sm" onClick={() => void handleBrowse()}>
               Open
             </Button>
           </div>
         )}
 
-        {/* Breadcrumb address path */}
-        {breadcrumb.length > 0 && (
-          <div className="flex items-center justify-between gap-2 px-1 py-1">
-            <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] overflow-x-auto min-w-0">
-              {breadcrumb.map((bc, i) => (
-                <span key={bc.id} className="flex items-center gap-1.5 shrink-0">
-                  {i > 0 && <ChevronRight size={13} className="text-[var(--text-subtle)]" />}
+        {/* GitHub Repository Item Viewer Table */}
+        <div className="rounded-md border border-[#30363d] bg-[#0d1117] overflow-hidden shadow-sm">
+          {/* GitHub Header Bar */}
+          <div className="bg-[#161b22] px-3.5 py-2.5 border-b border-[#30363d] flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              {/* Drive selector pill */}
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#21262d] border border-[#30363d] text-xs font-semibold text-[#c9d1d9] hover:bg-[#30363d] transition-colors cursor-pointer shrink-0">
+                <img src={gdLogo} alt="Google Drive" className="w-3.5 h-3.5 object-contain shrink-0" />
+                <select
+                  value={selectedDrive}
+                  onChange={(e) => void handleDriveChange(e.target.value)}
+                  className="bg-transparent border-none text-[#c9d1d9] focus:outline-none cursor-pointer pr-1 font-semibold text-xs"
+                >
+                  <option value="root" className="bg-[#161b22] text-white">My Drive</option>
+                  {sharedDrives.map((d) => (
+                    <option key={d.id} value={d.id} className="bg-[#161b22] text-white">
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* GitHub Path Breadcrumbs */}
+              {breadcrumb.length > 0 && (
+                <nav className="flex items-center gap-1 text-xs font-semibold text-[#e6edf3] overflow-x-auto min-w-0">
+                  {breadcrumb.map((bc, i) => (
+                    <span key={bc.id} className="flex items-center gap-1 shrink-0">
+                      {i > 0 && <span className="text-[#484f58] font-normal px-0.5">/</span>}
+                      <button
+                        onClick={() => void loadFolder(bc.id, bc.name)}
+                        className={cn(
+                          "transition-colors rounded cursor-pointer",
+                          i === breadcrumb.length - 1
+                            ? "font-bold text-[#e6edf3]"
+                            : "text-[#58a6ff] hover:underline font-medium"
+                        )}
+                      >
+                        {bc.name}
+                      </button>
+                    </span>
+                  ))}
+                </nav>
+              )}
+            </div>
+
+            {/* Actions: Search, Colorize, Count, Refresh */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* GitHub style search input */}
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-2 text-[#7d8590]" />
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Go to file…"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleSearch();
+                  }}
+                  className="bg-[#0d1117] border border-[#30363d] rounded-md pl-7 pr-6 py-1 text-xs text-[#c9d1d9] placeholder:text-[#7d8590] outline-none focus:border-[#58a6ff] w-32 sm:w-44 transition-all"
+                />
+                {searchQuery && (
                   <button
-                    onClick={() => void loadFolder(bc.id, bc.name)}
-                    className={cn(
-                      "hover:text-blue-400 transition-colors px-2 py-0.5 rounded cursor-pointer",
-                      i === breadcrumb.length - 1
-                        ? "font-bold text-white bg-[var(--surface-2)]"
-                        : "text-[var(--text-muted)] font-medium"
-                    )}
+                    onClick={handleClearSearch}
+                    className="absolute right-2 top-1.5 text-[#7d8590] hover:text-white"
                   >
-                    {bc.name}
+                    <X size={12} />
                   </button>
-                </span>
-              ))}
-            </div>
+                )}
+              </div>
 
-            {/* Current Folder Colorizer Button */}
-            {breadcrumb.length > 0 && breadcrumb[breadcrumb.length - 1].id !== "root" && (
-              <button
-                type="button"
-                onClick={() =>
-                  openSingleFolderColor({
-                    id: breadcrumb[breadcrumb.length - 1].id,
-                    name: breadcrumb[breadcrumb.length - 1].name,
-                  })
-                }
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-[var(--text-muted)] hover:text-white bg-[var(--surface-2)] hover:bg-[var(--surface-3)] border border-[var(--border)] transition-colors cursor-pointer shrink-0"
-                title={`Colorize "${breadcrumb[breadcrumb.length - 1].name}" folder`}
-              >
-                <Palette size={12} className="text-blue-400" />
-                <span>Color This Folder</span>
-              </button>
-            )}
-          </div>
-        )}
+              {folders.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    openMultiFolderColor(
+                      selectedFolderIds.size > 0 ? Array.from(selectedFolderIds) : undefined
+                    )
+                  }
+                  className="px-2.5 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white border border-[#30363d] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Choose which folders inside this folder to colorize"
+                >
+                  <Palette size={12} className="text-amber-400" />
+                  <span className="hidden sm:inline">Colorize Folders ({folders.length})</span>
+                  <span className="sm:hidden">Color</span>
+                </button>
+              )}
 
-        {/* Multi-selection Banner */}
-        {selectedFolderIds.size > 0 && (
-          <div className="flex items-center justify-between p-2.5 px-4 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs animate-in fade-in duration-100">
-            <div className="flex items-center gap-2">
-              <span className="text-blue-300 font-semibold">
-                {selectedFolderIds.size} of {folders.length} {selectedFolderIds.size === 1 ? "folder" : "folders"} selected
+              {breadcrumb.length > 0 && breadcrumb[breadcrumb.length - 1].id !== "root" && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    openSingleFolderColor({
+                      id: breadcrumb[breadcrumb.length - 1].id,
+                      name: breadcrumb[breadcrumb.length - 1].name,
+                    })
+                  }
+                  className="px-2 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white border border-[#30363d] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title={`Colorize "${breadcrumb[breadcrumb.length - 1].name}" folder`}
+                >
+                  <Palette size={12} className="text-blue-400" />
+                  <span className="hidden sm:inline">Color Current</span>
+                </button>
+              )}
+
+              <span className="text-xs text-[#7d8590] code-text font-mono hidden md:inline">
+                {folders.length} dirs, {items.length} files
               </span>
+
               <button
                 type="button"
-                onClick={() => setSelectedFolderIds(new Set())}
-                className="text-[11px] text-[var(--text-muted)] hover:text-white underline cursor-pointer"
+                onClick={() => void loadFolder(rootId || "root", breadcrumb[breadcrumb.length - 1]?.name || "Root")}
+                disabled={loading}
+                title="Refresh folder contents"
+                className="p-1.5 rounded-md text-[#7d8590] hover:text-white hover:bg-[#21262d] transition-colors cursor-pointer disabled:opacity-40"
               >
-                Deselect
+                <RefreshCw size={12} className={cn(loading && "animate-spin text-blue-400")} />
               </button>
             </div>
-            <Button
-              size="sm"
-              onClick={() => openMultiFolderColor(Array.from(selectedFolderIds))}
-              className="h-7 text-xs flex items-center gap-1.5"
-            >
-              <Palette size={12} />
-              Colorize Selected ({selectedFolderIds.size})
-            </Button>
           </div>
-        )}
 
-        {/* File Browser List */}
-        {loading ? (
-          <div className="desktop-card p-14 text-center text-[var(--text-muted)] text-xs flex items-center justify-center gap-2">
-            <RefreshCw size={15} className="animate-spin text-blue-400" />
-            Loading folder contents…
-          </div>
-        ) : rootId && files.length === 0 ? (
-          <div className="desktop-card p-12 text-center text-[var(--text-muted)] text-xs border-dashed">
-            This Google Drive folder is empty.
-          </div>
-        ) : (
-          <div className="desktop-card overflow-hidden">
-            <div className="divide-y divide-[var(--border-subtle)] max-h-[540px] overflow-y-auto">
+          {/* Multi-selection Banner */}
+          {selectedFolderIds.size > 0 && (
+            <div className="bg-[#1f6feb]/15 border-b border-[#1f6feb]/30 px-4 py-2 flex items-center justify-between text-xs animate-in fade-in duration-100">
+              <div className="flex items-center gap-2">
+                <span className="text-[#58a6ff] font-semibold">
+                  {selectedFolderIds.size} of {folders.length} folders selected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedFolderIds(new Set())}
+                  className="text-[11px] text-[#7d8590] hover:text-white underline cursor-pointer"
+                >
+                  Deselect
+                </button>
+              </div>
+              <button
+                onClick={() => openMultiFolderColor(Array.from(selectedFolderIds))}
+                className="px-2.5 py-1 rounded-md bg-[#1f6feb] hover:bg-[#388bfd] text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Palette size={12} />
+                <span>Colorize Selected ({selectedFolderIds.size})</span>
+              </button>
+            </div>
+          )}
+
+          {/* GitHub-style '..' Up one level row */}
+          {breadcrumb.length > 1 && (
+            <div
+              onClick={() => {
+                const parent = breadcrumb[breadcrumb.length - 2];
+                if (parent) void loadFolder(parent.id, parent.name);
+              }}
+              className="px-4 py-2 border-b border-[#21262d] bg-[#0d1117] flex items-center gap-2.5 text-xs font-semibold text-[#58a6ff] hover:bg-[#161b22] hover:underline cursor-pointer transition-colors select-none"
+              title="Go to parent directory"
+            >
+              <GithubFolderIcon className="text-[#54aeff]" />
+              <span className="font-mono text-sm leading-none font-bold">..</span>
+            </div>
+          )}
+
+          {/* File Browser Table Body */}
+          {loading ? (
+            <div className="p-12 text-center text-[#7d8590] text-xs flex items-center justify-center gap-2 bg-[#0d1117]">
+              <RefreshCw size={14} className="animate-spin text-[#58a6ff]" />
+              Loading directory…
+            </div>
+          ) : rootId && files.length === 0 ? (
+            <div className="p-12 text-center text-[#7d8590] text-xs bg-[#0d1117]">
+              This Google Drive folder is empty.
+            </div>
+          ) : (
+            <div className="divide-y divide-[#21262d] max-h-[580px] overflow-y-auto bg-[#0d1117]">
               {[...folders, ...items].map((file) => {
                 const isFolder = file.mime_type === "application/vnd.google-apps.folder";
                 const isSelected = selected?.id === file.id;
                 const folderColor = file.folderColorRgb ?? file.folder_color_rgb;
                 const isFolderSelected = selectedFolderIds.has(file.id);
-                const FileIconComp = getFileIcon(file.mime_type);
 
                 return (
                   <div
                     key={file.id}
                     onClick={() => void handleSelect(file)}
                     className={cn(
-                      "group flex items-center justify-between px-4 py-3 cursor-pointer text-xs transition-colors",
+                      "group px-4 py-2 flex items-center justify-between text-xs transition-colors cursor-pointer select-none",
                       isSelected
-                        ? "bg-blue-600/15 text-blue-300 font-semibold"
-                        : "hover:bg-[var(--surface-2)] text-[var(--text)] font-medium"
+                        ? "bg-[#1f6feb]/20 text-[#58a6ff]"
+                        : "hover:bg-[#161b22] text-[#c9d1d9]"
                     )}
                   >
+                    {/* Left: Checkbox + Icon + Name */}
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {isFolder && (
                         <button
@@ -533,44 +591,58 @@ function FileBrowser() {
                             e.stopPropagation();
                             toggleSelectFolder(file.id);
                           }}
-                          className="p-0.5 text-[var(--text-subtle)] hover:text-white cursor-pointer shrink-0"
+                          className="p-0.5 text-[#7d8590] hover:text-[#e6edf3] cursor-pointer shrink-0"
                           title={isFolderSelected ? "Deselect folder" : "Select folder"}
                         >
                           {isFolderSelected ? (
-                            <CheckSquare size={14} className="text-blue-400" />
+                            <CheckSquare size={13} className="text-[#58a6ff]" />
                           ) : (
-                            <Square size={14} className="text-[var(--text-subtle)]" />
+                            <Square size={13} className="text-[#484f58]" />
                           )}
                         </button>
                       )}
 
-                      <FileIconComp
-                        size={17}
-                        style={isFolder && folderColor ? { color: folderColor } : undefined}
-                        className={cn(
-                          "shrink-0",
-                          isFolder && !folderColor ? "text-amber-400" : !isFolder ? "text-blue-400" : ""
-                        )}
-                      />
+                      {isFolder ? (
+                        <GithubFolderIcon
+                          color={folderColor || "#54aeff"}
+                          className={cn("shrink-0", !folderColor && "text-[#54aeff]")}
+                        />
+                      ) : (
+                        <GithubFileIcon className="shrink-0" />
+                      )}
 
-                      <span className="truncate code-text text-xs" title={file.name ?? file.id}>
+                      <span
+                        className={cn(
+                          "truncate group-hover:text-[#58a6ff] group-hover:underline text-[13px]",
+                          isFolder ? "text-[#e6edf3] font-medium" : "text-[#c9d1d9] font-normal"
+                        )}
+                        title={file.name ?? file.id}
+                      >
                         {file.name ?? file.id}
                       </span>
 
                       {isFolder && folderColor && (
                         <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20 shadow-sm"
+                          className="w-2 h-2 rounded-full shrink-0 border border-white/20 shadow-sm"
                           style={{ backgroundColor: folderColor }}
                           title={`Folder color: ${folderColor}`}
                         />
                       )}
 
                       {file.starred && (
-                        <Star size={13} className="fill-amber-400 text-amber-400 shrink-0" />
+                        <Star size={12} className="fill-amber-400 text-amber-400 shrink-0" />
                       )}
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0 text-xs code-text text-[var(--text-subtle)]">
+                    {/* Middle: Description Note */}
+                    {file.description && (
+                      <div className="hidden lg:block truncate text-xs text-[#7d8590] px-3 max-w-[200px]">
+                        {file.description}
+                      </div>
+                    )}
+
+                    {/* Right: Date, Size, Actions */}
+                    <div className="flex items-center gap-3 shrink-0 text-xs text-[#7d8590]">
                       {isFolder && (
                         <button
                           type="button"
@@ -583,21 +655,29 @@ function FileBrowser() {
                             });
                           }}
                           title={`Colorize "${file.name ?? file.id}"`}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-3)] transition-all cursor-pointer flex items-center gap-1"
+                          className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white border border-[#30363d] transition-all cursor-pointer flex items-center gap-1 text-[11px]"
                         >
-                          <Palette size={13} />
-                          <span className="text-[11px] font-sans">Color</span>
+                          <Palette size={11} />
+                          <span>Color</span>
                         </button>
                       )}
-                      {file.size && <span>{formatBytes(parseInt(file.size, 10))}</span>}
-                      {isFolder && <span className="text-[11px] text-[var(--text-subtle)] uppercase">Folder</span>}
+
+                      {file.modified_time && (
+                        <span className="w-24 text-right truncate font-mono text-[11px] text-[#7d8590]">
+                          {formatRelTime(new Date(file.modified_time).getTime())}
+                        </span>
+                      )}
+
+                      <span className="w-16 text-right font-mono text-[11px] text-[#7d8590]">
+                        {file.size ? formatBytes(parseInt(file.size, 10)) : "--"}
+                      </span>
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Side Inspector (Revisions & File Details) */}
