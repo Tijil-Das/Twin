@@ -112,16 +112,32 @@ async fn run_upload(
         .unwrap_or(0);
 
     // Get DB row for this file.
-    let existing = db.get_file(&job.pair_id, &job.rel_path)?;
+    let mut existing = db.get_file(&job.pair_id, &job.rel_path)?;
+    if existing.as_ref().and_then(|r| r.drive_id.as_ref()).is_none() {
+        if let Ok(Some(alt)) = db.find_any_file_by_rel_path(&job.rel_path) {
+            if let Some(ref did) = alt.drive_id {
+                let _ = db.set_drive_meta(
+                    &job.pair_id,
+                    &job.rel_path,
+                    did,
+                    alt.drive_md5.as_deref(),
+                    alt.drive_mtime_ms,
+                    alt.drive_rev.as_deref(),
+                );
+                existing = db.get_file(&job.pair_id, &job.rel_path)?;
+            }
+        }
+    }
 
     // Compute local md5.
     gov.checkpoint().await;
     let local_md5 = compute_md5_blocking(&local_path).await?;
 
-    // Skip if Drive already has the same content.
+    // Skip if Drive already has the same content in local DB.
     if let Some(ref row) = existing {
         if row.drive_md5.as_deref() == Some(&local_md5)
             && row.size == Some(size as i64)
+            && row.drive_id.is_some()
         {
             info!("upload: skip {} (unchanged)", job.rel_path);
             db.mark_state(&job.pair_id, &job.rel_path, "synced")?;
@@ -133,7 +149,37 @@ async fn run_upload(
     let rel_dir = parent_dir(&job.rel_path);
     let parent_id = drive.ensure_path(&job.pair_id, &pair.drive_folder_id, &rel_dir).await?;
     let file_name = file_name(&job.rel_path);
-    let existing_drive_id = existing.as_ref().and_then(|r| r.drive_id.clone());
+    let mut existing_drive_id = existing.as_ref().and_then(|r| r.drive_id.clone());
+
+    // Google Drive remote deduplication guard:
+    // If not known locally, verify directly with Google Drive before creating a new file.
+    if existing_drive_id.is_none() {
+        if let Ok(Some(remote_child)) = drive.find_child(&parent_id, &file_name).await {
+            let remote_id = remote_child.id.clone();
+            let remote_md5 = remote_child.md5_checksum;
+            let remote_size = remote_child.size.and_then(|s| s.parse::<i64>().ok());
+
+            // If Drive already has identical content, skip upload and record metadata.
+            if remote_md5.as_deref() == Some(&local_md5)
+                && (remote_size.is_none() || remote_size == Some(size as i64))
+            {
+                info!("upload: skip {} (already exists on Drive: {})", job.rel_path, remote_id);
+                let _ = db.set_drive_meta(
+                    &job.pair_id,
+                    &job.rel_path,
+                    &remote_id,
+                    remote_md5.as_deref(),
+                    None,
+                    None,
+                );
+                db.mark_state(&job.pair_id, &job.rel_path, "synced")?;
+                return Ok(());
+            }
+
+            // Remote file exists but differs: update it in-place instead of creating a duplicate!
+            existing_drive_id = Some(remote_id);
+        }
+    }
     let modified_time = ms_to_rfc3339(mtime_ms);
     let mime = "application/octet-stream";
 

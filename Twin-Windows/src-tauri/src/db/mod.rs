@@ -277,6 +277,19 @@ impl Db {
         .map_err(|e| AppError::Db(format!("get_file: {e}")))
     }
 
+    /// Find any file row across any pair matching rel_path that has an associated Google Drive ID.
+    pub fn find_any_file_by_rel_path(&self, rel: &str) -> Result<Option<FileRow>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.query_row(
+            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state
+             FROM files WHERE rel_path=?1 AND drive_id IS NOT NULL ORDER BY mtime_ms DESC LIMIT 1",
+            params![rel],
+            row_to_file,
+        )
+        .optional()
+        .map_err(|e| AppError::Db(format!("find_any_file_by_rel_path: {e}")))
+    }
+
     pub fn upsert_file(&self, row: FileRow) -> Result<(), AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
         conn.execute(
@@ -352,6 +365,22 @@ impl Db {
 
         if let Some(id) = existing {
             return Ok(id);
+        }
+
+        // Avoid enqueuing duplicate upload jobs if the file is already fully synced with Drive
+        if job.kind == "upload" {
+            let is_synced: bool = conn
+                .query_row(
+                    "SELECT 1 FROM files WHERE pair_id=?1 AND rel_path=?2 AND state='synced' AND drive_id IS NOT NULL",
+                    params![job.pair_id, job.rel_path],
+                    |_| Ok(()),
+                )
+                .optional()
+                .unwrap_or(None)
+                .is_some();
+            if is_synced {
+                return Ok(0);
+            }
         }
 
         conn.execute(

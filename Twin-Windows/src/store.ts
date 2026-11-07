@@ -90,7 +90,7 @@ export const useStore = create<AppState>((set) => ({
   setProgress: (ev) =>
     set((s) => {
       const next = { ...s.progress };
-      if (ev.bytes_done >= ev.bytes_total && ev.bytes_total > 0) {
+      if (ev.bytes_done >= ev.bytes_total) {
         setTimeout(() => {
           useStore.getState().clearProgress(ev.job_id);
         }, 500);

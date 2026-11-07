@@ -251,7 +251,12 @@ pub async fn scan_pair(
             seen.insert(rel_str.clone());
 
             // Compare with DB.
-            let existing = db.get_file(&pair.id, &rel_str)?;
+            let mut existing = db.get_file(&pair.id, &rel_str)?;
+            if existing.is_none() || existing.as_ref().and_then(|r| r.drive_id.as_ref()).is_none() {
+                if let Ok(Some(alt)) = db.find_any_file_by_rel_path(&rel_str) {
+                    existing = Some(alt);
+                }
+            }
             let needs_upload = match &existing {
                 None => true,
                 Some(row) => {
