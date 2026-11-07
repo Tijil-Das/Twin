@@ -64,7 +64,7 @@ interface AppState {
 
 // ── Default gov ────────────────────────────────────────────────────────────────
 
-const defaultGov: GovStatePayload = { state: "Running", reason: null, concurrency: 2 };
+const defaultGov: GovStatePayload = { kind: "running", reason: null, concurrency: 2 };
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 

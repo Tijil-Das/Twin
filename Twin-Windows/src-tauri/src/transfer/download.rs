@@ -36,7 +36,7 @@ use tracing::{info, warn};
 
 use crate::auth;
 use crate::config::Config;
-use crate::db::{Db, FileRow, Job, NewJob};
+use crate::db::{Db, FileRow, Job};
 use crate::drive::client::DriveClient;
 use crate::drive::export::{export_mime, ext_for_mime, ExportFormats};
 use crate::error::AppError;
@@ -521,8 +521,6 @@ pub(crate) async fn run_restore(
     // We use `rel_path` = drive_file_id, job payload in `last_error`.
     let drive_id = job.rel_path.clone();
 
-    // Determine destination path.
-    // For simplicity: dest = pair's local root / file name from Drive.
     let pair = match cfg.pairs.iter().find(|p| p.id == job.pair_id) {
         Some(p) => p.clone(),
         None => {
@@ -533,7 +531,25 @@ pub(crate) async fn run_restore(
 
     let meta = fetch_file_meta(&drive, &drive_id).await?;
     let file_name = meta.name.as_deref().unwrap_or("restored_file").to_string();
-    let dest = PathBuf::from(&pair.local).join(&file_name);
+
+    // Decode the destination/revision payload. Fall back to the pair root
+    // when the job was created without an explicit destination.
+    let payload = job.last_error.as_deref().unwrap_or("");
+    let (dest_override, rev_id) = match payload.split_once('|') {
+        Some((d, r)) => (d.trim(), Some(r.trim()).filter(|s| !s.is_empty())),
+        None => (payload.trim(), None),
+    };
+    let dest = if dest_override.is_empty() {
+        PathBuf::from(&pair.local).join(&file_name)
+    } else {
+        PathBuf::from(dest_override)
+    };
+
+    // A specific revision must be fetched from the revisions endpoint, whose
+    // md5 differs from the current head; `restore_file` handles that.
+    if let Some(rev) = rev_id {
+        return restore_file(&drive, &gov, &limiter, &drive_id, Some(rev), dest).await;
+    }
 
     // Never overwrite silently.
     backup_if_exists(&dest)?;
@@ -609,6 +625,38 @@ pub async fn restore_file(
     rev_id: Option<&str>,
     dest: PathBuf,
 ) -> Result<(), AppError> {
+    let meta = fetch_file_meta(drive, file_id).await?;
+
+    // Google-native files have no media stream; export them when restoring
+    // the current head. Revisions are downloaded from the revisions endpoint.
+    if rev_id.is_none() {
+        let mime = meta.mime_type.as_deref().unwrap_or("application/octet-stream");
+        let export_formats = ExportFormats::default();
+        if let Some(export_m) = export_mime(mime, &export_formats) {
+            let dest = if dest.extension().is_none() {
+                dest.with_extension(ext_for_mime(&export_m))
+            } else {
+                dest
+            };
+            backup_if_exists(&dest)?;
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| AppError::Io(format!("mkdir export: {e}")))?;
+            }
+            return match drive.export_file(file_id, &export_m).await? {
+                Some(bytes) => {
+                    std::fs::write(&dest, &bytes)
+                        .map_err(|e| AppError::Io(format!("write export: {e}")))?;
+                    info!("restore_file export {file_id} → {}", dest.display());
+                    Ok(())
+                }
+                None => Err(AppError::Drive(
+                    "export size limit exceeded".into(),
+                )),
+            };
+        }
+    }
+
     backup_if_exists(&dest)?;
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)
@@ -618,7 +666,6 @@ pub async fn restore_file(
     let part = part_path(&dest);
     let sidecar = sidecar_path(&dest);
 
-    let meta = fetch_file_meta(drive, file_id).await?;
     let size: u64 = match meta.size {
         Some(serde_json::Value::String(ref s)) => s.parse().unwrap_or(0),
         Some(serde_json::Value::Number(ref n)) => n.as_u64().unwrap_or(0),
@@ -679,13 +726,17 @@ pub async fn restore_file(
         }
     }
 
-    if let Some(ref expected) = meta.md5_checksum {
-        gov.checkpoint().await;
-        let actual = compute_md5_blocking(&part).await?;
-        if actual != *expected {
-            let _ = std::fs::remove_file(&part);
-            let _ = std::fs::remove_file(&sidecar);
-            return Err(AppError::Drive(format!("restore_file md5 mismatch: {file_id}")));
+    // Only the current head's md5 is available in file metadata; an older
+    // revision legitimately has different content.
+    if rev_id.is_none() {
+        if let Some(ref expected) = meta.md5_checksum {
+            gov.checkpoint().await;
+            let actual = compute_md5_blocking(&part).await?;
+            if actual != *expected {
+                let _ = std::fs::remove_file(&part);
+                let _ = std::fs::remove_file(&sidecar);
+                return Err(AppError::Drive(format!("restore_file md5 mismatch: {file_id}")));
+            }
         }
     }
 
@@ -703,12 +754,13 @@ pub async fn restore_file(
 
 /// Recursively restore all files in a Drive folder to `dest`.
 ///
-/// Creates directories first, then enqueues one `download` job per file.
+/// Files are restored directly to `dest` (the queue's download runner resolves
+/// paths relative to a pair root and requires a DB row, which is not the case
+/// for an arbitrary restore destination).
 pub async fn restore_folder(
     drive: &DriveClient,
-    db: &Arc<Db>,
-    cfg: &Config,
-    pair_id: &str,
+    gov: &Governor,
+    limiter: &Arc<Limiter>,
     folder_id: &str,
     dest: PathBuf,
 ) -> Result<(), AppError> {
@@ -767,29 +819,17 @@ pub async fn restore_folder(
             let mime = f.mime_type.as_deref().unwrap_or("");
 
             if mime == "application/vnd.google-apps.folder" {
-                // Recurse: create dir and enqueue folder restore.
+                // Recurse into the subfolder.
                 std::fs::create_dir_all(&child_dest)
                     .map_err(|e| AppError::Io(format!("mkdir sub: {e}")))?;
-                // Use a synthetic rel_path.
-                let sub_rel = child_dest.to_string_lossy().into_owned();
                 Box::pin(restore_folder(
-                    drive, db, cfg, pair_id, &f.id,
-                    child_dest,
+                    drive, gov, limiter, &f.id, child_dest,
                 )).await?;
-                let _ = sub_rel;
             } else {
-                // Enqueue a download job for this file.
-                let rel = child_dest.strip_prefix(&dest)
-                    .unwrap_or(Path::new(&name))
-                    .to_string_lossy()
-                    .into_owned();
-                let _ = db.enqueue(NewJob {
-                    pair_id: pair_id.to_string(),
-                    kind: "download".into(),
-                    rel_path: rel,
-                    priority: 0,
-                    created_ms: now_ms(),
-                });
+                // Restore this file directly to the requested destination.
+                restore_file(
+                    drive, gov, limiter, &f.id, None, child_dest,
+                ).await?;
             }
         }
 

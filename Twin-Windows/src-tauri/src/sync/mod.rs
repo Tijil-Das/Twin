@@ -17,7 +17,7 @@ use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use tracing::{info, warn};
 
-use crate::config::{PairEntry, PairMode};
+use crate::config::{PairEntry, PairMode, PolicySection};
 use crate::db::Db;
 use crate::drive::client::DriveClient;
 use crate::error::AppError;
@@ -35,6 +35,10 @@ pub struct Ctx {
     pub gov:   Governor,
     /// In-memory echo-suppression set (path+mtime written by us).
     pub echo:  Arc<SelfWritten>,
+    /// User-configured conflict/deletion policies.
+    pub policy: PolicySection,
+    /// Optional window handle used to surface interactive conflicts.
+    pub app:    Option<tauri::AppHandle>,
 }
 
 /// Summary of one sync cycle.
@@ -72,14 +76,22 @@ pub async fn run_pair_cycle(pair: &PairEntry, ctx: &Ctx) -> Result<CycleReport, 
     // Full listing of Drive folder tree + reconcile with Db.
     let files = changes::list_drive_folder(&ctx.drive, &pair.drive_folder_id).await?;
     let cfg_pair = pair.clone();
-    let queued = reconcile::reconcile_listing(
-        &ctx.db, &ctx.drive, &cfg_pair, &files, &ctx.echo,
+    let queued = reconcile::reconcile_listing_with_policy(
+        &ctx.db,
+        &ctx.drive,
+        &cfg_pair,
+        &files,
+        &ctx.echo,
+        ctx.policy.conflict.clone(),
+        ctx.policy.deletion.clone(),
     ).await?;
     report.uploads_queued   += queued.uploads;
     report.downloads_queued += queued.downloads;
     report.conflicts        += queued.conflicts;
     report.deletes_queued   += queued.deletes;
     report.errors.extend(queued.errors);
+
+    emit_conflict_events(ctx, pair);
 
     info!(
         "pair {}: cycle complete — up={} down={} conflict={} del={}",
@@ -122,12 +134,18 @@ pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
                 // Apply each change through the decision table.
                 for change in &result.changes {
                     ctx.gov.checkpoint().await;
-                    if let Err(e) = reconcile::apply_remote_change(
-                        &ctx.db, &pair, change, &ctx.echo,
+                    if let Err(e) = reconcile::apply_remote_change_with_policies(
+                        &ctx.db,
+                        &pair,
+                        change,
+                        &ctx.echo,
+                        ctx.policy.conflict.clone(),
+                        ctx.policy.deletion.clone(),
                     ).await {
                         warn!("pair {}: apply change error: {e}", pair.id);
                     }
                 }
+                emit_conflict_events(&ctx, &pair);
 
                 // Persist new token only after all changes applied (crash safety).
                 if let Some(ref new_token) = result.new_start_page_token {
@@ -144,6 +162,24 @@ pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
                 warn!("pair {}: fetch_changes error: {e}", pair.id);
             }
         }
+    }
+}
+
+/// Emit `sync://conflict` for every row currently marked as conflicted.
+///
+/// The `ask` conflict policy only records `state = 'conflict'`; without this
+/// bridge the frontend never learns about it and the conflict hangs forever.
+fn emit_conflict_events(ctx: &Ctx, pair: &PairEntry) {
+    let Some(app) = &ctx.app else { return };
+    use tauri::Emitter;
+
+    let Ok(rows) = ctx.db.list_all_files(&pair.id) else { return };
+    for row in rows.into_iter().filter(|r| r.state == "conflict") {
+        let payload = serde_json::json!({
+            "pair_id": pair.id.clone(),
+            "rel_path": row.rel_path,
+        });
+        let _ = app.emit("sync://conflict", payload);
     }
 }
 

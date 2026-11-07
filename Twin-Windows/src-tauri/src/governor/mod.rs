@@ -65,7 +65,7 @@ pub enum Reason {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", content = "reason", rename_all = "snake_case")]
 pub enum GovState {
     Running,
     Throttled(Reason),

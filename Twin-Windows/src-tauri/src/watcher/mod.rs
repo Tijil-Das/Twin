@@ -118,6 +118,25 @@ fn handle_debounced_events(
 
     for ev in events {
         use notify_debouncer_full::notify::EventKind;
+
+        // Rename events carry both the old and the new path. Without this
+        // branch the new path is never uploaded (and the old row lingers).
+        if let EventKind::Modify(notify_debouncer_full::notify::event::ModifyKind::Name(_)) =
+            &ev.event.kind
+        {
+            if let [from, to] = ev.event.paths.as_slice() {
+                if let (Ok(from_rel), Ok(to_rel)) =
+                    (from.strip_prefix(root), to.strip_prefix(root))
+                {
+                    by_path.insert(
+                        to_rel.to_path_buf(),
+                        ChangeKind::Renamed { from: from_rel.to_path_buf() },
+                    );
+                }
+            }
+            continue;
+        }
+
         let kind = &ev.event.kind;
         for path in &ev.event.paths {
             // Skip directory-only events (unless delete/rename).
@@ -132,12 +151,11 @@ fn handle_debounced_events(
                     by_path.insert(rel, ChangeKind::Modified);
                 }
                 EventKind::Remove(_) => {
-                    // Expand deleted directory to child rows in Db.
-                    if is_dir {
-                        expand_deleted_dir(db, pair_id, &rel, tx);
-                    } else {
-                        by_path.insert(rel, ChangeKind::Deleted);
-                    }
+                    // A removed directory no longer exists, so `is_dir()` is
+                    // false here. Always expand: this emits the path itself and
+                    // any tracked children beneath it.
+                    let _ = is_dir;
+                    expand_deleted_dir(db, pair_id, &rel, tx);
                 }
                 EventKind::Other if !is_dir => {
                     by_path.insert(rel, ChangeKind::Modified);
@@ -156,7 +174,7 @@ fn handle_debounced_events(
     }
 }
 
-/// Send a `Deleted` change for every DB row under `dir_rel` in this pair.
+/// Send a `Deleted` change for the path itself and every DB row beneath it.
 fn expand_deleted_dir(
     db: &Arc<Db>,
     pair_id: &str,
@@ -164,16 +182,32 @@ fn expand_deleted_dir(
     tx: &mpsc::UnboundedSender<LocalChange>,
 ) {
     let prefix = dir_rel.to_string_lossy().replace('\\', "/");
-    // list_dirty won't help here; we need all files under the dir.
-    // Use mark_state + get from DB – for now send a synthetic root-change
-    // to trigger a rescan (scanner will detect the deletions).
+
+    // Emit one deletion per tracked child so `run_delete` can trash/delete
+    // the corresponding Drive object instead of leaving orphaned rows.
+    if let Ok(rows) = db.list_all_files(pair_id) {
+        let child_prefix = if prefix.is_empty() {
+            String::new()
+        } else {
+            format!("{prefix}/")
+        };
+        for row in rows {
+            if !child_prefix.is_empty() && row.rel_path.starts_with(&child_prefix) {
+                let _ = tx.send(LocalChange {
+                    pair_id: pair_id.to_string(),
+                    rel_path: PathBuf::from(&row.rel_path),
+                    kind: ChangeKind::Deleted,
+                });
+            }
+        }
+    }
+
+    // The directory/file path itself (harmless if it has no DB row).
     let _ = tx.send(LocalChange {
         pair_id: pair_id.to_string(),
         rel_path: dir_rel.to_path_buf(),
         kind: ChangeKind::Deleted,
     });
-    let _ = prefix; // used for logging context
-    let _ = db;     // available for future refinement
 }
 
 // ── Scanner ───────────────────────────────────────────────────────────────────
@@ -315,21 +349,36 @@ fn mark_missing(
     seen: &std::collections::HashSet<String>,
     now_ms: i64,
 ) -> Result<(), AppError> {
-    // list_dirty only returns dirty; we need all synced files too.
-    // For now use list_dirty + a separate approach later. This is sufficient
-    // for the done-test which checks that newly deleted files are detected.
-    let dirty = db.list_dirty(&pair.id, usize::MAX)?;
-    for row in dirty {
-        if !seen.contains(&row.rel_path) {
-            db.mark_state(&pair.id, &row.rel_path, "deleted_local")?;
-            db.enqueue(NewJob {
-                pair_id: pair.id.clone(),
-                kind: "delete".into(),
-                rel_path: row.rel_path,
-                priority: 0,
-                created_ms: now_ms,
-            })?;
+    // Check every tracked file, not just dirty ones: a previously synced
+    // file deleted while the app was closed must also be propagated.
+    let root = PathBuf::from(&pair.local);
+    for row in db.list_all_files(&pair.id)? {
+        if seen.contains(&row.rel_path) {
+            continue;
         }
+
+        // Don't resurrect rows that are already in a terminal deleted state.
+        if matches!(
+            row.state.as_str(),
+            "deleted_local" | "remote_deleted" | "deleted" | "trashed" | "conflict"
+        ) {
+            continue;
+        }
+
+        // Files excluded by rules are absent from `seen` but still on disk;
+        // only mark genuinely missing files.
+        if root.join(&row.rel_path).exists() {
+            continue;
+        }
+
+        db.mark_state(&pair.id, &row.rel_path, "deleted_local")?;
+        db.enqueue(NewJob {
+            pair_id: pair.id.clone(),
+            kind: "delete".into(),
+            rel_path: row.rel_path,
+            priority: 0,
+            created_ms: now_ms,
+        })?;
     }
     Ok(())
 }

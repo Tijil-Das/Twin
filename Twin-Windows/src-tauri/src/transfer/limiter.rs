@@ -69,7 +69,11 @@ impl Limiter {
                 }
                 g.last_fill = now;
 
-                if g.tokens >= bytes as f64 {
+                // The rate may have been switched to "unlimited" while we were
+                // sleeping; never divide by zero in that case.
+                if g.rate_bps == 0 {
+                    Duration::ZERO
+                } else if g.tokens >= bytes as f64 {
                     g.tokens -= bytes as f64;
                     Duration::ZERO
                 } else {

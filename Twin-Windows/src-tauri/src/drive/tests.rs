@@ -86,6 +86,7 @@ mod tests {
             bytes_total: total,
             speed_bps: 0.0,
             eta_secs: None,
+            start_ms: 0,
         };
         assert_eq!(p.bytes_done, p.bytes_total);
         assert!(p.eta_secs.is_none());

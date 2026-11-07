@@ -273,19 +273,17 @@ async fn restore_folder_cmd(
     folder_id: String,
     dest:      String,
     pair_id:   String,
+    gov_s:     tauri::State<'_, governor::GovState2>,
 ) -> Result<(), String> {
     let drive   = drive::DriveClient::new().map_err(|e| e.to_string())?;
     let cfg     = config::load().unwrap_or_default();
     let dest_pb = std::path::PathBuf::from(&dest);
-
-    // Derive db path from resource dir heuristic (same as main setup).
-    let db_path = std::path::PathBuf::from(".").join("data").join("state.db");
-    let db_arc  = Arc::new(
-        db::Db::open(&db_path).map_err(|e| e.to_string())?
-    );
+    let gov     = gov_s.0.clone();
+    let limiter = Arc::new(transfer::Limiter::new(cfg.limits.download_kbps));
+    let _ = pair_id; // retained in the IPC signature for compatibility
 
     transfer::download::restore_folder(
-        &drive, &db_arc, &cfg, &pair_id, &folder_id, dest_pb,
+        &drive, &gov, &limiter, &folder_id, dest_pb,
     ).await.map_err(|e| e.to_string())
 }
 
@@ -331,6 +329,7 @@ async fn keep_revision(file_id: String, rev_id: String, keep: bool) -> Result<()
 /// Manually trigger one sync cycle for a pair.
 #[tauri::command]
 async fn run_sync_cycle(
+    app:      tauri::AppHandle,
     pair_id:  String,
     gov_s:    tauri::State<'_, governor::GovState2>,
     db_s:     tauri::State<'_, db::DbState>,
@@ -353,7 +352,14 @@ async fn run_sync_cycle(
     let _ = watcher::scan_pair(&pair, Arc::clone(&db_arc), &rules, &gov).await;
 
     // 2. Scan remote Drive changes and reconcile
-    let ctx = sync::Ctx { db: db_arc, drive, gov, echo };
+    let ctx = sync::Ctx {
+        db: db_arc,
+        drive,
+        gov,
+        echo,
+        policy: cfg.policy.clone(),
+        app: Some(app),
+    };
     let report = sync::run_pair_cycle(&pair, &ctx).await.map_err(|e| e.to_string())?;
 
     // 3. Wake queue worker to execute transfers immediately
@@ -804,6 +810,8 @@ fn main() {
                         drive: drive_poll.clone(),
                         gov: gov_poll.clone(),
                         echo: Arc::clone(&echo_poll),
+                        policy: cfg.policy.clone(),
+                        app: Some(handle.clone()),
                     };
                     tauri::async_runtime::spawn(sync::poll_changes_loop(p, ctx));
                 }

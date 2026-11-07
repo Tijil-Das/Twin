@@ -355,11 +355,16 @@ fn merge_toml(base: &mut toml::Value, patch: toml::Value) {
     match (base, patch) {
         (Value::Table(b), Value::Table(p)) => {
             for (k, v) in p {
-                if k == "pair" {
+                // The public field is `pairs`, but it is serialized as `pair`
+                // (with `pairs` kept as a deserialize alias). Treat both
+                // spellings as the same array so a patch containing both
+                // cannot create a duplicate-field error.
+                let key = if k == "pairs" { "pair".to_string() } else { k };
+                if key == "pair" {
                     // Merge [[pair]] arrays by id
-                    merge_pair_array(b.entry(k).or_insert(Value::Array(vec![])), v);
+                    merge_pair_array(b.entry(key).or_insert(Value::Array(vec![])), v);
                 } else {
-                    let entry = b.entry(k).or_insert(Value::Table(Default::default()));
+                    let entry = b.entry(key).or_insert(Value::Table(Default::default()));
                     merge_toml(entry, v);
                 }
             }

@@ -359,9 +359,17 @@ impl DriveClient {
             let folder_id = match folder_id {
                 Some(id) => id,
                 None => {
+                    // `find_child` matches by name only; make sure it is
+                    // actually a folder, otherwise create one (Drive allows
+                    // a file and a folder to share a name).
                     let id = match self.find_child(&parent, component).await? {
-                        Some(f) => f.id,
-                        None => self.create_folder(&parent, component).await?,
+                        Some(f)
+                            if f.mime_type.as_deref()
+                                == Some("application/vnd.google-apps.folder") =>
+                        {
+                            f.id
+                        }
+                        _ => self.create_folder(&parent, component).await?,
                     };
                     let mut cache = self.path_cache.lock().await;
                     cache.insert(ck, id.clone());
@@ -416,11 +424,15 @@ impl DriveClient {
         mime: &str,
     ) -> Result<DriveFileMeta, AppError> {
         let token = auth::access_token().await?;
-        let meta = serde_json::json!({
+        // Only send `parents` when creating; a PATCH with `"parents": null`
+        // is rejected by the Drive API.
+        let mut meta = serde_json::json!({
             "name": name,
-            "parents": if existing_id.is_none() { serde_json::json!([parent_id]) } else { serde_json::Value::Null },
             "modifiedTime": modified_time,
         });
+        if existing_id.is_none() {
+            meta["parents"] = serde_json::json!([parent_id]);
+        }
         let meta_str = meta.to_string();
 
         // Build multipart body manually.
@@ -464,11 +476,15 @@ impl DriveClient {
         mime: &str,
     ) -> Result<String, AppError> {
         let token = auth::access_token().await?;
-        let meta = serde_json::json!({
+        // Only send `parents` when creating; a PATCH with `"parents": null`
+        // is rejected by the Drive API.
+        let mut meta = serde_json::json!({
             "name": name,
-            "parents": if existing_id.is_none() { serde_json::json!([parent_id]) } else { serde_json::Value::Null },
             "modifiedTime": modified_time,
         });
+        if existing_id.is_none() {
+            meta["parents"] = serde_json::json!([parent_id]);
+        }
 
         let (method, url) = match existing_id {
             Some(id) => (Method::PATCH, format!("{}/files/{id}?uploadType=resumable", self.upload_base_url)),

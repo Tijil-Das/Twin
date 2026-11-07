@@ -30,7 +30,6 @@ import {
   driveGetFolderMeta,
   driveGetSharedFolders,
   driveCreateFolder,
-  driveSearch,
   listSharedDrives,
   authHasFullScope,
   authLogin,

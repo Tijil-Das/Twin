@@ -78,6 +78,7 @@ export interface DriveFile {
   mime_type: string | null;
   mimeType?: string | null;
   parents: string[] | null;
+  shared?: boolean | null;
 }
 
 export interface Revision {
@@ -128,7 +129,7 @@ export interface QueueStatus {
 // ── Invokes ───────────────────────────────────────────────────────────────────
 
 export const getConfig = () => invoke<Config>("get_config");
-export const updateConfig = (cfg: Config) => invoke<void>("update_config", { cfg });
+export const updateConfig = (cfg: Config) => invoke<Config>("update_config", { patch: cfg });
 export const addPair = (pair: PairEntry) => invoke<void>("add_pair", { pair });
 export const removePair = (id: string) => invoke<void>("remove_pair", { id });
 

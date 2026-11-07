@@ -416,7 +416,7 @@ function PairCard({
 // ── Pro Home Screen ────────────────────────────────────────────────────────────
 
 export function HomeScreen() {
-  const gov = useStore((s) => s.gov) ?? { state: "Running", reason: null, concurrency: 2 };
+  const gov = useStore((s) => s.gov) ?? { kind: "running" as const, reason: null, concurrency: 2 };
   const pairs = useStore((s) => s.pairs) ?? [];
   const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, done: 0, failed: 0 };
   const authed = useStore((s) => s.authed);

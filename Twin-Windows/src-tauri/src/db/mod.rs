@@ -309,6 +309,45 @@ impl Db {
         Ok(())
     }
 
+    /// Store Google Drive metadata for a file without touching local fields.
+    /// Inserts a row if the file is not tracked yet.
+    pub fn set_drive_meta(
+        &self,
+        pair: &str,
+        rel: &str,
+        drive_id: &str,
+        drive_md5: Option<&str>,
+        drive_mtime_ms: Option<i64>,
+        drive_rev: Option<&str>,
+    ) -> Result<(), AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.execute(
+            "INSERT INTO files(pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state)
+             VALUES(?1,?2,NULL,NULL,NULL,?3,?4,?5,?6,'dirty')
+             ON CONFLICT(pair_id,rel_path) DO UPDATE SET
+               drive_id=excluded.drive_id, drive_md5=excluded.drive_md5,
+               drive_mtime_ms=excluded.drive_mtime_ms, drive_rev=excluded.drive_rev",
+            params![pair, rel, drive_id, drive_md5, drive_mtime_ms, drive_rev],
+        )
+        .map_err(|e| AppError::Db(format!("set_drive_meta: {e}")))?;
+        Ok(())
+    }
+
+    /// Forget the Drive object associated with a local file (e.g. it was
+    /// removed remotely) and mark it dirty so the next upload recreates it.
+    pub fn clear_drive_meta(&self, pair: &str, rel: &str) -> Result<(), AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.execute(
+            "UPDATE files
+                SET drive_id=NULL, drive_md5=NULL, drive_mtime_ms=NULL, drive_rev=NULL,
+                    state='dirty'
+              WHERE pair_id=?1 AND rel_path=?2",
+            params![pair, rel],
+        )
+        .map_err(|e| AppError::Db(format!("clear_drive_meta: {e}")))?;
+        Ok(())
+    }
+
     pub fn mark_state(&self, pair: &str, rel: &str, st: &str) -> Result<(), AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
         conn.execute(
@@ -367,11 +406,15 @@ impl Db {
             return Ok(id);
         }
 
-        // Avoid enqueuing duplicate upload jobs if the file is already fully synced with Drive
+        // Avoid enqueuing duplicate upload jobs if the file is already fully
+        // synced with Drive. A stale "synced" row whose local md5 differs from
+        // the recorded Drive md5 must still be allowed to upload.
         if job.kind == "upload" {
             let is_synced: bool = conn
                 .query_row(
-                    "SELECT 1 FROM files WHERE pair_id=?1 AND rel_path=?2 AND state='synced' AND drive_id IS NOT NULL",
+                    "SELECT 1 FROM files WHERE pair_id=?1 AND rel_path=?2
+                       AND state='synced' AND drive_id IS NOT NULL
+                       AND (md5 IS NULL OR drive_md5 IS NULL OR md5 = drive_md5)",
                     params![job.pair_id, job.rel_path],
                     |_| Ok(()),
                 )

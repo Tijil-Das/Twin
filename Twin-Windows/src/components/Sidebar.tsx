@@ -49,24 +49,35 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
   ];
 
   const govColors: Record<string, { bg: string; dot: string; label: string }> = {
-    Running: {
+    running: {
       bg: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
       dot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]",
       label: "Engine Active",
     },
-    Throttled: {
+    throttled: {
       bg: "bg-amber-500/10 border-amber-500/20 text-amber-400",
       dot: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]",
       label: "Throttled",
     },
-    Paused: {
+    scheduled: {
+      bg: "bg-blue-500/10 border-blue-500/20 text-blue-400",
+      dot: "bg-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.6)]",
+      label: "Scheduled",
+    },
+    user_paused: {
+      bg: "bg-zinc-500/10 border-zinc-500/20 text-zinc-400",
+      dot: "bg-zinc-400",
+      label: "Engine Paused",
+    },
+    paused: {
       bg: "bg-zinc-500/10 border-zinc-500/20 text-zinc-400",
       dot: "bg-zinc-400",
       label: "Engine Paused",
     },
   };
 
-  const currentGov = govColors[gov.state] ?? govColors.Running;
+  const govKind = String(gov.kind ?? gov.state ?? "running").toLowerCase();
+  const currentGov = govColors[govKind] ?? govColors.running;
 
   return (
     <aside

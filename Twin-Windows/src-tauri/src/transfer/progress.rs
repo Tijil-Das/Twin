@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -26,6 +26,8 @@ pub struct RichProgress {
     pub speed_bps: f64,
     /// Seconds remaining (None if speed == 0).
     pub eta_secs: Option<f64>,
+    /// Wall-clock time when this transfer started (epoch milliseconds).
+    pub start_ms: i64,
 }
 
 /// Per-job EMA state.
@@ -34,12 +36,17 @@ struct JobState {
     last_emit: Instant,
     last_bytes: u64,
     last_time: Instant,
+    start_ms: i64,
 }
 
 impl JobState {
     fn new() -> Self {
         let now = Instant::now();
-        JobState { speed_ema: 0.0, last_emit: now, last_bytes: 0, last_time: now }
+        let start_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        JobState { speed_ema: 0.0, last_emit: now, last_bytes: 0, last_time: now, start_ms }
     }
 
     /// Update EMA speed and return rich progress.  Returns None if throttled.
@@ -80,6 +87,7 @@ impl JobState {
             bytes_total: upd.bytes_total,
             speed_bps: self.speed_ema,
             eta_secs,
+            start_ms: self.start_ms,
         })
     }
 }

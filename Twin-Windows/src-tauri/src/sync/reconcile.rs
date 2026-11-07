@@ -149,9 +149,11 @@ pub async fn reconcile_listing_with_policy(
         // Decision table: (local_exists, local_changed, remote_changed)
         if !local_exists {
             if let Some(ref row) = db_row {
-                // Safety: only delete remote if the file was previously tracked locally AND marked deleted_local.
-                // Never delete remote files on initial discovery or unconfirmed scan!
-                if row.state == "deleted_local" && !remote_changed {
+                // Safety: only delete remote when the row was previously tracked
+                // locally (never on initial discovery). A `synced` row whose
+                // file vanished from disk is a local deletion detected by a
+                // full scan; the watcher additionally marks rows `deleted_local`.
+                if matches!(row.state.as_str(), "deleted_local" | "synced") && !remote_changed {
                     if matches!(deletion_policy, DeletionPolicy::DriveTrash | DeletionPolicy::Delete) {
                         apply_local_delete_inner(db, pair, rel, now, deletion_policy.clone())?;
                         result.deletes += 1;
@@ -239,6 +241,9 @@ pub async fn reconcile_listing_with_policy(
                 // Local file exists on disk but not in Drive → upload it.
                 let lp = local_root.join(&row.rel_path);
                 if lp.exists() {
+                    // The remote object is gone; forget its id so the upload
+                    // creates a fresh copy instead of patching a deleted file.
+                    db.clear_drive_meta(&pair.id, &row.rel_path)?;
                     enqueue_upload(db, pair, &row.rel_path, now)?;
                     result.uploads += 1;
                 }
@@ -269,6 +274,20 @@ pub async fn apply_remote_change_with_policy(
     echo:   &Arc<SelfWritten>,
     conflict_policy: ConflictPolicy,
 ) -> Result<(), AppError> {
+    apply_remote_change_with_policies(
+        db, pair, change, echo, conflict_policy, DeletionPolicy::DriveTrash,
+    ).await
+}
+
+/// Apply a single remote change using both the conflict and deletion policies.
+pub async fn apply_remote_change_with_policies(
+    db:     &Arc<Db>,
+    pair:   &PairEntry,
+    change: &DriveChange,
+    echo:   &Arc<SelfWritten>,
+    conflict_policy: ConflictPolicy,
+    deletion_policy: DeletionPolicy,
+) -> Result<(), AppError> {
     let now = now_ms();
 
     // Removed from Drive.
@@ -276,11 +295,36 @@ pub async fn apply_remote_change_with_policy(
         // Find local file by drive_id.
         if let Some(row) = db.get_file_by_drive_id(&pair.id, &change.file_id)? {
             let local_path = PathBuf::from(&pair.local).join(&row.rel_path);
-            if local_path.exists() {
-                // Move to .twin-trash.
-                move_to_twin_trash(pair, &local_path, &row.rel_path)?;
+            match pair.mode {
+                // Upload-only pairs never touch the local side for remote events.
+                PairMode::Upload => {}
+                // Mirror is remote-as-mirror-of-local: restore the file remotely.
+                PairMode::Mirror => {
+                    if local_path.exists() {
+                        // The Drive object no longer exists; recreating it on
+                        // upload requires clearing the stale drive_id.
+                        db.clear_drive_meta(&pair.id, &row.rel_path)?;
+                        enqueue_upload(db, pair, &row.rel_path, now)?;
+                    }
+                }
+                PairMode::TwoWay => match deletion_policy {
+                    // User explicitly asked to ignore remote deletions.
+                    DeletionPolicy::Ignore => {}
+                    DeletionPolicy::DriveTrash => {
+                        if local_path.exists() {
+                            move_to_twin_trash(pair, &local_path, &row.rel_path)?;
+                        }
+                        db.mark_state(&pair.id, &row.rel_path, "remote_deleted")?;
+                    }
+                    DeletionPolicy::Delete => {
+                        if local_path.exists() {
+                            std::fs::remove_file(&local_path)
+                                .map_err(|e| AppError::Io(format!("remote delete: {e}")))?;
+                        }
+                        db.mark_state(&pair.id, &row.rel_path, "remote_deleted")?;
+                    }
+                },
             }
-            db.mark_state(&pair.id, &row.rel_path, "remote_deleted")?;
         }
         return Ok(());
     }
@@ -297,12 +341,24 @@ pub async fn apply_remote_change_with_policy(
         return Ok(());
     }
 
-    let Some(name) = &file.name else { return Ok(()) };
-    let rel_path = name.clone();
+    // The Changes feed only carries the file's basename. Prefer the full
+    // relative path already stored for this Drive id so nested files are not
+    // mistaken for files in the pair root.
+    let tracked = db.get_file_by_drive_id(&pair.id, &file.id)?;
+    let rel_path = match tracked.as_ref() {
+        Some(row) => row.rel_path.clone(),
+        None => match &file.name {
+            Some(name) => name.clone(),
+            None => return Ok(()),
+        },
+    };
     let local_path = PathBuf::from(&pair.local).join(&rel_path);
 
     let remote_md5 = file.md5_checksum.as_deref().unwrap_or("");
-    let db_row = db.get_file(&pair.id, &rel_path)?;
+    let db_row = match tracked {
+        Some(row) => Some(row),
+        None => db.get_file(&pair.id, &rel_path)?,
+    };
     let db_drive_md5 = db_row.as_ref().and_then(|r| r.drive_md5.as_deref()).unwrap_or("");
 
     // Echo suppression: skip if this matches our own upload (md5 same as Db).
@@ -319,45 +375,48 @@ pub async fn apply_remote_change_with_policy(
         return Ok(());
     }
 
-    match (local_changed, pair.mode.clone()) {
-        (_, PairMode::Upload) => {
-            // Upload mode: ignore remote changes.
+    match pair.mode {
+        // Upload mode: ignore remote changes.
+        PairMode::Upload => {}
+        // Mirror: local always wins, so re-upload the local file.
+        PairMode::Mirror => {
+            if local_path.exists() {
+                enqueue_upload(db, pair, &rel_path, now)?;
+            }
         }
-        (false, _) => {
-            // Download the remote change.
-            let size: Option<i64> = file.size.as_deref().and_then(|s| s.parse().ok());
-            let drive_mtime = file.modified_time.as_deref().and_then(rfc3339_to_ms).unwrap_or(0);
-            db.upsert_file(FileRow {
-                pair_id:       pair.id.clone(),
-                rel_path:      rel_path.clone(),
-                size,
-                mtime_ms:      db_row.as_ref().and_then(|r| r.mtime_ms),
-                md5:           db_row.as_ref().and_then(|r| r.md5.clone()),
-                drive_id:      Some(file.id.clone()),
-                drive_md5:     Some(remote_md5.to_string()),
-                drive_mtime_ms: Some(drive_mtime),
-                drive_rev:     None,
-                state:         "dirty".into(),
-            })?;
-            db.enqueue(NewJob {
-                pair_id:    pair.id.clone(),
-                kind:       "download".into(),
-                rel_path:   rel_path.clone(),
-                priority:   10,
-                created_ms: now,
-            })?;
-            info!("queued download (remote change): {}", rel_path);
-        }
-        (true, PairMode::Mirror) => {
-            // Mirror: force local to win, re-upload.
-            enqueue_upload(db, pair, &rel_path, now)?;
-        }
-        (true, _) => {
-            // Conflict: both changed.
-            if remote_md5 == local_md5 && !remote_md5.is_empty() {
+        PairMode::TwoWay => {
+            if !local_changed {
+                // Download the remote change.
+                let size: Option<i64> = file.size.as_deref().and_then(|s| s.parse().ok());
+                let drive_mtime = file.modified_time.as_deref().and_then(rfc3339_to_ms).unwrap_or(0);
+                db.upsert_file(FileRow {
+                    pair_id:       pair.id.clone(),
+                    rel_path:      rel_path.clone(),
+                    size,
+                    mtime_ms:      db_row.as_ref().and_then(|r| r.mtime_ms),
+                    md5:           db_row.as_ref().and_then(|r| r.md5.clone()),
+                    drive_id:      Some(file.id.clone()),
+                    drive_md5:     Some(remote_md5.to_string()),
+                    drive_mtime_ms: Some(drive_mtime),
+                    drive_rev:     None,
+                    state:         "dirty".into(),
+                })?;
+                db.enqueue(NewJob {
+                    pair_id:    pair.id.clone(),
+                    kind:       "download".into(),
+                    rel_path:   rel_path.clone(),
+                    priority:   10,
+                    created_ms: now,
+                })?;
+                info!("queued download (remote change): {}", rel_path);
+            } else if remote_md5 == local_md5 && !remote_md5.is_empty() {
+                // Both changed to the same content.
                 db.mark_state(&pair.id, &rel_path, "synced")?;
             } else {
-                let _ = apply_conflict_inner(db, pair, &rel_path, file, &local_path, now, echo, conflict_policy).await?;
+                // Conflict: both changed.
+                let _ = apply_conflict_inner(
+                    db, pair, &rel_path, file, &local_path, now, echo, conflict_policy,
+                ).await?;
             }
         }
     }
@@ -454,9 +513,11 @@ async fn apply_conflict_inner(
                 .unwrap_or_default();
             let conflict_name = format!("{stem} (conflict {machine} {ts}){ext}");
             let conflict_path = local_path.with_file_name(&conflict_name);
-            let conflict_rel  = rel_path.rsplit('/').next()
-                .map(|_| conflict_name.clone())
-                .unwrap_or(conflict_name.clone());
+            // Preserve the file's directory when recording the conflict copy.
+            let conflict_rel = match rel_path.rsplit_once('/') {
+                Some((dir, _)) => format!("{dir}/{conflict_name}"),
+                None => conflict_name.clone(),
+            };
 
             if let Err(e) = std::fs::rename(local_path, &conflict_path) {
                 warn!("keep_both rename failed: {e}");
@@ -464,6 +525,23 @@ async fn apply_conflict_inner(
                 // Upload the conflict copy.
                 enqueue_upload(db, pair, &conflict_rel, now)?;
             }
+
+            // Record the remote metadata for the original path *before*
+            // enqueuing the download; `run_download` looks up `drive_id` in
+            // the DB and would otherwise fail with "no drive_id".
+            let remote_mtime = remote.modified_time.as_deref().and_then(rfc3339_to_ms).unwrap_or(0);
+            db.upsert_file(FileRow {
+                pair_id:       pair.id.clone(),
+                rel_path:      rel_path.to_string(),
+                size:          remote.size.as_deref().and_then(|s| s.parse().ok()),
+                mtime_ms:      None,
+                md5:           None,
+                drive_id:      Some(remote.id.clone()),
+                drive_md5:     remote.md5_checksum.clone(),
+                drive_mtime_ms: Some(remote_mtime),
+                drive_rev:     None,
+                state:         "dirty".into(),
+            })?;
 
             // Download remote to original name.
             db.enqueue(NewJob {
@@ -519,11 +597,15 @@ pub fn resolve_conflict(
                 .unwrap_or_default();
             let conflict_name = format!("{stem} (conflict {machine} {ts}){ext}");
             let conflict_path = local_path.with_file_name(&conflict_name);
+            let conflict_rel = match rel_path.rsplit_once('/') {
+                Some((dir, _)) => format!("{dir}/{conflict_name}"),
+                None => conflict_name.clone(),
+            };
 
             if let Err(e) = std::fs::rename(&local_path, &conflict_path) {
                 warn!("resolve_conflict both rename: {e}");
             } else {
-                enqueue_upload(db, pair, &conflict_name, now)?;
+                enqueue_upload(db, pair, &conflict_rel, now)?;
             }
             db.enqueue(NewJob {
                 pair_id:    pair.id.clone(),
@@ -598,6 +680,9 @@ fn move_to_twin_trash(
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn enqueue_upload(db: &Db, pair: &PairEntry, rel_path: &str, now: i64) -> Result<(), AppError> {
+    // A queued upload means this file is out of sync, even when the row still
+    // says "synced" (e.g. mirror mode re-uploading after a remote change).
+    db.mark_state(&pair.id, rel_path, "dirty")?;
     db.enqueue(NewJob {
         pair_id:    pair.id.clone(),
         kind:       "upload".into(),
@@ -753,6 +838,8 @@ mod tests {
         let (dir, db) = temp_db();
         let row = base_row("p1", "file.txt");
         db.upsert_file(row).unwrap();
+        // The tracked file exists locally and matches the DB → no changes.
+        std::fs::write(dir.path().join("file.txt"), b"local content").unwrap();
 
         let entry = DriveEntry {
             id:            "drv_id_1".into(),
@@ -915,6 +1002,69 @@ mod tests {
         let r = reconcile_listing(&db, &drive, &p, &[entry], &echo).await.unwrap();
         // newer_wins: 0 explicit conflicts (just queues upload/download).
         assert_eq!(r.uploads + r.downloads, 1, "newer_wins should queue exactly one action");
+    }
+
+    // ── Mirror mode keeps the local side authoritative ───────────────────────
+
+    #[tokio::test]
+    async fn mirror_remote_change_reuploads_local() {
+        let (dir, db) = temp_db();
+        let row = base_row("p1", "file.txt");
+        db.upsert_file(row).unwrap();
+        std::fs::write(dir.path().join("file.txt"), b"local content").unwrap();
+
+        let change = DriveChange {
+            file_id: "drv_id_1".into(),
+            removed: Some(false),
+            file: Some(DriveEntry {
+                id:            "drv_id_1".into(),
+                name:          Some("file.txt".into()),
+                parents:       None,
+                md5_checksum:  Some("new_remote_md5".into()),
+                modified_time: Some("2023-11-20T00:00:00Z".into()),
+                size:          Some("200".into()),
+                mime_type:     Some("application/octet-stream".into()),
+                trashed:       Some(false),
+            }),
+        };
+
+        let p = pair(PairMode::Mirror, dir.path().to_str().unwrap());
+        let echo = Arc::new(SelfWritten::new());
+
+        apply_remote_change_with_policy(
+            &db, &p, &change, &echo, ConflictPolicy::NewerWins,
+        ).await.unwrap();
+
+        assert_eq!(db.count_jobs_by_status("queued").unwrap(), 1);
+        let row = db.get_file("p1", "file.txt").unwrap().unwrap();
+        assert_eq!(row.state, "dirty");
+        assert_eq!(row.drive_id.as_deref(), Some("drv_id_1"));
+    }
+
+    #[tokio::test]
+    async fn mirror_remote_delete_recreates_remote() {
+        let (dir, db) = temp_db();
+        let row = base_row("p1", "file.txt");
+        db.upsert_file(row).unwrap();
+        std::fs::write(dir.path().join("file.txt"), b"local content").unwrap();
+
+        let change = DriveChange {
+            file_id: "drv_id_1".into(),
+            removed: Some(true),
+            file:    None,
+        };
+
+        let p = pair(PairMode::Mirror, dir.path().to_str().unwrap());
+        let echo = Arc::new(SelfWritten::new());
+
+        apply_remote_change_with_policy(
+            &db, &p, &change, &echo, ConflictPolicy::NewerWins,
+        ).await.unwrap();
+
+        assert_eq!(db.count_jobs_by_status("queued").unwrap(), 1);
+        let row = db.get_file("p1", "file.txt").unwrap().unwrap();
+        assert_eq!(row.state, "dirty");
+        assert!(row.drive_id.is_none(), "stale Drive id must be cleared");
     }
 
     // ── Echo suppression ─────────────────────────────────────────────────────
