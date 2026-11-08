@@ -5,7 +5,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useStore } from "@/store";
-import { getActivity, retryJob } from "@/lib/tauri";
+import { getActivity, retryJob, retryAllFailed } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import { formatTime, formatRelTime } from "@/lib/format";
 import { toast } from "sonner";
@@ -32,11 +32,13 @@ export function ActivityScreen() {
   const rows = useStore((s) => s.activity) ?? [];
   const [loading, setLoading] = useState(false);
   const [retryingId, setRetryingId] = useState<number | null>(null);
+  const [retryingAll, setRetryingAll] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(50);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getActivity(200);
+      const data = await getActivity(300);
       setActivity(data);
     } catch (e) {
       toast.error(`Failed to load activity: ${String(e)}`);
@@ -48,6 +50,11 @@ export function ActivityScreen() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Reset pagination when filter or search changes
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [filter, search]);
 
   const filtered = rows.filter((r) => {
     if (filter === "failed" && r.result !== "error") return false;
@@ -80,6 +87,19 @@ export function ActivityScreen() {
     }
   }
 
+  async function handleRetryAll() {
+    setRetryingAll(true);
+    try {
+      const count = await retryAllFailed();
+      toast.success(`Re-queued ${count} failed transfer${count === 1 ? "" : "s"}`);
+      await refresh();
+    } catch (e) {
+      toast.error(`Retry failed: ${String(e)}`);
+    } finally {
+      setRetryingAll(false);
+    }
+  }
+
   return (
     <div className="p-7 max-w-4xl w-full mx-auto space-y-6">
       {/* Header */}
@@ -100,18 +120,36 @@ export function ActivityScreen() {
           </p>
         </div>
 
-        <Button
-          variant="secondary"
-          onClick={refresh}
-          disabled={loading}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw
-            size={14}
-            className={cn("text-[var(--text-muted)]", loading && "animate-spin text-blue-400")}
-          />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {failureCount > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleRetryAll}
+              disabled={retryingAll || loading}
+              className="flex items-center gap-1.5 text-xs bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 shadow-none"
+            >
+              <RotateCcw
+                size={13}
+                className={cn(retryingAll && "animate-spin")}
+              />
+              Retry All ({failureCount})
+            </Button>
+          )}
+
+          <Button
+            variant="secondary"
+            onClick={refresh}
+            disabled={loading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw
+              size={14}
+              className={cn("text-[var(--text-muted)]", loading && "animate-spin text-blue-400")}
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Filter Tabs & Search Controls */}
@@ -197,7 +235,7 @@ export function ActivityScreen() {
 
           {/* Rows */}
           <div className="divide-y divide-[var(--border-subtle)]">
-            {filtered.map((row, i) => {
+            {filtered.slice(0, visibleCount).map((row, i) => {
               const isFailed = row.result === "error";
               const isUpload = row.kind.toLowerCase().includes("upload");
               const isDelete = row.kind.toLowerCase().includes("delete");
@@ -300,6 +338,37 @@ export function ActivityScreen() {
               );
             })}
           </div>
+
+          {/* Pagination / Progressive Loading Footer */}
+          {filtered.length > 50 && (
+            <div className="px-4 py-3 bg-[var(--surface-2)]/40 border-t border-[var(--border)] flex items-center justify-between text-xs text-[var(--text-subtle)]">
+              <span>
+                Showing <strong className="text-white">{Math.min(visibleCount, filtered.length)}</strong> of <strong className="text-white">{filtered.length}</strong> items
+              </span>
+              <div className="flex items-center gap-2">
+                {visibleCount < filtered.length && (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setVisibleCount((prev) => prev + 50)}
+                    className="text-xs border-[#30363d] hover:bg-[#21262d] text-white"
+                  >
+                    Load 50 More
+                  </Button>
+                )}
+                {visibleCount < filtered.length && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => setVisibleCount(filtered.length)}
+                    className="text-xs text-[var(--text-muted)] hover:text-white"
+                  >
+                    Show All ({filtered.length})
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

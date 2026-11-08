@@ -22,6 +22,7 @@ import {
   ArrowDown,
   ChevronRight,
   Clock,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -35,6 +36,7 @@ import {
   getConfig,
   updateConfig,
   runSyncCycle,
+  retryAllFailed,
   type PairEntry,
 } from "@/lib/tauri";
 import { progressLabel, formatBytes, formatSpeed, formatEta } from "@/lib/format";
@@ -439,9 +441,10 @@ export const FolderPairCard = FolderPairRow;
 
 interface HomeScreenProps {
   onSelectPair?: (id: string) => void;
+  onNavigate?: (screen: "home" | "activity" | "settings") => void;
 }
 
-export function HomeScreen({ onSelectPair }: HomeScreenProps) {
+export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
   const gov = useStore((s) => s.gov) ?? { kind: "running" as const, reason: null, concurrency: 2 };
   const pairs = useStore((s) => s.pairs) ?? [];
   const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, done: 0, failed: 0 };
@@ -453,6 +456,19 @@ export function HomeScreen({ onSelectPair }: HomeScreenProps) {
 
   const [showAdd, setShowAdd] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
+  const [retryingAll, setRetryingAll] = useState(false);
+
+  const handleRetryAll = async () => {
+    setRetryingAll(true);
+    try {
+      const count = await retryAllFailed();
+      toast.success(`Re-queued ${count} failed transfer${count === 1 ? "" : "s"}`);
+    } catch (e) {
+      toast.error(`Retry failed: ${String(e)}`);
+    } finally {
+      setRetryingAll(false);
+    }
+  };
 
   const govKind = String(gov?.kind || gov?.state || "running").toLowerCase();
   const isPaused = govKind === "user_paused" || govKind === "paused";
@@ -559,24 +575,19 @@ export function HomeScreen({ onSelectPair }: HomeScreenProps) {
             </div>
 
             <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-lg font-bold text-white tracking-tight">
-                  {isPaused
-                    ? "Sync Engine Paused"
-                    : isThrottled
-                    ? "Engine Throttled (System Load)"
-                    : isBatchActive
-                    ? `Synchronizing ${queueStatus.running + queueStatus.queued} files…`
-                    : hasFailures
-                    ? `${queueStatus.failed} ${queueStatus.failed === 1 ? "file" : "files"} failed to sync`
-                    : anyPairPending
-                    ? "Sync Pending"
-                    : "All Files Up to Date"}
-                </h1>
-                {authed && (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm" title="Google Drive connected" />
-                )}
-              </div>
+              <h1 className="text-lg font-bold text-white tracking-tight">
+                {isPaused
+                  ? "Sync Engine Paused"
+                  : isThrottled
+                  ? "Engine Throttled (System Load)"
+                  : isBatchActive
+                  ? `Synchronizing ${queueStatus.running + queueStatus.queued} files…`
+                  : hasFailures
+                  ? `${queueStatus.failed} ${queueStatus.failed === 1 ? "file" : "files"} failed to sync`
+                  : anyPairPending
+                  ? "Sync Pending"
+                  : "All Files Up to Date"}
+              </h1>
 
               <p className="text-xs sm:text-sm text-[#7d8590] mt-1 flex items-center flex-wrap gap-x-2">
                 <span>{enabledPairsCount} active folder {enabledPairsCount === 1 ? "pair" : "pairs"}</span>
@@ -624,10 +635,10 @@ export function HomeScreen({ onSelectPair }: HomeScreenProps) {
 
         {/* In-flight Batch Sync Progress Strip */}
         {isBatchActive && (
-          <div className="mt-5 pt-4.5 border-t border-[#30363d] space-y-2">
+          <div className="mt-5 pt-4 border-t border-[#30363d] space-y-2.5">
             <div className="flex items-center justify-between text-xs font-semibold">
               <span className="text-white flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
                 Active Batch Progress
               </span>
               <span className="font-mono text-blue-400 font-bold">
@@ -658,9 +669,26 @@ export function HomeScreen({ onSelectPair }: HomeScreenProps) {
                 {queueStatus.failed} transfer{queueStatus.failed === 1 ? "" : "s"} encountered errors
               </span>
             </div>
-            <span className="text-xs text-red-400 font-semibold hover:underline cursor-pointer">
-              View Activity ledger →
-            </span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={retryingAll}
+                onClick={handleRetryAll}
+                className="text-xs text-red-300 hover:text-white font-medium hover:underline bg-transparent border-none p-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <RotateCcw className={cn("w-3 h-3", retryingAll && "animate-spin")} />
+                <span>Retry all</span>
+              </button>
+              <span className="text-red-500/30">•</span>
+              <button
+                type="button"
+                onClick={() => onNavigate?.("activity")}
+                className="text-xs text-red-400 font-semibold hover:underline cursor-pointer bg-transparent border-none p-0 flex items-center gap-1"
+              >
+                <span>View Activity ledger</span>
+                <span>→</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

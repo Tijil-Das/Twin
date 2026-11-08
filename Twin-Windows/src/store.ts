@@ -77,6 +77,9 @@ interface AppState {
 
 const defaultGov: GovStatePayload = { kind: "running", reason: null, concurrency: 2 };
 
+// ── Completed transfer auto-dismiss timers ────────────────────────────────────
+const completionTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useStore = create<AppState>((set) => ({
@@ -98,23 +101,43 @@ export const useStore = create<AppState>((set) => ({
   setActivity: (activity) => set({ activity }),
 
   progress: {},
-  setProgress: (ev) =>
-    set((s) => {
-      const next = { ...s.progress };
-      if (ev.bytes_done >= ev.bytes_total && ev.bytes_total > 0) {
-        setTimeout(() => {
+  setProgress: (ev) => {
+    // Schedule delayed cleanup for finished jobs outside of the pure reducer
+    if (ev.bytes_done >= ev.bytes_total && ev.bytes_total > 0) {
+      if (!completionTimers.has(ev.job_id)) {
+        const timer = setTimeout(() => {
+          completionTimers.delete(ev.job_id);
           useStore.getState().clearProgress(ev.job_id);
         }, 1200);
+        completionTimers.set(ev.job_id, timer);
       }
-      next[ev.job_id] = ev;
-      return { progress: next };
-    }),
-  clearProgress: (jobId) =>
+    } else {
+      const existing = completionTimers.get(ev.job_id);
+      if (existing) {
+        clearTimeout(existing);
+        completionTimers.delete(ev.job_id);
+      }
+    }
+
+    set((s) => ({
+      progress: {
+        ...s.progress,
+        [ev.job_id]: ev,
+      },
+    }));
+  },
+  clearProgress: (jobId) => {
+    const existing = completionTimers.get(jobId);
+    if (existing) {
+      clearTimeout(existing);
+      completionTimers.delete(jobId);
+    }
     set((s) => {
       const next = { ...s.progress };
       delete next[jobId];
       return { progress: next };
-    }),
+    });
+  },
 
   gov: defaultGov,
   setGov: (gov) => set({ gov }),

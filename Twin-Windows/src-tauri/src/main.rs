@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tracing::{info, warn};
 use twin_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, updater, watcher, setup_tray, set_tray_state, TrayState};
 use twin_lib::drive::revisions::Revision;
@@ -558,6 +558,8 @@ fn main() {
             auth::auth_has_full_scope,
             db::get_activity,
             db::retry_job,
+            db::retry_all_failed,
+            db::db_checkpoint_wal,
             db::get_pair_statuses,
             governor::gov_state,
             governor::gov_pause,
@@ -661,6 +663,10 @@ fn main() {
             tauri::async_runtime::spawn(transfer::relay_progress(prog_rx, app_handle));
             app.manage(queue::QueueState(q.clone()));
 
+            // On startup, re-queue any previously failed jobs so resilient handlers can cleanly recover
+            let _ = db_arc.retry_failed_jobs(None);
+            q.wake();
+
             // Spawn GitHub push loop (P11).
             {
                 let db_arc2 = Arc::clone(&db_arc);
@@ -687,12 +693,19 @@ fn main() {
                 let handle_tray = handle.clone();
                 tauri::async_runtime::spawn(async move {
                     let mut last_state = TrayState::Idle;
+                    let mut last_counts = (0i64, 0i64, 0i64);
                     loop {
                         tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
                         let running = db_tray.count_jobs_by_status("running").unwrap_or(0);
                         let queued = db_tray.count_jobs_by_status("queued").unwrap_or(0);
                         let failed = db_tray.count_jobs_by_status("failed").unwrap_or(0);
                         let is_paused = matches!(gov_tray.state(), governor::GovState::UserPaused);
+
+                        let current_counts = (running, queued, failed);
+                        if current_counts != last_counts {
+                            let _ = handle_tray.emit("queue://updated", ());
+                            last_counts = current_counts;
+                        }
 
                         let (new_state, tooltip) = if is_paused {
                             (TrayState::Paused, "Twin \u{2013} Paused".to_string())
@@ -857,6 +870,16 @@ fn main() {
                                     }
                                 }
                                 watcher::ChangeKind::Deleted => {
+                                    let existing = db_watch.get_file(&pair.id, &rel_str).ok().flatten();
+                                    if let Some(ref r) = existing {
+                                        if matches!(r.state.as_str(), "deleted" | "trashed" | "remote_deleted") {
+                                            continue;
+                                        }
+                                        if r.drive_id.as_deref().unwrap_or("").trim().is_empty() {
+                                            let _ = db_watch.mark_state(&pair.id, &rel_str, "deleted");
+                                            continue;
+                                        }
+                                    }
                                     let _ = db_watch.mark_state(&pair.id, &rel_str, "deleted_local");
                                     let now_ms = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)

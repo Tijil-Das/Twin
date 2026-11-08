@@ -11,6 +11,7 @@ import type { GovStatePayload } from "@/lib/tauri";
 import { Sidebar, type Screen } from "@/components/Sidebar";
 import { ConflictDialog } from "@/components/ConflictDialog";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HomeScreen }     from "@/screens/Home";
 import { ActivityScreen } from "@/screens/Activity";
 import { SettingsScreen } from "@/screens/Settings";
@@ -69,13 +70,55 @@ export default function App() {
     })();
   }, [setConfig, setAuthed, setGov, setQueueStatus, setPairStatuses]);
 
-  // Poll queue status and per-pair sync statuses every 2s
+  // Global desktop keyboard shortcuts
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      // Escape: return from detail screen
+      if (e.key === "Escape") {
+        if (selectedPairId) {
+          e.preventDefault();
+          setSelectedPairId(null);
+        }
+        return;
+      }
+
+      // Ctrl+, or Cmd+,: Open Settings
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        setSelectedPairId(null);
+        setScreen("settings");
+        return;
+      }
+
+      // Ctrl+1 / 2 / 3 navigation shortcuts
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        if (e.key === "1") {
+          e.preventDefault();
+          setSelectedPairId(null);
+          setScreen("home");
+        } else if (e.key === "2") {
+          e.preventDefault();
+          setSelectedPairId(null);
+          setScreen("activity");
+        } else if (e.key === "3") {
+          e.preventDefault();
+          setSelectedPairId(null);
+          setScreen("settings");
+        }
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedPairId, setSelectedPairId]);
+
+  // Fallback idle polling for queue status and per-pair sync statuses (10s)
   useEffect(() => {
     const id = setInterval(() => {
       if (!visibleRef.current) return;
       void queueStatus().then(setQueueStatus).catch(() => undefined);
       void getPairStatuses().then(setPairStatuses).catch(() => undefined);
-    }, 2000);
+    }, 10000);
     return () => clearInterval(id);
   }, [setQueueStatus, setPairStatuses]);
 
@@ -91,6 +134,13 @@ export default function App() {
       // Governor state
       listen<GovStatePayload>("governor://state", (ev) => {
         setGov(ev.payload);
+      }),
+
+      // Instant push event when queue jobs change status
+      listen("queue://updated", () => {
+        if (!visibleRef.current) return;
+        void queueStatus().then(setQueueStatus).catch(() => undefined);
+        void getPairStatuses().then(setPairStatuses).catch(() => undefined);
       }),
 
       // Auth changed
@@ -112,7 +162,7 @@ export default function App() {
     return () => {
       subs.forEach((p) => p.then((unsub) => unsub()).catch(() => undefined));
     };
-  }, [setProgress, setGov, setAuthed, addConflict]);
+  }, [setProgress, setGov, setAuthed, addConflict, setQueueStatus, setPairStatuses]);
 
   return (
     <>
@@ -126,18 +176,28 @@ export default function App() {
         />
 
         <main className="flex-1 h-screen overflow-y-auto bg-[var(--bg)] relative">
-          {selectedPairId ? (
-            <PairDetailScreen
-              pairId={selectedPairId}
-              onBack={() => setSelectedPairId(null)}
-            />
-          ) : (
-            <>
-              {screen === "home"     && <HomeScreen onSelectPair={(id) => setSelectedPairId(id)} />}
-              {screen === "activity" && <ActivityScreen />}
-              {screen === "settings" && <SettingsScreen />}
-            </>
-          )}
+          <ErrorBoundary
+            fallbackTitle="View Error"
+            onReset={() => setSelectedPairId(null)}
+          >
+            {selectedPairId ? (
+              <PairDetailScreen
+                pairId={selectedPairId}
+                onBack={() => setSelectedPairId(null)}
+              />
+            ) : (
+              <>
+                {screen === "home"     && (
+                  <HomeScreen
+                    onSelectPair={(id) => setSelectedPairId(id)}
+                    onNavigate={(s) => setScreen(s)}
+                  />
+                )}
+                {screen === "activity" && <ActivityScreen />}
+                {screen === "settings" && <SettingsScreen />}
+              </>
+            )}
+          </ErrorBoundary>
         </main>
       </div>
 

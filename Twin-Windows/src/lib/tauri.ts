@@ -183,6 +183,8 @@ export const authClearCredentials = () => invoke<void>("auth_clear_credentials")
 
 export const getActivity = (limit: number) => invoke<Activity[]>("get_activity", { limit });
 export const retryJob = (id: number) => invoke<void>("retry_job", { id });
+export const retryAllFailed = () => invoke<number>("retry_all_failed");
+export const dbCheckpointWal = () => invoke<void>("db_checkpoint_wal");
 
 export const govState = () => invoke<GovStatePayload>("gov_state");
 export const govPause = () => invoke<void>("gov_pause");

@@ -176,6 +176,9 @@ async fn dispatcher<R: JobRunner>(
             }
 
             Ok(None) => {
+                // Perform lightweight WAL checkpoint while the queue is idle.
+                let _ = db.checkpoint_wal();
+
                 // Sleep until next retry or wake on notify, with a max 2s fallback poll
                 let delay_ms = match next_retry_time(&db) {
                     Some(next_ms) => (next_ms - now_ms()).max(0) as u64,
@@ -246,6 +249,10 @@ pub async fn sync_now(
     let echo = std::sync::Arc::new(crate::sync::SelfWritten::new());
 
     tokio::spawn(async move {
+        // Automatically re-queue any failed jobs for this pair (or all pairs)
+        // so our resilient handlers can re-process and complete them.
+        let _ = db.retry_failed_jobs(pair_id.as_deref());
+
         for pair in cfg.pairs.iter().filter(|p| p.enabled) {
             if let Some(ref target_id) = pair_id {
                 if &pair.id != target_id {

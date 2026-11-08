@@ -558,6 +558,25 @@ impl Db {
         .map_err(|e| AppError::Db(format!("count_jobs: {e}")))
     }
 
+    /// Re-queue failed jobs (optionally filtered by pair_id).
+    pub fn retry_failed_jobs(&self, pair_id: Option<&str>) -> Result<usize, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let count = match pair_id {
+            Some(pid) => conn.execute(
+                "UPDATE jobs SET status='queued', attempts=0, next_try_ms=0, last_error=NULL
+                 WHERE pair_id=?1 AND status='failed'",
+                params![pid],
+            ),
+            None => conn.execute(
+                "UPDATE jobs SET status='queued', attempts=0, next_try_ms=0, last_error=NULL
+                 WHERE status='failed'",
+                [],
+            ),
+        }
+        .map_err(|e| AppError::Db(format!("retry_failed_jobs: {e}")))?;
+        Ok(count)
+    }
+
     // ── activity ─────────────────────────────────────────────────────────────
 
     /// Insert an activity row, then prune so at most `MAX_ACTIVITY_ROWS` remain.
@@ -956,6 +975,13 @@ impl Db {
             last_sync_ms: None,
         }))
     }
+
+    /// Checkpoint SQLite WAL file to keep disk space lean and commit WAL pages.
+    pub fn checkpoint_wal(&self) -> Result<(), AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE);");
+        Ok(())
+    }
 }
 
 // ── row mapping helpers ───────────────────────────────────────────────────────
@@ -1027,6 +1053,18 @@ pub fn retry_job(state: tauri::State<'_, DbState>, id: i64) -> Result<(), String
     )
     .map_err(|e| format!("retry_job: {e}"))?;
     Ok(())
+}
+
+/// Re-queue all failed jobs.
+#[tauri::command]
+pub fn retry_all_failed(state: tauri::State<'_, DbState>) -> Result<usize, String> {
+    state.0.retry_failed_jobs(None).map_err(|e| e.to_string())
+}
+
+/// Trigger a passive SQLite WAL checkpoint.
+#[tauri::command]
+pub fn db_checkpoint_wal(state: tauri::State<'_, DbState>) -> Result<(), String> {
+    state.0.checkpoint_wal().map_err(|e| e.to_string())
 }
 
 /// Retrieve real-time sync statuses for all folder pairs (< 1ms execution).
