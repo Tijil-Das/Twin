@@ -64,18 +64,15 @@ jobs:
             Write-Host "NSIS 3.13 extracted to $nsisDir"
           }
 
-          # 2. Download and place nsis_tauri_utils.dll via direct GitHub API asset endpoint
+          # 2. Place verified nsis_tauri_utils.dll from repository assets
           $pluginsDir = Join-Path $nsisDir "Plugins\x86-unicode\additional"
           if (-not (Test-Path $pluginsDir)) {
             New-Item -ItemType Directory -Path $pluginsDir -Force | Out-Null
           }
           $pluginDll = Join-Path $pluginsDir "nsis_tauri_utils.dll"
-          if (-not (Test-Path $pluginDll)) {
-            Write-Host "Downloading nsis_tauri_utils.dll via GitHub API..."
-            curl.exe -s -L -H "Accept: application/octet-stream" -H "User-Agent: TauriCI" -o $pluginDll "https://api.github.com/repos/tauri-apps/nsis-tauri-utils/releases/assets/345882097"
-            $hash = (Get-FileHash -Path $pluginDll -Algorithm SHA1).Hash
-            Write-Host "nsis_tauri_utils.dll installed with SHA1: $hash"
-          }
+          Copy-Item -Path ".github/assets/nsis_tauri_utils.dll" -Destination $pluginDll -Force
+          $hash = (Get-FileHash -Path $pluginDll -Algorithm SHA1).Hash
+          Write-Host "nsis_tauri_utils.dll installed from local asset with SHA1: $hash"
 
       - name: Build Tauri Desktop Application
         working-directory: Twin-Windows
