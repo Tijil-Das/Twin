@@ -624,14 +624,6 @@ fn main() {
             tauri::async_runtime::spawn(transfer::relay_progress(prog_rx, app_handle));
             app.manage(queue::QueueState(q.clone()));
 
-            // Spawn Google Drive AppData config sync loop (zero-config cloud sync).
-            {
-                if let Ok(drive_client) = drive::DriveClient::new() {
-                    let gov_appdata = gov.clone();
-                    tauri::async_runtime::spawn(sync::appdata::appdata_sync_loop(drive_client, gov_appdata, 15));
-                }
-            }
-
             // Spawn GitHub push loop (P11).
             {
                 let db_arc2 = Arc::clone(&db_arc);

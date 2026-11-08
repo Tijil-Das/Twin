@@ -13,7 +13,6 @@ import {
   authLogout,
   authStatus,
   authHasFullScope,
-  appdataSyncNow,
   updateGetState,
   updateCheck,
   updateInstall,
@@ -62,7 +61,6 @@ export function SettingsScreen() {
   const [local, setLocal] = useState<Config | null>(config);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
-  const [syncingAppData, setSyncingAppData] = useState(false);
   const [quota, setQuota] = useState<StorageQuota | null>(null);
   const [autostart, setAutostart] = useState(false);
   const [hasFullScope, setHasFullScope] = useState<boolean>(true);
@@ -146,18 +144,6 @@ export function SettingsScreen() {
       toast.success("Signed out");
     } catch (e) {
       toast.error(`Logout failed: ${String(e)}`);
-    }
-  }
-
-  async function handleAppDataSync() {
-    setSyncingAppData(true);
-    try {
-      await appdataSyncNow();
-      toast.success("Settings synchronized with Google Drive AppData");
-    } catch (e) {
-      toast.error(`Sync failed: ${String(e)}`);
-    } finally {
-      setSyncingAppData(false);
     }
   }
 
@@ -318,18 +304,6 @@ export function SettingsScreen() {
                 </div>
 
                 <div className="flex items-center gap-2.5">
-                  <Button
-                    variant="secondary"
-                    onClick={handleAppDataSync}
-                    disabled={syncingAppData}
-                    title="Sync settings with Google Drive AppData folder"
-                  >
-                    <RefreshCw
-                      size={13}
-                      className={cn("text-[var(--text-muted)]", syncingAppData && "animate-spin text-blue-400")}
-                    />
-                    {syncingAppData ? "Syncing…" : "Sync AppData"}
-                  </Button>
                   <Button
                     variant="secondary"
                     onClick={handleLogout}
