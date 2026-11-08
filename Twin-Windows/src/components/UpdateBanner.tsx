@@ -52,11 +52,11 @@ export function UpdateBanner() {
 
   return (
     <div
-      className="fixed bottom-5 right-5 z-[100] flex items-center gap-3 rounded-xl border border-blue-500/30 bg-[var(--surface)]/95 px-4 py-3 shadow-elevation backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-200"
+      className="fixed bottom-5 right-5 z-[100] flex items-center gap-3 rounded-lg border border-blue-500/30 bg-[var(--surface)]/95 px-4 py-3 shadow-elevation backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-200"
       role="status"
       aria-live="polite"
     >
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
         <Sparkles className="h-4 w-4" />
       </div>
 
@@ -71,7 +71,7 @@ export function UpdateBanner() {
           type="button"
           onClick={handleRestart}
           disabled={installing}
-          className="rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 px-3 py-1.5 text-xs font-semibold text-white transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+          className="rounded-md bg-blue-700 hover:bg-blue-600 active:bg-blue-800 disabled:opacity-50 px-3 py-1.5 text-xs font-semibold text-white transition-all shadow-sm flex items-center gap-1.5 cursor-pointer border border-blue-600/40"
         >
           {installing ? (
             <>

@@ -19,13 +19,13 @@
   --text-muted: #9aa1b0;
   --text-subtle: #626875;
 
-  /* Restrained, authoritative blue accent */
-  --accent: #3b82f6;
-  --accent-hover: #60a5fa;
-  --accent-pressed: #2563eb;
+  /* Authoritative dark blue accent with high contrast for text-white */
+  --accent: #1d4ed8;
+  --accent-hover: #1e40af;
+  --accent-pressed: #1e3a8a;
   --accent-contrast: #ffffff;
-  --accent-subtle: rgba(59, 130, 246, 0.09);
-  --accent-border: rgba(59, 130, 246, 0.28);
+  --accent-subtle: rgba(29, 78, 216, 0.12);
+  --accent-border: rgba(29, 78, 216, 0.35);
 
   --success: #10b981;
   --success-subtle: rgba(16, 185, 129, 0.09);
@@ -34,8 +34,8 @@
   --danger: #ef4444;
   --danger-subtle: rgba(239, 68, 68, 0.09);
 
-  --radius: 10px;
-  --radius-sm: 6px;
+  --radius: 6px;
+  --radius-sm: 4px;
   --shadow-flyout: 0 18px 48px -8px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
@@ -77,7 +77,7 @@ select {
 
 ::selection {
   color: #ffffff;
-  background: rgba(59, 130, 246, 0.45);
+  background: rgba(29, 78, 216, 0.45);
 }
 
 /* Custom Sleek Scrollbar */

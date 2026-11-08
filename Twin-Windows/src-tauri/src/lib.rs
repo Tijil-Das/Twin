@@ -58,12 +58,13 @@ impl TrayState {
 }
 
 /// Update the tray icon to reflect the current application state.
-pub fn set_tray_state<R: Runtime>(app: &AppHandle<R>, state: TrayState) {
+pub fn set_tray_state<R: Runtime>(app: &AppHandle<R>, state: TrayState, custom_tooltip: Option<&str>) {
     match Image::from_bytes(state.icon_bytes()) {
         Ok(icon) => {
             if let Some(tray) = app.tray_by_id("main") {
                 let _ = tray.set_icon(Some(icon));
-                let _ = tray.set_tooltip(Some(state.tooltip()));
+                let tip = custom_tooltip.unwrap_or_else(|| state.tooltip());
+                let _ = tray.set_tooltip(Some(tip));
             }
         }
         Err(e) => {

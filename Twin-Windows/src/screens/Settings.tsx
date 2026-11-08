@@ -337,7 +337,7 @@ export function SettingsScreen() {
               {/* Limited Scope Warning & Upgrade Option */}
               {!hasFullScope && authed && (
                 <div className="pt-3.5 border-t border-[var(--border-subtle)]">
-                  <div className="flex items-center justify-between p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-200">
+                  <div className="flex items-center justify-between p-3.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-200">
                     <div className="flex items-center gap-2.5 min-w-0 pr-3">
                       <AlertTriangle size={16} className="text-amber-400 shrink-0" />
                       <div className="text-xs">
@@ -618,7 +618,7 @@ export function SettingsScreen() {
                   },
                 }))
               }
-              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-xl text-[var(--text)] focus:outline-none focus:border-blue-500/70 cursor-pointer font-medium"
+              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-md text-[var(--text)] focus:outline-none focus:border-blue-500/70 cursor-pointer font-medium"
             >
               <option value="newer_wins">Newer Timestamp Wins (Automatic)</option>
               <option value="keep_both">Keep Both (Suffix local file)</option>
@@ -642,7 +642,7 @@ export function SettingsScreen() {
                   },
                 }))
               }
-              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-xl text-[var(--text)] focus:outline-none focus:border-blue-500/70 cursor-pointer font-medium"
+              className="w-full h-9 px-3 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-md text-[var(--text)] focus:outline-none focus:border-blue-500/70 cursor-pointer font-medium"
             >
               <option value="drive_trash">Move to Google Drive Trash (Safe)</option>
               <option value="ignore">Ignore Remote Deletions</option>

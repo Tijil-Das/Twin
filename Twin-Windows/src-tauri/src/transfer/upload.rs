@@ -86,10 +86,15 @@ async fn run_upload(
     limiter: Arc<Limiter>,
     progress: ProgressTx,
 ) -> Result<(), AppError> {
-    // Find the pair config (use fresh config from disk to reflect newly added pairs).
-    let current_cfg = crate::config::load().unwrap_or(cfg.clone());
-    let pair = match current_cfg.pairs.iter().find(|p| p.id == job.pair_id) {
-        Some(p) => p.clone(),
+    // Find the pair config (use fresh config from disk to reflect newly added pairs, fallback to runner's cfg).
+    let disk_cfg = crate::config::load().ok();
+    let pair = disk_cfg
+        .as_ref()
+        .and_then(|c| c.pairs.iter().find(|p| p.id == job.pair_id))
+        .or_else(|| cfg.pairs.iter().find(|p| p.id == job.pair_id))
+        .cloned();
+    let pair = match pair {
+        Some(p) => p,
         None => {
             warn!("upload: pair {} not found in config, completing job", job.pair_id);
             let _ = db.complete_job(job.id);
@@ -184,6 +189,7 @@ async fn run_upload(
             rel_path: job.rel_path.clone(),
             bytes_done: 0,
             bytes_total,
+            kind: "upload".into(),
         });
 
         let m = drive.multipart_upload(
@@ -198,6 +204,7 @@ async fn run_upload(
             rel_path: job.rel_path.clone(),
             bytes_done: bytes_total,
             bytes_total,
+            kind: "upload".into(),
         });
 
         m
@@ -336,6 +343,7 @@ async fn resumable_upload(
             rel_path: job.rel_path.clone(),
             bytes_done: offset,
             bytes_total: total_size,
+            kind: "upload".into(),
         });
 
         // Retry individual chunk on transient error (up to 8 retries).
@@ -354,6 +362,7 @@ async fn resumable_upload(
                         rel_path: job.rel_path.clone(),
                         bytes_done: total_size,
                         bytes_total: total_size,
+                        kind: "upload".into(),
                     });
                     let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
                     return Ok(meta);
@@ -408,6 +417,7 @@ async fn resumable_upload(
                                 rel_path: job.rel_path.clone(),
                                 bytes_done: total_size,
                                 bytes_total: total_size,
+                                kind: "upload".into(),
                             });
                             let _ = db.delete_upload_session(&job.pair_id, &job.rel_path);
                             return Ok(meta);

@@ -174,7 +174,7 @@ export function FolderColorDialog({
         {/* Header */}
         <div className="p-4 px-5 border-b border-[var(--border)] flex items-center justify-between bg-[var(--surface-2)]">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400">
+            <div className="p-2 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400">
               <Palette size={16} />
             </div>
             <div>
@@ -192,7 +192,7 @@ export function FolderColorDialog({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface)] transition-colors cursor-pointer"
+            className="p-1 rounded-md text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface)] transition-colors cursor-pointer"
           >
             <X size={16} />
           </button>
@@ -238,7 +238,7 @@ export function FolderColorDialog({
                 </div>
               )}
 
-              <div className="border border-[var(--border)] rounded-xl bg-[var(--surface-2)]/50 divide-y divide-[var(--border-subtle)] max-h-48 overflow-y-auto">
+              <div className="border border-[var(--border)] rounded-lg bg-[var(--surface-2)]/50 divide-y divide-[var(--border-subtle)] max-h-48 overflow-y-auto">
                 {filteredFolders.length === 0 ? (
                   <div className="p-4 text-center text-xs text-[var(--text-muted)]">
                     No folders match filter
@@ -303,7 +303,7 @@ export function FolderColorDialog({
             </div>
 
             {/* 24 Google Drive Colors Grid */}
-            <div className="grid grid-cols-8 gap-2 p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+            <div className="grid grid-cols-8 gap-2 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
               {GOOGLE_DRIVE_FOLDER_COLORS.map((col) => {
                 const isSelected = chosenColor?.toLowerCase() === col.hex.toLowerCase();
                 return (
@@ -313,7 +313,7 @@ export function FolderColorDialog({
                     onClick={() => setChosenColor(col.hex)}
                     title={col.name}
                     className={cn(
-                      "w-7 h-7 rounded-lg transition-transform duration-100 flex items-center justify-center cursor-pointer shadow-sm relative group hover:scale-110",
+                      "w-7 h-7 rounded-md transition-transform duration-100 flex items-center justify-center cursor-pointer shadow-sm relative group hover:scale-110",
                       isSelected ? "ring-2 ring-white ring-offset-2 ring-offset-[var(--surface)] scale-105" : ""
                     )}
                     style={{ backgroundColor: col.hex }}
@@ -329,7 +329,7 @@ export function FolderColorDialog({
               type="button"
               onClick={() => setChosenColor(null)}
               className={cn(
-                "w-full px-3 py-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-2 transition-colors cursor-pointer",
+                "w-full px-3 py-2 rounded-md text-xs font-medium border flex items-center justify-center gap-2 transition-colors cursor-pointer",
                 chosenColor === null
                   ? "bg-white/10 border-white/30 text-white font-semibold"
                   : "bg-[var(--surface-2)]/60 border-[var(--border)] text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-2)]"

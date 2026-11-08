@@ -116,7 +116,7 @@ export function ActivityScreen() {
 
       {/* Filter Tabs & Search Controls */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3.5">
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] w-full sm:w-auto">
+        <div className="flex items-center gap-1 p-1 rounded-md bg-[var(--surface-2)] border border-[var(--border)] w-full sm:w-auto">
           {[
             { id: "all", label: "All Events", count: rows.length },
             { id: "failed", label: "Failures", count: failureCount },
@@ -129,7 +129,7 @@ export function ActivityScreen() {
                 key={tab.id}
                 onClick={() => setFilter(tab.id as Filter)}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer flex items-center gap-2",
+                  "px-3 py-1.5 rounded text-xs font-semibold transition-all duration-150 cursor-pointer flex items-center gap-2",
                   isActive
                     ? "bg-[var(--surface)] text-white shadow-sm border border-white/5"
                     : "text-[var(--text-muted)] hover:text-white"
@@ -160,7 +160,7 @@ export function ActivityScreen() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter by filename or path…"
-            className="w-full h-9 pl-9 pr-8 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-xl text-[var(--text)] placeholder:text-[var(--text-subtle)] focus:outline-none focus:border-blue-500/70 transition-colors"
+            className="w-full h-9 pl-9 pr-8 text-xs bg-[var(--surface-2)] border border-[var(--border)] rounded-md text-[var(--text)] placeholder:text-[var(--text-subtle)] focus:outline-none focus:border-blue-500/70 transition-colors"
           />
           {search && (
             <button
@@ -176,7 +176,7 @@ export function ActivityScreen() {
       {/* Event Ledger */}
       {filtered.length === 0 ? (
         <div className="desktop-card p-14 text-center flex flex-col items-center justify-center space-y-3 border-dashed">
-          <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/5 flex items-center justify-center text-[var(--text-muted)]">
+          <div className="w-12 h-12 rounded-md bg-white/[0.04] border border-white/5 flex items-center justify-center text-[var(--text-muted)]">
             <Clock size={22} strokeWidth={1.5} />
           </div>
           <p className="text-sm font-semibold text-white">No matching activity records</p>

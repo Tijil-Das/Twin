@@ -87,6 +87,7 @@ mod tests {
             speed_bps: 0.0,
             eta_secs: None,
             start_ms: 0,
+            kind: "upload".into(),
         };
         assert_eq!(p.bytes_done, p.bytes_total);
         assert!(p.eta_secs.is_none());

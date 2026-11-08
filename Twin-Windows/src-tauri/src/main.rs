@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 use tracing::{info, warn};
-use twin_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, updater, watcher, setup_tray};
+use twin_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, updater, watcher, setup_tray, set_tray_state, TrayState};
 use twin_lib::drive::revisions::Revision;
 use twin_lib::drive::client::DriveFile;
 use twin_lib::drive::trash::TrashedFile;
@@ -243,34 +243,69 @@ async fn drive_color_folders(color: Option<String>) -> Result<(), String> {
     Ok(())
 }
 
-/// Open a native folder browser dialog.
+/// Open a native Windows Explorer folder browser dialog using direct Win32 COM (no terminal flashing).
 #[tauri::command]
 async fn pick_folder() -> Result<Option<String>, String> {
     tokio::task::spawn_blocking(|| {
+        let folder = rfd::FileDialog::new()
+            .set_title("Select Local Folder to Sync")
+            .pick_folder();
+        Ok(folder.map(|p| p.to_string_lossy().to_string()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Open a local path in Windows Explorer (or system file manager) with no console window.
+#[tauri::command]
+async fn open_local_path(path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            let output = std::process::Command::new("powershell")
-                .args([
-                    "-NoProfile",
-                    "-Command",
-                    "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Local Folder to Sync'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }",
-                ])
-                .output();
-            match output {
-                Ok(o) => {
-                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                    if s.is_empty() {
-                        Ok(None)
-                    } else {
-                        Ok(Some(s))
-                    }
-                }
-                Err(e) => Err(e.to_string()),
-            }
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let _ = std::process::Command::new("explorer.exe")
+                .arg(&path)
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            Ok(())
         }
         #[cfg(not(target_os = "windows"))]
         {
-            Ok(None)
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Open a URL in default system browser with no console window.
+#[tauri::command]
+async fn open_url_external(url: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let _ = std::process::Command::new("rundll32")
+                .args(["url.dll,FileProtocolHandler", &url])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&url)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            Ok(())
         }
     })
     .await
@@ -539,6 +574,8 @@ fn main() {
             drive_set_folder_color,
             drive_set_folders_color,
             pick_folder,
+            open_local_path,
+            open_url_external,
             list_revisions,
             restore_file_cmd,
             restore_folder_cmd,
@@ -638,6 +675,48 @@ fn main() {
 
             // Register tray icon and menu.
             setup_tray(handle)?;
+
+            // Live system tray status supervisor:
+            // Yellow icon when uploading/downloading/queued;
+            // Green checkmark icon when up to date / idle;
+            // Paused icon when governor or user paused;
+            // Red icon on errors.
+            {
+                let db_tray = Arc::clone(&db_arc);
+                let gov_tray = gov.clone();
+                let handle_tray = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut last_state = TrayState::Idle;
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+                        let running = db_tray.count_jobs_by_status("running").unwrap_or(0);
+                        let queued = db_tray.count_jobs_by_status("queued").unwrap_or(0);
+                        let failed = db_tray.count_jobs_by_status("failed").unwrap_or(0);
+                        let is_paused = matches!(gov_tray.state(), governor::GovState::UserPaused);
+
+                        let (new_state, tooltip) = if is_paused {
+                            (TrayState::Paused, "Twin \u{2013} Paused".to_string())
+                        } else if running > 0 || queued > 0 {
+                            (
+                                TrayState::Syncing,
+                                format!("Twin \u{2013} Syncing ({running} active, {queued} queued)"),
+                            )
+                        } else if failed > 0 {
+                            (
+                                TrayState::Error,
+                                format!("Twin \u{2013} {failed} sync error(s)"),
+                            )
+                        } else {
+                            (TrayState::Idle, "Twin \u{2013} All files up to date".to_string())
+                        };
+
+                        if new_state != last_state {
+                            set_tray_state(&handle_tray, new_state, Some(&tooltip));
+                            last_state = new_state;
+                        }
+                    }
+                });
+            }
 
             // Start config file watcher with live limiter/governor/rules reload.
             {

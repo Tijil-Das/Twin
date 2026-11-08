@@ -13,7 +13,10 @@ export interface ProgressEvent {
   rel_path: string;
   bytes_done: number;
   bytes_total: number;
+  speed_bps?: number;
+  eta_secs?: number | null;
   start_ms: number;
+  kind?: string;
 }
 
 // ── Conflict record ────────────────────────────────────────────────────────────
@@ -64,6 +67,10 @@ interface AppState {
 
   // Pairs derived shorthand
   pairs: PairEntry[];
+
+  // Active selected pair for full-page details
+  selectedPairId: string | null;
+  setSelectedPairId: (id: string | null) => void;
 }
 
 // ── Default gov ────────────────────────────────────────────────────────────────
@@ -94,10 +101,10 @@ export const useStore = create<AppState>((set) => ({
   setProgress: (ev) =>
     set((s) => {
       const next = { ...s.progress };
-      if (ev.bytes_done >= ev.bytes_total) {
+      if (ev.bytes_done >= ev.bytes_total && ev.bytes_total > 0) {
         setTimeout(() => {
           useStore.getState().clearProgress(ev.job_id);
-        }, 500);
+        }, 1200);
       }
       next[ev.job_id] = ev;
       return { progress: next };
@@ -134,5 +141,7 @@ export const useStore = create<AppState>((set) => ({
     })),
 
   pairs: [],
+  selectedPairId: null,
+  setSelectedPairId: (selectedPairId) => set({ selectedPairId }),
 }));
 

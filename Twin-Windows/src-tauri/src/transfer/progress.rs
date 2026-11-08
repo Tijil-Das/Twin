@@ -28,6 +28,8 @@ pub struct RichProgress {
     pub eta_secs: Option<f64>,
     /// Wall-clock time when this transfer started (epoch milliseconds).
     pub start_ms: i64,
+    #[serde(default)]
+    pub kind: String,
 }
 
 /// Per-job EMA state.
@@ -37,6 +39,7 @@ struct JobState {
     last_bytes: u64,
     last_time: Instant,
     start_ms: i64,
+    kind: String,
 }
 
 impl JobState {
@@ -46,13 +49,24 @@ impl JobState {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        JobState { speed_ema: 0.0, last_emit: now, last_bytes: 0, last_time: now, start_ms }
+        JobState {
+            speed_ema: 0.0,
+            last_emit: now,
+            last_bytes: 0,
+            last_time: now,
+            start_ms,
+            kind: String::new(),
+        }
     }
 
     /// Update EMA speed and return rich progress.  Returns None if throttled.
     fn update(&mut self, upd: &ProgressUpdate) -> Option<RichProgress> {
         const ALPHA: f64 = 0.2;
         const MIN_EMIT_INTERVAL: Duration = Duration::from_millis(250); // 4/s
+
+        if !upd.kind.is_empty() {
+            self.kind = upd.kind.clone();
+        }
 
         let now = Instant::now();
         let dt = now.duration_since(self.last_time).as_secs_f64();
@@ -66,8 +80,9 @@ impl JobState {
             self.last_time = now;
         }
 
-        // Throttle emit rate.
-        if now.duration_since(self.last_emit) < MIN_EMIT_INTERVAL {
+        // Always emit on 100% completion; otherwise throttle emit rate.
+        let is_complete = upd.bytes_done >= upd.bytes_total && upd.bytes_total > 0;
+        if !is_complete && now.duration_since(self.last_emit) < MIN_EMIT_INTERVAL {
             return None;
         }
         self.last_emit = now;
@@ -88,6 +103,11 @@ impl JobState {
             speed_bps: self.speed_ema,
             eta_secs,
             start_ms: self.start_ms,
+            kind: if !upd.kind.is_empty() {
+                upd.kind.clone()
+            } else {
+                self.kind.clone()
+            },
         })
     }
 }

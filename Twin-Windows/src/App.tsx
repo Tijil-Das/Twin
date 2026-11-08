@@ -14,9 +14,12 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 import { HomeScreen }     from "@/screens/Home";
 import { ActivityScreen } from "@/screens/Activity";
 import { SettingsScreen } from "@/screens/Settings";
+import { PairDetailScreen } from "@/screens/PairDetail";
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
+  const selectedPairId = useStore((s) => s.selectedPairId);
+  const setSelectedPairId = useStore((s) => s.setSelectedPairId);
 
   const setConfig = useStore((s) => s.setConfig);
   const setAuthed = useStore((s) => s.setAuthed);
@@ -114,12 +117,27 @@ export default function App() {
   return (
     <>
       <div className="flex h-screen w-screen bg-[var(--bg)] text-[var(--text)] overflow-hidden font-sans">
-        <Sidebar active={screen} onNavigate={setScreen} />
+        <Sidebar
+          active={screen}
+          onNavigate={(s) => {
+            setSelectedPairId(null);
+            setScreen(s);
+          }}
+        />
 
         <main className="flex-1 h-screen overflow-y-auto bg-[var(--bg)] relative">
-          {screen === "home"     && <HomeScreen />}
-          {screen === "activity" && <ActivityScreen />}
-          {screen === "settings" && <SettingsScreen />}
+          {selectedPairId ? (
+            <PairDetailScreen
+              pairId={selectedPairId}
+              onBack={() => setSelectedPairId(null)}
+            />
+          ) : (
+            <>
+              {screen === "home"     && <HomeScreen onSelectPair={(id) => setSelectedPairId(id)} />}
+              {screen === "activity" && <ActivityScreen />}
+              {screen === "settings" && <SettingsScreen />}
+            </>
+          )}
         </main>
       </div>
 

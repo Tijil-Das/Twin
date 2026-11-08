@@ -98,7 +98,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
       <div>
         <div className="h-16 px-4 flex items-center justify-between border-b border-[var(--border)]">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-[#1e222b] flex items-center justify-center shadow-sm">
+            <div className="w-9 h-9 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-[#1e222b] flex items-center justify-center shadow-sm">
               <img
                 src={appLogo}
                 alt="Twin"
@@ -130,7 +130,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
                 key={id}
                 onClick={() => onNavigate(id)}
                 className={cn(
-                  "w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group cursor-pointer",
+                  "w-full flex items-center justify-between px-3.5 py-2.5 rounded-md text-sm font-medium transition-all duration-150 group cursor-pointer",
                   isActive
                     ? "bg-white/[0.08] text-white shadow-sm font-semibold"
                     : "text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-2)]/70"
@@ -167,7 +167,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         {/* Subtle Engine Status Widget */}
         <div
           className={cn(
-            "px-3.5 py-2.5 rounded-xl border flex items-center justify-between text-xs transition-colors",
+            "px-3.5 py-2.5 rounded-md border flex items-center justify-between text-xs transition-colors",
             currentGov.bgClass
           )}
         >
@@ -192,7 +192,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         {authed ? (
           <div
             onClick={() => onNavigate("settings")}
-            className="p-2.5 rounded-xl hover:bg-[var(--surface-2)] transition-all border border-transparent hover:border-[var(--border)] cursor-pointer flex items-center gap-3 group"
+            className="p-2.5 rounded-md hover:bg-[var(--surface-2)] transition-all border border-transparent hover:border-[var(--border)] cursor-pointer flex items-center gap-3 group"
             title="Google Account Settings"
           >
             {userProfile?.picture ? (
@@ -231,7 +231,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         ) : (
           <button
             onClick={() => onNavigate("settings")}
-            className="w-full py-2.5 px-3.5 rounded-xl bg-blue-600/15 hover:bg-blue-600/25 text-blue-400 border border-blue-500/25 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            className="w-full py-2.5 px-3.5 rounded-md bg-blue-600/15 hover:bg-blue-600/25 text-blue-400 border border-blue-500/25 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             <Cloud size={15} />
             Connect Google Drive

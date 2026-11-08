@@ -37,6 +37,7 @@ blake3 = "1"
 flate2 = "1"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+rfd = "0.15"
 
 [dev-dependencies]
 tempfile = "3"

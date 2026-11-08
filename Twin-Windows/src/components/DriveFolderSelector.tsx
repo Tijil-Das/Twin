@@ -16,23 +16,15 @@ import {
   ArrowUp,
   RefreshCw,
   Search,
-  HardDrive,
   Users,
   Check,
   AlertCircle,
   Plus,
   X,
   ShieldAlert,
-  Edit2,
-  Palette,
 } from "lucide-react";
 import {
-  FolderColorDialog,
-  type DriveFolderTarget,
-} from "@/components/FolderColorDialog";
-import {
   driveListSubfolders,
-  driveGetFolderMeta,
   driveGetSharedFolders,
   driveCreateFolder,
   listSharedDrives,
@@ -106,32 +98,10 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
   const [hasFullScope, setHasFullScope] = useState<boolean>(true);
   const [reauthorizing, setReauthorizing] = useState(false);
 
-  // Address bar manual edit mode
-  const [isEditingAddress, setIsEditingAddress] = useState(false);
-  const [addressInput, setAddressInput] = useState("");
-
   // New folder inline creation
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
-
-  // Folder color dialog
-  const [colorDialogOpen, setColorDialogOpen] = useState(false);
-  const [colorDialogTarget, setColorDialogTarget] = useState<DriveFolderTarget | null>(null);
-
-  function handleFolderColorApplied(ids: string[], color: string | null) {
-    setDirectoryCache((prev) => {
-      const next: Record<string, DriveFolder[]> = {};
-      for (const [k, v] of Object.entries(prev)) {
-        next[k] = v.map((f) =>
-          ids.includes(f.id)
-            ? { ...f, folderColorRgb: color, folder_color_rgb: color }
-            : f
-        );
-      }
-      return next;
-    });
-  }
 
   const currentFolder = breadcrumbs[breadcrumbs.length - 1];
 
@@ -264,36 +234,6 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
     }
   }
 
-  // Jump to pasted folder ID or link
-  async function handleJumpToAddress() {
-    let input = addressInput.trim();
-    if (!input) {
-      setIsEditingAddress(false);
-      return;
-    }
-    // Parse ID from URL if pasted (e.g. https://drive.google.com/drive/folders/1aBcDeFg...)
-    const urlMatch = input.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-    if (urlMatch) {
-      input = urlMatch[1];
-    }
-
-    setLoading(true);
-    try {
-      const meta = await driveGetFolderMeta(input);
-      const name = meta.name || "Target Folder";
-      setCurrentFolderId(meta.id);
-      setBreadcrumbs([{ id: meta.id, name }]);
-      setIsEditingAddress(false);
-      setAddressInput("");
-      selectFolder(meta.id, name);
-      void fetchSubfolders(meta.id, true);
-    } catch {
-      toast.error(`Folder "${input}" not found or inaccessible`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   // Create new subfolder inside current folder
   async function handleCreateNewFolder() {
     const name = newFolderName.trim();
@@ -348,7 +288,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
   return (
     <div
       className={cn(
-        "rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden flex flex-col text-xs",
+        "rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden flex flex-col text-xs",
         className
       )}
     >
@@ -372,159 +312,95 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
         </div>
       )}
 
-      {/* ── Location Selector & Address Bar ── */}
-      <div className="p-2 border-b border-[var(--border)] bg-[var(--surface-2)]/60 flex items-center gap-1.5 flex-wrap">
-        {/* Up-one-level button */}
-        <button
-          type="button"
-          onClick={navigateUp}
-          disabled={breadcrumbs.length <= 1 || loading}
-          title="Up one folder level"
-          className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-3)] disabled:opacity-30 disabled:pointer-events-none transition-colors shrink-0 cursor-pointer"
-        >
-          <ArrowUp size={14} />
-        </button>
+      {/* ── Location Selector & Navigation Bar ── */}
+      <div className="p-2 border-b border-[var(--border)] bg-[var(--surface-2)]/60 flex items-center justify-between gap-1.5 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          {breadcrumbs.length > 1 && (
+            <button
+              type="button"
+              onClick={navigateUp}
+              disabled={loading}
+              title="Up one folder level"
+              className="p-1 rounded-md text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-3)] transition-colors shrink-0 cursor-pointer"
+            >
+              <ArrowUp size={14} />
+            </button>
+          )}
 
-        {/* Location Switcher */}
-        <div className="flex items-center gap-1.5 bg-[var(--surface)] border border-[var(--border)] rounded-md px-2 py-1 shrink-0 hover:border-white/20">
-          <img
-            src={gdLogo}
-            alt="Google Drive"
-            style={{ width: 14, height: 14, minWidth: 14, maxWidth: 14 }}
-            className="w-3.5 h-3.5 object-contain shrink-0"
-          />
-          <select
-            value={activeLocation}
-            onChange={(e) => handleLocationChange(e.target.value)}
-            className="bg-transparent text-xs text-[var(--text)] border-none outline-none font-medium cursor-pointer"
-          >
-            <option value="my_drive" className="bg-[var(--surface)]">My Drive</option>
-            <option value="shared_with_me" className="bg-[var(--surface)]">Shared with me</option>
-            {sharedDrives.map((d) => (
-              <option key={d.id} value={d.id} className="bg-[var(--surface)]">
-                {d.name}
-              </option>
-            ))}
-          </select>
+          {/* Location Switcher */}
+          <div className="flex items-center gap-1.5 bg-[var(--surface)] border border-[var(--border)] rounded-md px-2 py-1 shrink-0">
+            <img
+              src={gdLogo}
+              alt="Google Drive"
+              style={{ width: 14, height: 14, minWidth: 14, maxWidth: 14 }}
+              className="w-3.5 h-3.5 object-contain shrink-0"
+            />
+            <select
+              value={activeLocation}
+              onChange={(e) => handleLocationChange(e.target.value)}
+              className="bg-transparent text-xs text-[var(--text)] border-none outline-none font-medium cursor-pointer"
+            >
+              <option value="my_drive" className="bg-[var(--surface)]">My Drive</option>
+              <option value="shared_with_me" className="bg-[var(--surface)]">Shared with me</option>
+              {sharedDrives.map((d) => (
+                <option key={d.id} value={d.id} className="bg-[var(--surface)]">
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1 overflow-x-auto min-w-0 py-0.5">
+            {breadcrumbs.map((bc, idx) => {
+              const isLast = idx === breadcrumbs.length - 1;
+              return (
+                <div key={bc.id} className="flex items-center gap-1 shrink-0">
+                  {idx > 0 && <ChevronRight size={11} className="text-[var(--text-subtle)] shrink-0" />}
+                  <button
+                    type="button"
+                    onClick={() => jumpToBreadcrumb(idx)}
+                    disabled={isLast}
+                    className={cn(
+                      "px-1.5 py-0.5 rounded text-xs transition-colors",
+                      isLast
+                        ? "font-semibold text-white bg-white/5 cursor-default"
+                        : "text-[var(--text-muted)] hover:text-blue-400 hover:bg-white/5 cursor-pointer"
+                    )}
+                  >
+                    {bc.name}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Breadcrumb Path or Direct Address Input */}
-        {isEditingAddress ? (
-          <div className="flex-1 min-w-[180px] flex items-center gap-1">
-            <input
-              type="text"
-              value={addressInput}
-              onChange={(e) => setAddressInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void handleJumpToAddress();
-                if (e.key === "Escape") setIsEditingAddress(false);
-              }}
-              placeholder="Paste Google Drive folder URL or ID…"
-              autoFocus
-              className="flex-1 bg-[var(--surface)] text-xs text-[var(--text)] border border-blue-500 rounded-md px-2.5 py-1 outline-none code-text"
-            />
-            <button
-              type="button"
-              onClick={handleJumpToAddress}
-              className="px-2 py-1 bg-blue-600 text-white rounded-md text-xs font-medium cursor-pointer"
-            >
-              Go
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsEditingAddress(false)}
-              className="p-1 text-[var(--text-subtle)] hover:text-white cursor-pointer"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        ) : (
-          <div className="flex-1 min-w-[140px] flex items-center justify-between gap-1 px-2.5 py-1 rounded-md bg-[var(--surface)] border border-[var(--border)] overflow-x-auto select-none group">
-            <div className="flex items-center gap-1 overflow-x-auto">
-              {activeLocation === "shared_with_me" ? (
-                <Users size={13} className="text-emerald-400 shrink-0 mr-0.5" />
-              ) : (
-                <HardDrive size={13} className="text-blue-400 shrink-0 mr-0.5" />
-              )}
-              {breadcrumbs.map((bc, idx) => {
-                const isLast = idx === breadcrumbs.length - 1;
-                return (
-                  <div key={bc.id} className="flex items-center gap-1 shrink-0">
-                    {idx > 0 && <ChevronRight size={11} className="text-[var(--text-subtle)] shrink-0" />}
-                    <button
-                      type="button"
-                      onClick={() => jumpToBreadcrumb(idx)}
-                      disabled={isLast}
-                      className={cn(
-                        "px-1 py-0.5 rounded transition-colors text-xs truncate max-w-[140px]",
-                        isLast
-                          ? "font-semibold text-white cursor-default"
-                          : "text-[var(--text-muted)] hover:text-blue-400 hover:bg-white/5 cursor-pointer"
-                      )}
-                      title={bc.name}
-                    >
-                      {bc.name}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setAddressInput(currentFolderId === "root" ? "" : currentFolderId);
-                setIsEditingAddress(true);
-              }}
-              title="Edit folder path or paste ID"
-              className="opacity-0 group-hover:opacity-100 p-0.5 text-[var(--text-subtle)] hover:text-white transition-opacity cursor-pointer"
-            >
-              <Edit2 size={11} />
-            </button>
-          </div>
-        )}
-
-        {/* New Folder button */}
-        <button
-          type="button"
-          onClick={() => setIsCreatingFolder((prev) => !prev)}
-          title="Create a new folder in this directory"
-          className={cn(
-            "p-1.5 rounded-md transition-colors flex items-center gap-1 text-xs shrink-0 cursor-pointer",
-            isCreatingFolder
-              ? "bg-blue-600/25 text-blue-400 border border-blue-500/35"
-              : "text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-3)]"
-          )}
-        >
-          <FolderPlus size={14} />
-          <span className="hidden sm:inline text-[11px] font-medium">New</span>
-        </button>
-
-        {/* Colorize button */}
-        {displayedFolders.length > 0 && (
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
-            onClick={() => {
-              setColorDialogTarget(null);
-              setColorDialogOpen(true);
-            }}
-            title="Colorize folders in this directory"
-            className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-3)] transition-colors flex items-center gap-1 text-xs shrink-0 cursor-pointer"
+            onClick={() => setIsCreatingFolder((prev) => !prev)}
+            title="Create a new folder"
+            className={cn(
+              "px-2 py-1 rounded-md transition-colors flex items-center gap-1 text-xs cursor-pointer",
+              isCreatingFolder
+                ? "bg-blue-600/25 text-blue-400 border border-blue-500/35"
+                : "text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-3)]"
+            )}
           >
-            <Palette size={13} className="text-amber-400" />
-            <span className="hidden sm:inline text-[11px] font-medium">Colorize</span>
+            <FolderPlus size={13} />
+            <span className="text-[11px] font-medium">New</span>
           </button>
-        )}
 
-        {/* Refresh button */}
-        <button
-          type="button"
-          onClick={() => void fetchSubfolders(currentFolderId, true)}
-          disabled={loading}
-          title="Refresh current folder"
-          className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-3)] disabled:opacity-40 transition-colors shrink-0 cursor-pointer"
-        >
-          <RefreshCw size={13} className={cn(loading && "animate-spin text-blue-400")} />
-        </button>
+          <button
+            type="button"
+            onClick={() => void fetchSubfolders(currentFolderId, true)}
+            disabled={loading}
+            title="Refresh current folder"
+            className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-3)] disabled:opacity-40 transition-colors shrink-0 cursor-pointer"
+          >
+            <RefreshCw size={13} className={cn(loading && "animate-spin text-blue-400")} />
+          </button>
+        </div>
       </div>
 
       {/* ── Inline New Folder Creator ── */}
@@ -547,7 +423,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
             type="button"
             onClick={handleCreateNewFolder}
             disabled={!newFolderName.trim() || creatingFolder}
-            className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-medium flex items-center gap-1 cursor-pointer"
+            className="px-2.5 py-1 rounded bg-blue-700 hover:bg-blue-600 active:bg-blue-800 disabled:opacity-40 text-white text-xs font-medium flex items-center gap-1 cursor-pointer border border-blue-600/40"
           >
             <Plus size={12} />
             <span>{creatingFolder ? "Creating…" : "Create"}</span>
@@ -630,54 +506,38 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
                 onClick={() => selectFolder(folder.id, folder.name)}
                 onDoubleClick={() => enterFolder(folder)}
                 className={cn(
-                  "group px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 cursor-pointer transition-colors duration-100",
+                  "group px-3 py-2 rounded-md flex items-center justify-between gap-2.5 cursor-pointer transition-colors duration-100",
                   isSelected
-                    ? "bg-blue-600/25 border border-blue-500/50 text-white font-medium"
-                    : "hover:bg-[var(--surface-2)] text-zinc-300 border border-transparent"
+                    ? "bg-[#1f6feb]/25 border border-[#1f6feb]/60 text-white font-medium"
+                    : "hover:bg-[#161b22] text-[#c9d1d9] border border-transparent"
                 )}
               >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   {folder.shared ? (
-                    <Users size={15} className="text-emerald-400 shrink-0" />
+                    <Users size={16} className="text-emerald-400 shrink-0" />
                   ) : (
                     <GithubFolderIcon
                       color={folder.folderColorRgb || folder.folder_color_rgb || "#54aeff"}
                       className={cn(
-                        "shrink-0",
+                        "shrink-0 w-4 h-4",
                         !(folder.folderColorRgb || folder.folder_color_rgb) && "text-[#54aeff]"
                       )}
                     />
                   )}
-                  <span className="truncate text-xs">{folder.name}</span>
+                  <span className="truncate text-xs font-medium">{folder.name}</span>
                   {(folder.folderColorRgb || folder.folder_color_rgb) && (
                     <span
-                      className="w-2 h-2 rounded-full shrink-0 border border-white/20 shadow-sm"
+                      className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20 shadow-sm"
                       style={{ backgroundColor: (folder.folderColorRgb || folder.folder_color_rgb)! }}
                       title={`Color: ${folder.folderColorRgb || folder.folder_color_rgb}`}
                     />
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setColorDialogTarget({
-                        id: folder.id,
-                        name: folder.name,
-                        folderColorRgb: folder.folderColorRgb || folder.folder_color_rgb,
-                      });
-                      setColorDialogOpen(true);
-                    }}
-                    title={`Colorize "${folder.name}"`}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-opacity text-[11px]"
-                  >
-                    <Palette size={12} />
-                  </button>
+                <div className="flex items-center gap-2 shrink-0">
                   {isSelected && (
-                    <span className="text-[11px] text-blue-400 font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/20">
-                      <Check size={11} strokeWidth={3} /> Target
+                    <span className="text-xs text-[#58a6ff] font-semibold flex items-center gap-1 px-2 py-0.5 rounded bg-[#1f6feb]/20 border border-[#1f6feb]/40">
+                      <Check size={12} strokeWidth={3} /> Selected
                     </span>
                   )}
                   <button
@@ -687,10 +547,10 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
                       enterFolder(folder);
                     }}
                     title={`Open "${folder.name}"`}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-opacity text-[11px] flex items-center gap-0.5"
+                    className="opacity-0 group-hover:opacity-100 px-2 py-1 rounded hover:bg-white/10 text-[#8b949e] hover:text-white transition-opacity text-xs flex items-center gap-1 cursor-pointer"
                   >
                     <span>Open</span>
-                    <ChevronRight size={12} />
+                    <ChevronRight size={13} />
                   </button>
                 </div>
               </div>
@@ -700,53 +560,39 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
       </div>
 
       {/* ── Explorer Bottom Action Bar ── */}
-      <div className="p-2 border-t border-[var(--border)] bg-[var(--surface-2)]/60 flex items-center justify-between gap-2">
+      <div className="p-2.5 border-t border-[var(--border)] bg-[#161b22] flex items-center justify-between gap-2.5">
         <button
           type="button"
           onClick={() => selectFolder(currentFolder.id, currentFolder.name)}
           className={cn(
-            "text-xs px-2.5 py-1 rounded-md font-medium border flex items-center gap-1.5 transition-colors cursor-pointer",
+            "text-xs px-3 py-1.5 rounded-md font-medium border flex items-center gap-1.5 transition-colors cursor-pointer",
             selectedFolderId === currentFolder.id || activeSelection?.id === currentFolder.id
-              ? "bg-blue-600/20 border-blue-500/40 text-blue-400"
-              : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)] hover:text-white hover:bg-[var(--surface-3)]"
+              ? "bg-[#1f6feb]/20 border-[#1f6feb]/50 text-[#58a6ff] font-semibold"
+              : "bg-[#21262d] border-[#30363d] text-[#c9d1d9] hover:text-white hover:bg-[#30363d]"
           )}
         >
-          <Folder size={12} className="text-amber-400" />
-          <span>Use Current Folder: "{currentFolder.name}"</span>
+          <Folder size={13} className="text-amber-400" />
+          <span>Use Current: "{currentFolder.name}"</span>
         </button>
 
         {activeSelection ? (
           <div
-            className="text-[11px] text-[var(--text-muted)] truncate max-w-[220px]"
+            className="text-xs text-[#7d8590] truncate max-w-[260px]"
             title={activeSelection.name}
           >
-            Selected: <span className="font-semibold text-white">{activeSelection.name}</span>
+            Selected: <span className="font-semibold text-[#e6edf3]">{activeSelection.name}</span>
           </div>
         ) : selectedFolderId ? (
           <div
-            className="text-[11px] text-[var(--text-subtle)] code-text truncate max-w-[200px]"
+            className="text-xs text-[#7d8590] font-mono truncate max-w-[240px]"
             title={selectedFolderId}
           >
-            ID: <span className="text-[var(--text)]">{selectedFolderId}</span>
+            ID: <span className="text-[#c9d1d9]">{selectedFolderId}</span>
           </div>
         ) : (
-          <span className="text-[11px] text-[var(--text-subtle)]">Click a folder to select</span>
+          <span className="text-xs text-[#7d8590]">Click a folder to select</span>
         )}
       </div>
-
-      {/* Folder Color Dialog */}
-      <FolderColorDialog
-        isOpen={colorDialogOpen}
-        onClose={() => setColorDialogOpen(false)}
-        targetFolder={colorDialogTarget}
-        parentFolderName={currentFolder.name}
-        availableFolders={displayedFolders.map((f) => ({
-          id: f.id,
-          name: f.name,
-          folderColorRgb: f.folderColorRgb || f.folder_color_rgb,
-        }))}
-        onColorApplied={handleFolderColorApplied}
-      />
     </div>
   );
 }

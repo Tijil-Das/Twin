@@ -36,13 +36,13 @@ export function ConflictDialog({ conflict }: Props) {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 animate-in fade-in duration-150" />
         <Dialog.Content
-          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] max-w-[92vw] bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5 z-[60] shadow-elevation animate-in zoom-in-95 duration-150"
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] max-w-[92vw] bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 z-[60] shadow-elevation animate-in zoom-in-95 duration-150"
           onEscapeKeyDown={() => removeConflict(conflict.pair_id, conflict.rel_path)}
         >
           {/* Header */}
           <div className="flex items-start justify-between pb-3 border-b border-[var(--border-subtle)] mb-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
                 <AlertTriangle size={16} strokeWidth={2} />
               </div>
               <div>
@@ -64,7 +64,7 @@ export function ConflictDialog({ conflict }: Props) {
           </div>
 
           {/* Conflicted file path */}
-          <div className="p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] code-text text-xs text-[var(--text)] break-all mb-4">
+          <div className="p-2.5 rounded-md bg-[var(--surface-2)] border border-[var(--border)] code-text text-xs text-[var(--text)] break-all mb-4">
             {conflict.rel_path}
           </div>
 
@@ -72,9 +72,9 @@ export function ConflictDialog({ conflict }: Props) {
           <div className="space-y-2">
             <button
               onClick={() => resolve("both")}
-              className="w-full p-3 rounded-xl border border-[var(--border)] hover:border-blue-500/40 bg-[var(--surface-2)]/40 hover:bg-blue-600/10 text-left transition-all flex items-start gap-3 cursor-pointer group"
+              className="w-full p-3 rounded-lg border border-[var(--border)] hover:border-blue-500/40 bg-[var(--surface-2)]/40 hover:bg-blue-600/10 text-left transition-all flex items-start gap-3 cursor-pointer group"
             >
-              <div className="w-7 h-7 rounded-lg bg-blue-600/15 text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+              <div className="w-7 h-7 rounded-md bg-blue-600/15 text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
                 <Copy size={13} />
               </div>
               <div>
@@ -89,9 +89,9 @@ export function ConflictDialog({ conflict }: Props) {
 
             <button
               onClick={() => resolve("local")}
-              className="w-full p-3 rounded-xl border border-[var(--border)] hover:border-white/20 bg-[var(--surface-2)]/40 hover:bg-[var(--surface-2)] text-left transition-all flex items-start gap-3 cursor-pointer group"
+              className="w-full p-3 rounded-lg border border-[var(--border)] hover:border-white/20 bg-[var(--surface-2)]/40 hover:bg-[var(--surface-2)] text-left transition-all flex items-start gap-3 cursor-pointer group"
             >
-              <div className="w-7 h-7 rounded-lg bg-[var(--surface-3)] text-[var(--text-muted)] flex items-center justify-center shrink-0 mt-0.5">
+              <div className="w-7 h-7 rounded-md bg-[var(--surface-3)] text-[var(--text-muted)] flex items-center justify-center shrink-0 mt-0.5">
                 <HardDrive size={13} />
               </div>
               <div>
@@ -106,9 +106,9 @@ export function ConflictDialog({ conflict }: Props) {
 
             <button
               onClick={() => resolve("remote")}
-              className="w-full p-3 rounded-xl border border-[var(--border)] hover:border-white/20 bg-[var(--surface-2)]/40 hover:bg-[var(--surface-2)] text-left transition-all flex items-start gap-3 cursor-pointer group"
+              className="w-full p-3 rounded-lg border border-[var(--border)] hover:border-white/20 bg-[var(--surface-2)]/40 hover:bg-[var(--surface-2)] text-left transition-all flex items-start gap-3 cursor-pointer group"
             >
-              <div className="w-7 h-7 rounded-lg bg-[var(--surface-3)] text-[var(--text-muted)] flex items-center justify-center shrink-0 mt-0.5">
+              <div className="w-7 h-7 rounded-md bg-[var(--surface-3)] text-[var(--text-muted)] flex items-center justify-center shrink-0 mt-0.5">
                 <Cloud size={13} />
               </div>
               <div>

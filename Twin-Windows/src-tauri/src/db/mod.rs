@@ -131,6 +131,14 @@ pub struct Activity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveJobSummary {
+    pub id: i64,
+    pub kind: String,
+    pub rel_path: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairSyncStatus {
     pub pair_id: String,
     pub queued: i64,
@@ -141,6 +149,14 @@ pub struct PairSyncStatus {
     pub synced: i64,
     pub total: i64,
     pub is_synced: bool,
+    #[serde(default)]
+    pub deleted: i64,
+    #[serde(default)]
+    pub active_jobs: Vec<ActiveJobSummary>,
+    #[serde(default)]
+    pub last_activity: Option<Activity>,
+    #[serde(default)]
+    pub last_sync_ms: Option<i64>,
 }
 
 // ── Db ────────────────────────────────────────────────────────────────────────
@@ -757,12 +773,13 @@ impl Db {
             job_map.insert((pair_id, status), count);
         }
 
-        // 2. Aggregate file counts per pair
+        // 2. Aggregate active file counts per pair (excluding deleted/tombstone rows)
         let mut file_stmt = conn
             .prepare(
                 "SELECT pair_id, state, count(*),
                         SUM(CASE WHEN drive_id IS NOT NULL AND drive_id != '' THEN 1 ELSE 0 END)
                  FROM files
+                 WHERE state NOT IN ('deleted', 'deleted_local', 'remote_deleted', 'trashed')
                  GROUP BY pair_id, state"
             )
             .map_err(|e| AppError::Db(format!("prepare files: {e}")))?;
@@ -779,6 +796,23 @@ impl Db {
             let with_drive_id: i64 = row.get(3).unwrap_or(0);
             all_pairs.insert(pair_id.clone());
             file_map.insert((pair_id, state), (count, with_drive_id));
+        }
+
+        // Count deleted/tombstone files for metrics
+        let mut deleted_map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+        if let Ok(mut del_stmt) = conn.prepare(
+            "SELECT pair_id, count(*)
+             FROM files
+             WHERE state IN ('deleted', 'deleted_local', 'remote_deleted', 'trashed')
+             GROUP BY pair_id"
+        ) {
+            if let Ok(mut del_rows) = del_stmt.query([]) {
+                while let Ok(Some(row)) = del_rows.next() {
+                    let pid: String = row.get(0).unwrap_or_default();
+                    let count: i64 = row.get(1).unwrap_or(0);
+                    deleted_map.insert(pid, count);
+                }
+            }
         }
 
         // 3. Check pair_meta for last scan/sync timestamps
@@ -799,6 +833,52 @@ impl Db {
             meta_map.insert(pair_id, (last_scan, last_sync));
         }
 
+        // 4. Fetch active/running/queued jobs per pair
+        let mut active_jobs_map: std::collections::HashMap<String, Vec<ActiveJobSummary>> = std::collections::HashMap::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT id, pair_id, kind, rel_path, status
+             FROM jobs
+             WHERE status IN ('running', 'queued')
+             ORDER BY CASE status WHEN 'running' THEN 0 ELSE 1 END, priority DESC, id ASC
+             LIMIT 60"
+        ) {
+            if let Ok(mut rows) = stmt.query([]) {
+                while let Ok(Some(row)) = rows.next() {
+                    let id: i64 = row.get(0).unwrap_or(0);
+                    let pid: String = row.get(1).unwrap_or_default();
+                    let kind: String = row.get(2).unwrap_or_default();
+                    let rel_path: String = row.get(3).unwrap_or_default();
+                    let status: String = row.get(4).unwrap_or_default();
+                    all_pairs.insert(pid.clone());
+                    let list = active_jobs_map.entry(pid).or_default();
+                    if list.len() < 5 {
+                        list.push(ActiveJobSummary { id, kind, rel_path, status });
+                    }
+                }
+            }
+        }
+
+        // 5. Fetch most recent activity per pair
+        let mut last_activity_map: std::collections::HashMap<String, Activity> = std::collections::HashMap::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT a.id, a.ts_ms, a.pair_id, a.kind, a.rel_path, a.result, a.detail
+             FROM activity a
+             INNER JOIN (
+                 SELECT pair_id, MAX(id) as max_id
+                 FROM activity
+                 GROUP BY pair_id
+             ) m ON a.pair_id = m.pair_id AND a.id = m.max_id"
+        ) {
+            if let Ok(mut rows) = stmt.query([]) {
+                while let Ok(Some(row)) = rows.next() {
+                    let pid: String = row.get(2).unwrap_or_default();
+                    if let Ok(act) = row_to_activity(row) {
+                        last_activity_map.insert(pid, act);
+                    }
+                }
+            }
+        }
+
         let mut statuses = std::collections::HashMap::new();
         for pair_id in all_pairs {
             let queued = job_map.get(&(pair_id.clone(), "queued".into())).copied().unwrap_or(0);
@@ -807,7 +887,7 @@ impl Db {
 
             let dirty = file_map.get(&(pair_id.clone(), "dirty".into())).map(|(c, _)| *c).unwrap_or(0);
             let conflict = file_map.get(&(pair_id.clone(), "conflict".into())).map(|(c, _)| *c).unwrap_or(0);
-            let (synced, synced_with_drive) = file_map.get(&(pair_id.clone(), "synced".into())).copied().unwrap_or((0, 0));
+            let (synced, _synced_with_drive) = file_map.get(&(pair_id.clone(), "synced".into())).copied().unwrap_or((0, 0));
 
             let mut total = 0;
             for ((p, _), (c, _)) in &file_map {
@@ -816,18 +896,23 @@ impl Db {
                 }
             }
 
+            let deleted = deleted_map.get(&pair_id).copied().unwrap_or(0);
             let (last_scan, last_sync) = meta_map.get(&pair_id).copied().unwrap_or((None, None));
+            let last_sync_ms = last_sync.or(last_scan);
             let verified_scan = last_scan.is_some() || last_sync.is_some();
 
-            // Perfectly synced condition:
+            // Truly synced condition:
             // 0 queued, 0 running, 0 failed, 0 dirty, 0 conflict
-            // AND (has synced files with Drive IDs OR verified empty folder)
+            // AND all active files are synced (synced == total, or empty folder verified)
             let is_synced = queued == 0
                 && running == 0
                 && failed == 0
                 && dirty == 0
                 && conflict == 0
-                && (synced_with_drive > 0 || (total == 0 && verified_scan));
+                && (synced == total || (total == 0 && verified_scan));
+
+            let active_jobs = active_jobs_map.remove(&pair_id).unwrap_or_default();
+            let last_activity = last_activity_map.remove(&pair_id);
 
             statuses.insert(
                 pair_id.clone(),
@@ -841,6 +926,10 @@ impl Db {
                     synced,
                     total,
                     is_synced,
+                    deleted,
+                    active_jobs,
+                    last_activity,
+                    last_sync_ms,
                 },
             );
         }
@@ -861,6 +950,10 @@ impl Db {
             synced: 0,
             total: 0,
             is_synced: false,
+            deleted: 0,
+            active_jobs: Vec::new(),
+            last_activity: None,
+            last_sync_ms: None,
         }))
     }
 }

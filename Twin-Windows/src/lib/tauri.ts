@@ -130,6 +130,13 @@ export interface QueueStatus {
   failed: number;
 }
 
+export interface ActiveJobSummary {
+  id: number;
+  kind: string;
+  rel_path: string;
+  status: string;
+}
+
 export interface PairSyncStatus {
   pair_id: string;
   queued: number;
@@ -140,6 +147,10 @@ export interface PairSyncStatus {
   synced: number;
   total: number;
   is_synced: boolean;
+  deleted?: number;
+  last_sync_ms?: number | null;
+  active_jobs?: ActiveJobSummary[];
+  last_activity?: Activity | null;
 }
 
 // ── Invokes ───────────────────────────────────────────────────────────────────
@@ -199,6 +210,8 @@ export const driveSetFoldersColor = (folderIds: string[], color?: string | null)
   invoke<void>("drive_set_folders_color", { folderIds, colorRgb: color ?? null });
 export const authHasFullScope = () => invoke<boolean>("auth_has_full_scope").catch(() => true);
 export const pickFolder = () => invoke<string | null>("pick_folder");
+export const openLocalPath = (path: string) => invoke<void>("open_local_path", { path });
+export const openUrlExternal = (url: string) => invoke<void>("open_url_external", { url });
 export const listSharedDrives = () => invoke<{ id: string; name: string }[]>("list_shared_drives").catch(() => []);
 export const driveSearch = (query: string, mime?: string) =>
   invoke<DriveFile[]>("drive_search", { query, mime: mime ?? null, after: null });

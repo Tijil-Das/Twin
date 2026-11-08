@@ -108,10 +108,15 @@ pub(crate) async fn run_download(
     limiter: Arc<Limiter>,
     progress: ProgressTx,
 ) -> Result<(), AppError> {
-    // Resolve pair (use fresh config to pick up newly added pairs).
-    let current_cfg = crate::config::load().unwrap_or(cfg);
-    let pair = match current_cfg.pairs.iter().find(|p| p.id == job.pair_id) {
-        Some(p) => p.clone(),
+    // Resolve pair (use fresh config to pick up newly added pairs, fallback to runner's cfg).
+    let disk_cfg = crate::config::load().ok();
+    let pair = disk_cfg
+        .as_ref()
+        .and_then(|c| c.pairs.iter().find(|p| p.id == job.pair_id))
+        .or_else(|| cfg.pairs.iter().find(|p| p.id == job.pair_id))
+        .cloned();
+    let pair = match pair {
+        Some(p) => p,
         None => {
             let _ = db.complete_job(job.id);
             return Ok(());
@@ -418,6 +423,7 @@ async fn download_parallel(
                         rel_path: rel_path.clone(),
                         bytes_done: done_now.min(total),
                         bytes_total: total,
+                        kind: "download".into(),
                     });
 
                     written += slice.len() as u64;
@@ -499,6 +505,7 @@ async fn download_single(
             rel_path: job.rel_path.clone(),
             bytes_done: bytes_done.min(size.max(bytes_done)),
             bytes_total: size.max(bytes_done),
+            kind: "download".into(),
         });
     }
 
@@ -522,9 +529,14 @@ pub(crate) async fn run_restore(
     // We use `rel_path` = drive_file_id, job payload in `last_error`.
     let drive_id = job.rel_path.clone();
 
-    let current_cfg = crate::config::load().unwrap_or(cfg);
-    let pair = match current_cfg.pairs.iter().find(|p| p.id == job.pair_id) {
-        Some(p) => p.clone(),
+    let disk_cfg = crate::config::load().ok();
+    let pair = disk_cfg
+        .as_ref()
+        .and_then(|c| c.pairs.iter().find(|p| p.id == job.pair_id))
+        .or_else(|| cfg.pairs.iter().find(|p| p.id == job.pair_id))
+        .cloned();
+    let pair = match pair {
+        Some(p) => p,
         None => {
             let _ = db.complete_job(job.id);
             return Ok(());

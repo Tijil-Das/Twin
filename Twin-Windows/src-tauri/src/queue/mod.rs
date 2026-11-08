@@ -29,6 +29,8 @@ pub struct ProgressUpdate {
     pub rel_path: String,
     pub bytes_done: u64,
     pub bytes_total: u64,
+    #[serde(default)]
+    pub kind: String,
 }
 
 pub type ProgressTx = mpsc::UnboundedSender<ProgressUpdate>;
@@ -129,6 +131,9 @@ async fn dispatcher<R: JobRunner>(
                 let runner2 = Arc::clone(&runner);
                 let prog = prog_tx.clone();
                 let job_id = job.id;
+                let job_pair_id = job.pair_id.clone();
+                let job_rel_path = job.rel_path.clone();
+                let job_kind = job.kind.clone();
 
                 tauri::async_runtime::spawn(async move {
                     let _permit = permit; // held for duration
@@ -137,12 +142,31 @@ async fn dispatcher<R: JobRunner>(
                             if let Err(e) = db2.complete_job(job_id) {
                                 warn!("complete_job {job_id}: {e}");
                             }
+                            let _ = db2.log_activity(crate::db::Activity {
+                                id: None,
+                                ts_ms: now_ms(),
+                                pair_id: job_pair_id,
+                                kind: job_kind,
+                                rel_path: job_rel_path,
+                                result: "ok".into(),
+                                detail: None,
+                            });
                         }
                         Err(e) => {
                             warn!("job {job_id} failed: {e}");
-                            if let Err(fe) = db2.fail_job(job_id, &e.to_string()) {
+                            let err_msg = e.to_string();
+                            if let Err(fe) = db2.fail_job(job_id, &err_msg) {
                                 warn!("fail_job {job_id}: {fe}");
                             }
+                            let _ = db2.log_activity(crate::db::Activity {
+                                id: None,
+                                ts_ms: now_ms(),
+                                pair_id: job_pair_id,
+                                kind: job_kind,
+                                rel_path: job_rel_path,
+                                result: "failed".into(),
+                                detail: Some(err_msg),
+                            });
                         }
                     }
                 });

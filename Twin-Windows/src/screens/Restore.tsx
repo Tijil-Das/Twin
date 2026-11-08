@@ -111,11 +111,11 @@ export function RestoreScreen() {
         </div>
 
         {/* Tab switcher */}
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+        <div className="flex items-center gap-1 p-1 rounded-md bg-[var(--surface-2)] border border-[var(--border)]">
           <button
             onClick={() => setTab("files")}
             className={cn(
-              "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer flex items-center gap-2",
+              "px-3.5 py-1.5 rounded text-xs font-semibold transition-all duration-150 cursor-pointer flex items-center gap-2",
               tab === "files"
                 ? "bg-[var(--surface)] text-white shadow-sm border border-white/5"
                 : "text-[var(--text-muted)] hover:text-white"
@@ -127,7 +127,7 @@ export function RestoreScreen() {
           <button
             onClick={() => setTab("trash")}
             className={cn(
-              "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer flex items-center gap-2",
+              "px-3.5 py-1.5 rounded text-xs font-semibold transition-all duration-150 cursor-pointer flex items-center gap-2",
               tab === "trash"
                 ? "bg-[var(--surface)] text-white shadow-sm border border-white/5"
                 : "text-[var(--text-muted)] hover:text-white"
@@ -539,7 +539,7 @@ function FileBrowser() {
               </div>
               <button
                 onClick={() => openMultiFolderColor(Array.from(selectedFolderIds))}
-                className="px-2.5 py-1 rounded-md bg-[#1f6feb] hover:bg-[#388bfd] text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-2.5 py-1 rounded bg-blue-700 hover:bg-blue-600 active:bg-blue-800 text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer border border-blue-600/40"
               >
                 <Palette size={12} />
                 <span>Colorize Selected ({selectedFolderIds.size})</span>
