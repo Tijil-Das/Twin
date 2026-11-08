@@ -1,20 +1,20 @@
-# Twin v1.1.2
+# Twin v1.1.3
 
-Refinement and stability release eliminating Drive permission errors, streamlining the desktop overview interface, and validating the silent in-app update pipeline.
+Maintenance and auto-restart release ensuring Twin automatically relaunches after silent in-app NSIS updates, resolving Google Drive AppData 403 permission errors, and streamlining the overview interface.
 
 ---
 
-### ✨ What's New in v1.1.2
+### ✨ What's New in v1.1.3
 
-#### 🛡️ Google Drive Scope Resolution
-- **Removed Hidden AppData Query**: Eliminated the `spaces=appDataFolder` API call that caused `HTTP 403 Forbidden (insufficientScopes)`.
-- **Clean Settings Card**: Removed the experimental "Sync AppData" button from Settings; standard folder synchronization now operates cleanly within the granted Google Drive permissions.
-- **Resource Optimization**: Stopped background polling against the restricted application data space.
+#### 🔄 Automatic App Relaunch After Silent In-App Update
+- **Instant Relaunch**: Resolved an issue where clicking `<Restart>` on the update notification silently installed the update but did not reopen the application.
+- **Synchronous NSIS Completion**: The background update executor now waits for the silent NSIS installer to finish (`-Wait`) and immediately relaunches `Twin.exe`.
+- **Seamless Transition**: Installed setups now update completely silently in the background and relaunch seamlessly without requiring manual desktop shortcut clicks.
 
-#### 🎨 Interface Streamlining & De-Cluttering
-- **Drive Explorer Navigation Removed**: Removed the Drive Explorer navigation item and screen for a focused, streamlined sync-centric experience.
-- **Deduplicated Action Controls**: Removed redundant `Sync All` and `Add Folder` buttons from the top Overview card, consolidating them into the **Synced Folders** table header.
-- **Cleaner Engine Control**: The top Overview card now focuses strictly on engine telemetry with a single **Pause Engine** / **Resume Engine** action.
+#### 🛡️ Google Drive Scope & Permissions Resolution
+- **Eliminated 403 Forbidden**: Removed the legacy `spaces=appDataFolder` query that produced `HTTP 403 Forbidden (insufficientScopes)` errors.
+- **Streamlined Settings**: Removed the experimental "Sync AppData" control; standard folder synchronization operates cleanly within user-granted Google Drive scopes.
 
-#### 🔄 Verified Auto-Update Pipeline
-- Users on **v1.1.1** will receive this update automatically and silently via the background NSIS updater with the concise `"Update v1.1.2 Ready"` restart prompt.
+#### 🎨 De-Cluttered Overview Controls
+- **Drive Explorer Removed**: Cleaned up the sidebar to keep focus strictly on active sync operations.
+- **Deduplicated Action Controls**: Removed redundant `Sync All` and `Add Folder` buttons from the top status card, keeping them exclusively in the **Synced Folders** table header.

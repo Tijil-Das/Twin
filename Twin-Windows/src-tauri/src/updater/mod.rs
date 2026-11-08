@@ -347,7 +347,9 @@ pub fn apply_pending_update_on_launch(app: &tauri::AppHandle) -> bool {
             UpdateType::SetupInstaller => {
                 // Silently run NSIS installer: updates files, registry uninstall keys, and restarts app cleanly
                 format!(
-                    "Start-Sleep -Milliseconds 1000; Start-Process -FilePath '{}' -ArgumentList '/S'",
+                    "Start-Sleep -Milliseconds 1000; Start-Process -FilePath '{}' -ArgumentList '/S' -Wait; Start-Process -FilePath '{}'; Remove-Item -Force -LiteralPath '{}' -ErrorAction SilentlyContinue",
+                    bin_path.to_string_lossy(),
+                    current_exe.to_string_lossy(),
                     bin_path.to_string_lossy()
                 )
             }
@@ -618,7 +620,9 @@ pub async fn install_now(app: &tauri::AppHandle) -> Result<(), AppError> {
             UpdateType::SetupInstaller => {
                 // Silently run NSIS installer: updates files, registry uninstall keys, and restarts app cleanly
                 format!(
-                    "Start-Sleep -Milliseconds 1500; Start-Process -FilePath '{}' -ArgumentList '/S'",
+                    "Start-Sleep -Milliseconds 1500; Start-Process -FilePath '{}' -ArgumentList '/S' -Wait; Start-Process -FilePath '{}'; Remove-Item -Force -LiteralPath '{}' -ErrorAction SilentlyContinue",
+                    new_bin.to_string_lossy(),
+                    current_exe.to_string_lossy(),
                     new_bin.to_string_lossy()
                 )
             }

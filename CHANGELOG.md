@@ -5,6 +5,18 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.1.3] - 2026-11-08
+
+### 🛡️ Maintenance — Automatic App Relaunch After In-App Update
+
+#### 🔒 Fixed & Hardened
+- **Auto-Relaunch After Silent NSIS Update**: Configured the background update executor to await silent installer completion (`-Wait`) and immediately invoke `Twin.exe`, ensuring the application reopens cleanly without requiring manual relaunch.
+- **Drive Scope Resolution**: Eliminated `spaces=appDataFolder` API calls that caused `HTTP 403 Forbidden (insufficientScopes)`.
+- **Deduplicated Action Controls**: Removed redundant `Sync All` and `Add Folder` buttons from the top Overview card.
+- **Drive Explorer Navigation Removed**: Removed the Drive Explorer navigation item and screen for a streamlined experience.
+
+---
+
 ## [1.1.2] - 2026-11-08
 
 ### 🛡️ Refinements — Drive Scope Resolution, UI Streamlining & De-Cluttering
