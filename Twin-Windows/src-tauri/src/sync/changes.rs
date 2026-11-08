@@ -104,12 +104,15 @@ pub async fn get_start_page_token(drive: &DriveClient) -> Result<String, AppErro
 }
 
 /// Fetch all changes since `page_token`.
-/// Filters to changes whose ancestor chain includes `root_folder_id`.
+/// Filters to changes whose ancestor chain includes `root_folder_id`, or are already
+/// tracked in SQLite for `pair_id`.
 #[allow(unused_assignments)]
 pub async fn fetch_changes(
     drive: &DriveClient,
     page_token: &str,
     root_folder_id: &str,
+    db: Option<&std::sync::Arc<crate::db::Db>>,
+    pair_id: Option<&str>,
 ) -> Result<ChangesResult, AppError> {
     let token = auth::access_token().await?;
     let url = format!("{}/changes", drive.base_url);
@@ -147,7 +150,7 @@ pub async fn fetch_changes(
         for change in page.changes {
             // Only keep changes that belong to our Drive folder tree.
             let in_tree = is_in_folder_tree(
-                drive, &change, root_folder_id, &mut ancestor_cache,
+                drive, &change, root_folder_id, &mut ancestor_cache, db, pair_id,
             )
             .await;
             if in_tree {
@@ -179,11 +182,21 @@ async fn is_in_folder_tree(
     change: &DriveChange,
     root_folder_id: &str,
     cache: &mut HashMap<String, bool>,
+    db: Option<&std::sync::Arc<crate::db::Db>>,
+    pair_id: Option<&str>,
 ) -> bool {
-    // Removed files have no parents metadata — include them (we'll look up by file_id in Db).
-    if change.removed == Some(true) {
+    // Removed or Trashed files have no parents metadata — include them (we'll look up by file_id in Db).
+    if change.removed == Some(true) || change.file.as_ref().and_then(|f| f.trashed) == Some(true) {
         return true;
     }
+
+    // If already tracked in our database for this pair, it definitely belongs to this folder tree.
+    if let (Some(db), Some(pid)) = (db, pair_id) {
+        if let Ok(Some(_)) = db.get_file_by_drive_id(pid, &change.file_id) {
+            return true;
+        }
+    }
+
     let Some(file) = &change.file else { return false };
     let parents = match &file.parents {
         Some(p) if !p.is_empty() => p.clone(),

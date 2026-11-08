@@ -5,6 +5,20 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.1.7] - 2026-11-08
+
+### ⚡ Critical Fixes — Continuous Auto-Detection, Windows Path Normalization & Background Heartbeat Rescan
+
+#### 🔒 Fixed & Hardened
+- **Windows Path Prefix Normalization (`strip_root_prefix`)**: Eliminated silent dropping of local filesystem events caused by NTFS case variance (`D:\DOCUMENTS` vs `d:\documents`), extended verbatim UNC paths (`\\?\D:\...`), and mixed slash separators (`/` vs `\`). Local file modifications, creations, renames, and deletions are now recognized and synced within seconds.
+- **Recursive Directory Discovery (`expand_dir_files`)**: When whole folders are pasted, dragged, or created inside a synced folder, Twin now traverses and registers all child files immediately, preventing dropped files on bulk directory copy/move operations.
+- **Continuous 60-Second Background Heartbeat Rescan**: Added an autonomous local scan every 60 seconds across all active pairs in the Dynamic Pair Supervisor. Guarantees any local changes missed by the OS watcher (due to buffer overflows, sleep/wake cycles, or rapid edits) are detected and uploaded automatically without requiring manual "Sync Now" clicks.
+- **Transient Windows File Lock Retries**: Added retry backoff for files temporarily locked by external text editors, browsers, or office apps during atomic save operations.
+- **Remote Changes API Feed Fix**: Fixed Google Drive Changes feed filtering so remote trash events (which omit `parents` metadata) and changes to files already tracked in SQLite are retained and dispatched immediately rather than being discarded as outside the tree.
+- **Dynamic Supervisor Lifecycle Management**: Disabled pairs cleanly drop their active filesystem watchers, and newly enabled pairs immediately trigger an initial reconciliation cycle upon being enabled.
+
+---
+
 ## [1.1.6] - 2026-11-08
 
 ### 🛡️ Critical Fixes & Hardening — Idempotent Deletions, Drive 404 Recovery & Cascade Pruning

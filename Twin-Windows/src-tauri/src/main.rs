@@ -828,7 +828,14 @@ fn main() {
 
                             match change.kind {
                                 watcher::ChangeKind::Modified => {
-                                    if let Ok(meta) = full_path.metadata() {
+                                    let meta_res = match full_path.metadata() {
+                                        Ok(m) => Ok(m),
+                                        Err(_) => {
+                                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                                            full_path.metadata()
+                                        }
+                                    };
+                                    if let Ok(meta) = meta_res {
                                         if meta.is_file() && rules.allowed_path(Some(&full_path), &change.rel_path, meta.len()) {
                                             let size = meta.len() as i64;
                                             let mtime_ms = meta.modified()
@@ -895,7 +902,7 @@ fn main() {
                                     q_watch.wake();
                                 }
                                 watcher::ChangeKind::Renamed { from } => {
-                                    let from_rel = from.strip_prefix(&root).unwrap_or(&from);
+                                    let from_rel = watcher::strip_root_prefix(&from, &root).unwrap_or(from);
                                     let from_rel_str = from_rel.to_string_lossy().replace('\\', "/");
                                     let now_ms = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
@@ -959,27 +966,48 @@ fn main() {
                 let echo_sup = Arc::new(sync::SelfWritten::new());
 
                 tauri::async_runtime::spawn(async move {
-                    let mut watched_ids = std::collections::HashSet::new();
-                    let mut polled_ids = std::collections::HashSet::new();
-                    let mut debouncers = Vec::new();
+                    let mut debouncers: std::collections::HashMap<
+                        String,
+                        notify_debouncer_full::Debouncer<
+                            notify_debouncer_full::notify::RecommendedWatcher,
+                            notify_debouncer_full::FileIdMap,
+                        >,
+                    > = std::collections::HashMap::new();
+                    let mut polled_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    let mut last_heartbeat = std::time::Instant::now();
 
                     loop {
                         let current_cfg = config::load().unwrap_or_default();
                         let enabled_pairs: Vec<_> = current_cfg.pairs.iter().filter(|p| p.enabled).cloned().collect();
+                        let enabled_ids: std::collections::HashSet<String> = enabled_pairs.iter().map(|p| p.id.clone()).collect();
+
+                        // Clean up disabled or removed pairs
+                        debouncers.retain(|id, _| enabled_ids.contains(id));
+                        polled_ids.retain(|id| enabled_ids.contains(id));
 
                         // 1. Dynamically attach filesystem watcher for any unmonitored pair
                         for pair in &enabled_pairs {
-                            if !watched_ids.contains(&pair.id) {
+                            if !debouncers.contains_key(&pair.id) {
                                 match watcher::Watcher::watch_pair_entry(
                                     pair,
-                                    current_cfg.app.debounce_secs,
+                                    current_cfg.app.debounce_secs.max(1),
                                     Arc::clone(&db_sup),
                                     local_tx_sup.clone(),
                                 ) {
                                     Ok(debouncer) => {
-                                        debouncers.push(debouncer);
-                                        watched_ids.insert(pair.id.clone());
+                                        debouncers.insert(pair.id.clone(), debouncer);
                                         info!("Pair supervisor: watching pair {} ({:?})", pair.id, pair.local);
+
+                                        // Initial scan for newly attached pair
+                                        let p = pair.clone();
+                                        let d = Arc::clone(&db_sup);
+                                        let g = gov_sup.clone();
+                                        let q = q_sup.clone();
+                                        let r = rules::Rules::new(&current_cfg.rules.include, &current_cfg.rules.exclude, current_cfg.rules.max_file_mb);
+                                        tauri::async_runtime::spawn(async move {
+                                            let _ = watcher::scan_pair(&p, d, &r, &g).await;
+                                            q.wake();
+                                        });
                                     }
                                     Err(e) => {
                                         warn!("Pair supervisor: failed to watch pair {}: {e}", pair.id);
@@ -1006,6 +1034,26 @@ fn main() {
                                     info!("Pair supervisor: changes poll loop started for pair {}", pair.id);
                                 }
                             }
+                        }
+
+                        // 3. Periodic Background Rescan Heartbeat:
+                        // Guarantees all local changes are auto-detected even if OS watcher drops an event,
+                        // debouncer overflows, or files were locked during initial save.
+                        // Runs every 60 seconds (or configured fallback_rescan_mins).
+                        let rescan_interval = std::time::Duration::from_secs(
+                            if current_cfg.app.fallback_rescan_mins > 0 {
+                                (current_cfg.app.fallback_rescan_mins * 60).min(60)
+                            } else {
+                                60
+                            }
+                        );
+                        if last_heartbeat.elapsed() >= rescan_interval {
+                            last_heartbeat = std::time::Instant::now();
+                            let rules = rules::Rules::new(&current_cfg.rules.include, &current_cfg.rules.exclude, current_cfg.rules.max_file_mb);
+                            for pair in &enabled_pairs {
+                                let _ = watcher::scan_pair(pair, Arc::clone(&db_sup), &rules, &gov_sup).await;
+                            }
+                            q_sup.wake();
                         }
 
                         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;

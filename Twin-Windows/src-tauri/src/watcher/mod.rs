@@ -93,6 +93,100 @@ impl Watcher {
     }
 }
 
+/// Reliably strips `root` from `path` on Windows and other OSes.
+/// Handles:
+/// - Exact matches (`Path::strip_prefix`)
+/// - Verbatim / extended path prefixes (`\\?\`, `\??\`, `//?/`)
+/// - Forward and backward slash variations (`/` vs `\`)
+/// - Case-insensitivity on Windows (e.g. `D:\DOCUMENTS` vs `d:\documents`)
+/// - Trailing slashes
+pub fn strip_root_prefix(path: &Path, root: &Path) -> Option<PathBuf> {
+    // 1. Fast path: standard stdlib strip_prefix
+    if let Ok(rel) = path.strip_prefix(root) {
+        return Some(rel.to_path_buf());
+    }
+
+    // If path is already relative, return as-is
+    if path.is_relative() {
+        return Some(path.to_path_buf());
+    }
+
+    // 2. Normalization: strip verbatim prefixes and unify slashes to '\'
+    let norm_path_str = normalize_path_str(path);
+    let norm_root_str = normalize_path_str(root);
+
+    let clean_path = norm_path_str.trim_matches('\\');
+    let clean_root = norm_root_str.trim_matches('\\');
+
+    // Case-insensitive prefix match (Windows filesystem semantics)
+    #[cfg(windows)]
+    let is_prefix = clean_path.len() >= clean_root.len()
+        && clean_path[..clean_root.len()].eq_ignore_ascii_case(clean_root);
+
+    #[cfg(not(windows))]
+    let is_prefix = clean_path.starts_with(clean_root);
+
+    if is_prefix {
+        let remainder = &clean_path[clean_root.len()..];
+        let trimmed_rem = remainder.trim_start_matches('\\');
+        return Some(PathBuf::from(trimmed_rem));
+    }
+
+    // 3. Fallback: try canonicalizing both if they exist on disk
+    if let (Ok(can_path), Ok(can_root)) = (path.canonicalize(), root.canonicalize()) {
+        if let Ok(rel) = can_path.strip_prefix(&can_root) {
+            return Some(rel.to_path_buf());
+        }
+        let can_p_str = normalize_path_str(&can_path);
+        let can_r_str = normalize_path_str(&can_root);
+        let c_path = can_p_str.trim_matches('\\');
+        let c_root = can_r_str.trim_matches('\\');
+        #[cfg(windows)]
+        let c_match = c_path.len() >= c_root.len()
+            && c_path[..c_root.len()].eq_ignore_ascii_case(c_root);
+        #[cfg(not(windows))]
+        let c_match = c_path.starts_with(c_root);
+
+        if c_match {
+            let remainder = &c_path[c_root.len()..];
+            let trimmed_rem = remainder.trim_start_matches('\\');
+            return Some(PathBuf::from(trimmed_rem));
+        }
+    }
+
+    None
+}
+
+pub fn normalize_path_str(p: &Path) -> String {
+    let mut s = p.to_string_lossy().replace('/', "\\");
+    if let Some(stripped) = s.strip_prefix(r"\\?\UNC\") {
+        s = format!(r"\\{}", stripped);
+    } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        s = stripped.to_string();
+    } else if let Some(stripped) = s.strip_prefix(r"\??\") {
+        s = stripped.to_string();
+    }
+    s
+}
+
+fn expand_dir_files(dir_path: &Path, root: &Path, by_path: &mut HashMap<PathBuf, ChangeKind>) {
+    let mut stack = vec![dir_path.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        if let Ok(entries) = std::fs::read_dir(&current) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.is_file() {
+                    if let Some(r) = strip_root_prefix(&p, root) {
+                        by_path.insert(r, ChangeKind::Modified);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn handle_debounced_events(
     result: DebounceEventResult,
     pair_id: &str,
@@ -128,12 +222,12 @@ fn handle_debounced_events(
             &ev.event.kind
         {
             if let [from, to] = ev.event.paths.as_slice() {
-                if let (Ok(from_rel), Ok(to_rel)) =
-                    (from.strip_prefix(root), to.strip_prefix(root))
+                if let (Some(from_rel), Some(to_rel)) =
+                    (strip_root_prefix(from, root), strip_root_prefix(to, root))
                 {
                     by_path.insert(
-                        to_rel.to_path_buf(),
-                        ChangeKind::Renamed { from: from_rel.to_path_buf() },
+                        to_rel,
+                        ChangeKind::Renamed { from: from_rel },
                     );
                 }
             }
@@ -142,16 +236,26 @@ fn handle_debounced_events(
 
         let kind = &ev.event.kind;
         for path in &ev.event.paths {
-            // Skip directory-only events (unless delete/rename).
-            let is_dir = path.is_dir();
-            let rel = match path.strip_prefix(root) {
-                Ok(r) => r.to_path_buf(),
-                Err(_) => continue,
+            let rel = match strip_root_prefix(path, root) {
+                Some(r) => r,
+                None => continue,
             };
 
+            // Event directly on the watched directory itself
+            if rel.as_os_str().is_empty() {
+                continue;
+            }
+
+            let is_dir = path.is_dir();
+
             match kind {
-                EventKind::Create(_) | EventKind::Modify(_) if !is_dir => {
-                    by_path.insert(rel, ChangeKind::Modified);
+                EventKind::Create(_) | EventKind::Modify(_) => {
+                    if is_dir {
+                        // Discover files in newly created or batch-copied directory
+                        expand_dir_files(path, root, &mut by_path);
+                    } else {
+                        by_path.insert(rel, ChangeKind::Modified);
+                    }
                 }
                 EventKind::Remove(_) => {
                     // A removed directory no longer exists, so `is_dir()` is
@@ -261,9 +365,9 @@ pub async fn scan_pair(
                 Err(_) => continue,
             };
 
-            let rel = match path.strip_prefix(&root) {
-                Ok(r) => r.to_path_buf(),
-                Err(_) => continue,
+            let rel = match strip_root_prefix(&path, &root) {
+                Some(r) => r,
+                None => continue,
             };
 
             if meta.is_dir() {
@@ -429,4 +533,57 @@ fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_root_prefix_exact() {
+        let root = Path::new(r"D:\DOCUMENTS");
+        let path = Path::new(r"D:\DOCUMENTS\notes.txt");
+        assert_eq!(strip_root_prefix(path, root), Some(PathBuf::from("notes.txt")));
+    }
+
+    #[test]
+    fn test_strip_root_prefix_case_insensitive_windows() {
+        let root = Path::new(r"D:\DOCUMENTS");
+        let path = Path::new(r"d:\documents\subfolder\report.pdf");
+        assert_eq!(
+            strip_root_prefix(path, root),
+            Some(PathBuf::from(r"subfolder\report.pdf"))
+        );
+    }
+
+    #[test]
+    fn test_strip_root_prefix_verbatim_unc() {
+        let root = Path::new(r"D:\DOCUMENTS");
+        let path = Path::new(r"\\?\D:\DOCUMENTS\nested\deep\file.dat");
+        assert_eq!(
+            strip_root_prefix(path, root),
+            Some(PathBuf::from(r"nested\deep\file.dat"))
+        );
+    }
+
+    #[test]
+    fn test_strip_root_prefix_slashes() {
+        let root = Path::new("D:/DOCUMENTS/");
+        let path = Path::new(r"D:\DOCUMENTS\file.txt");
+        assert_eq!(strip_root_prefix(path, root), Some(PathBuf::from("file.txt")));
+    }
+
+    #[test]
+    fn test_strip_root_prefix_root_itself() {
+        let root = Path::new(r"D:\DOCUMENTS");
+        let path = Path::new(r"D:\DOCUMENTS");
+        assert_eq!(strip_root_prefix(path, root), Some(PathBuf::from("")));
+    }
+
+    #[test]
+    fn test_strip_root_prefix_mismatch() {
+        let root = Path::new(r"D:\DOCUMENTS");
+        let path = Path::new(r"C:\OTHER\file.txt");
+        assert_eq!(strip_root_prefix(path, root), None);
+    }
 }

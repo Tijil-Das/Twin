@@ -2,29 +2,29 @@
 // Inspired by JioTV Max's resilient release architecture
 
 const GITHUB_REPO = 'Tijil-Das/Twin';
-const DEFAULT_VERSION = 'v1.1.6';
+const DEFAULT_VERSION = 'v1.1.7';
 const CACHE_KEY = '__twin_release_cache__';
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15-minute cache to prevent GitHub rate-limiting (60 req/hr)
 
 // Default static fallback URLs & SHA-256 hashes (v1.1.0 baseline)
 const releaseAssets = {
   exe: {
-    url: 'https://github.com/Tijil-Das/Twin/releases/download/v1.1.6/Twin_1.1.6_x64-setup.exe',
-    name: 'Twin_1.1.6_x64-setup.exe',
+    url: 'https://github.com/Tijil-Das/Twin/releases/download/v1.1.7/Twin_1.1.7_x64-setup.exe',
+    name: 'Twin_1.1.7_x64-setup.exe',
     sha256: '2359bcd289371f818a2a3096e5bb317c7c0c215176d7eccb4a87f5cdb7085dab'
   },
   msi: {
-    url: 'https://github.com/Tijil-Das/Twin/releases/download/v1.1.6/Twin_1.1.6_x64_en-US.msi',
-    name: 'Twin_1.1.6_x64_en-US.msi',
+    url: 'https://github.com/Tijil-Das/Twin/releases/download/v1.1.7/Twin_1.1.7_x64_en-US.msi',
+    name: 'Twin_1.1.7_x64_en-US.msi',
     sha256: '78970db77fa8c68b3bd81035bddf9c31e96c03c3d2f89a46e126b84a97d55ce7'
   },
   zip: {
-    url: 'https://github.com/Tijil-Das/Twin/releases/download/v1.1.6/Twin-Windows-Portable.zip',
+    url: 'https://github.com/Tijil-Das/Twin/releases/download/v1.1.7/Twin-Windows-Portable.zip',
     name: 'Twin-Windows-Portable.zip',
     sha256: '887cbfdda7368c302e96df61c9a8d54642a749a62c9ab2637bb422695bf584e3'
   },
   bin: {
-    url: 'https://github.com/Tijil-Das/Twin/releases/download/v1.1.6/Twin.exe',
+    url: 'https://github.com/Tijil-Das/Twin/releases/download/v1.1.7/Twin.exe',
     name: 'Twin.exe',
     sha256: 'eb9b5a40b366b1ee8d683da899c95912fb77c59da512a3aac11dcc40649fa9b3'
   }

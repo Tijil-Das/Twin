@@ -147,7 +147,7 @@ pub async fn reconcile_pair_gap(
     } else if matches!(pair.mode, PairMode::TwoWay) {
         let page_token = ctx.db.get_page_token(&pair.id)?;
         if let Some(token) = page_token {
-            match changes::fetch_changes(&ctx.drive, &token, &pair.drive_folder_id).await {
+            match changes::fetch_changes(&ctx.drive, &token, &pair.drive_folder_id, Some(&ctx.db), Some(&pair.id)).await {
                 Ok(result) => {
                     let mut applied = 0;
                     for change in &result.changes {
@@ -236,7 +236,7 @@ pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
             }
         };
 
-        match changes::fetch_changes(&ctx.drive, &page_token, &pair.drive_folder_id).await {
+        match changes::fetch_changes(&ctx.drive, &page_token, &pair.drive_folder_id, Some(&ctx.db), Some(&pair.id)).await {
             Ok(result) => {
                 let mut applied = 0;
                 // Apply each change through the decision table.
