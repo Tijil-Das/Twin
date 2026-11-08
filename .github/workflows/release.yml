@@ -42,6 +42,21 @@ jobs:
         working-directory: Twin-Windows
         run: pnpm install --no-frozen-lockfile
 
+      - name: Pre-cache NSIS for Tauri Bundler
+        shell: pwsh
+        run: |
+          $nsisDir = "$env:LOCALAPPDATA\tauri\NSIS"
+          if (-not (Test-Path $nsisDir)) {
+            New-Item -ItemType Directory -Path $nsisDir -Force | Out-Null
+          }
+          $nsisZip = Join-Path $nsisDir "nsis-3.13.zip"
+          if (-not (Test-Path $nsisZip)) {
+            Write-Host "Pre-caching NSIS 3.13 from SourceForge mirror..."
+            curl.exe -L -s -o $nsisZip "https://sourceforge.net/projects/nsis/files/NSIS%203/3.13/nsis-3.13.zip/download"
+            $hash = (Get-FileHash -Path $nsisZip -Algorithm SHA256).Hash
+            Write-Host "NSIS 3.13 cached with SHA256: $hash"
+          }
+
       - name: Build Tauri Desktop Application
         working-directory: Twin-Windows
         run: pnpm tauri build
