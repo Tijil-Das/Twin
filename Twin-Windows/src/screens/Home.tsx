@@ -444,35 +444,14 @@ export function HomeScreen() {
               {isPaused ? (
                 <>
                   <Play size={14} className="text-emerald-400 fill-emerald-400" />
-                  Resume
+                  Resume Engine
                 </>
               ) : (
                 <>
                   <Pause size={14} className="text-zinc-400" />
-                  Pause
+                  Pause Engine
                 </>
               )}
-            </Button>
-
-            <Button
-              variant="secondary"
-              onClick={handleSyncAll}
-              disabled={syncingAll || isPaused}
-              className="flex items-center gap-2"
-            >
-              <RefreshCw
-                size={14}
-                className={cn("text-[var(--text-muted)]", syncingAll && "animate-spin text-blue-400")}
-              />
-              Sync All
-            </Button>
-
-            <Button
-              onClick={() => setShowAdd(true)}
-              className="flex items-center gap-2"
-            >
-              <Plus size={15} strokeWidth={2.5} />
-              Add Folder
             </Button>
           </div>
         </div>

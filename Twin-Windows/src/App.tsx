@@ -13,7 +13,6 @@ import { ConflictDialog } from "@/components/ConflictDialog";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { HomeScreen }     from "@/screens/Home";
 import { ActivityScreen } from "@/screens/Activity";
-import { RestoreScreen }  from "@/screens/Restore";
 import { SettingsScreen } from "@/screens/Settings";
 
 export default function App() {
@@ -133,7 +132,6 @@ export default function App() {
         <main className="flex-1 h-screen overflow-y-auto bg-[var(--bg)] relative">
           {screen === "home"     && <HomeScreen />}
           {screen === "activity" && <ActivityScreen />}
-          {screen === "restore"  && <RestoreScreen />}
           {screen === "settings" && <SettingsScreen />}
         </main>
       </div>

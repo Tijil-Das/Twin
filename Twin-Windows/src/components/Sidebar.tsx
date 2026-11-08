@@ -5,7 +5,6 @@
  */
 import {
   Activity as ActivityIcon,
-  ArchiveRestore,
   Settings as SettingsIcon,
   Cloud,
   Layers,
@@ -17,7 +16,7 @@ import { useStore } from "@/store";
 import appLogo from "@/assets/icon.png";
 import gdLogo from "@/assets/gd-icon.png";
 
-export type Screen = "home" | "activity" | "restore" | "settings";
+export type Screen = "home" | "activity" | "settings";
 
 interface SidebarProps {
   active: Screen;
@@ -46,7 +45,6 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
       Icon: ActivityIcon,
       badge: queueStatus.failed > 0 ? queueStatus.failed : null,
     },
-    { id: "restore", label: "Drive Explorer", Icon: ArchiveRestore },
     { id: "settings", label: "Settings", Icon: SettingsIcon },
   ];
 
@@ -140,28 +138,16 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
                 aria-current={isActive ? "page" : undefined}
               >
                 <div className="flex items-center gap-3">
-                  {id === "restore" ? (
-                    <img
-                      src={gdLogo}
-                      alt="Google Drive"
-                      style={{ width: 18, height: 18, minWidth: 18, minHeight: 18, maxWidth: 18, maxHeight: 18 }}
-                      className={cn(
-                        "w-[18px] h-[18px] object-contain shrink-0 transition-opacity",
-                        isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"
-                      )}
-                    />
-                  ) : (
-                    <Icon
-                      size={18}
-                      strokeWidth={isActive ? 2.2 : 1.8}
-                      className={cn(
-                        "transition-colors",
-                        isActive
-                          ? "text-blue-400"
-                          : "text-[var(--text-subtle)] group-hover:text-white"
-                      )}
-                    />
-                  )}
+                  <Icon
+                    size={18}
+                    strokeWidth={isActive ? 2.2 : 1.8}
+                    className={cn(
+                      "transition-colors",
+                      isActive
+                        ? "text-blue-400"
+                        : "text-[var(--text-subtle)] group-hover:text-white"
+                    )}
+                  />
                   <span>{label}</span>
                 </div>
 
