@@ -79,7 +79,7 @@ jobs:
 
       - name: Build Tauri Desktop Application
         working-directory: Twin-Windows
-        run: pnpm tauri build
+        run: pnpm tauri build --bundles nsis
 
       - name: Stage Release Artifacts
         shell: pwsh
