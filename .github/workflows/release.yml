@@ -42,19 +42,39 @@ jobs:
         working-directory: Twin-Windows
         run: pnpm install --no-frozen-lockfile
 
-      - name: Pre-cache NSIS for Tauri Bundler
+      - name: Pre-cache NSIS and Tauri Plugins
         shell: pwsh
         run: |
           $nsisDir = "$env:LOCALAPPDATA\tauri\NSIS"
           if (-not (Test-Path $nsisDir)) {
             New-Item -ItemType Directory -Path $nsisDir -Force | Out-Null
           }
-          $nsisZip = Join-Path $nsisDir "nsis-3.13.zip"
-          if (-not (Test-Path $nsisZip)) {
-            Write-Host "Pre-caching NSIS 3.13 from SourceForge mirror..."
-            curl.exe -L -s -o $nsisZip "https://sourceforge.net/projects/nsis/files/NSIS%203/3.13/nsis-3.13.zip/download"
-            $hash = (Get-FileHash -Path $nsisZip -Algorithm SHA256).Hash
-            Write-Host "NSIS 3.13 cached with SHA256: $hash"
+          
+          # 1. Download and extract NSIS 3.13 toolset
+          $makensis = Join-Path $nsisDir "makensis.exe"
+          if (-not (Test-Path $makensis)) {
+            Write-Host "Downloading NSIS 3.13 from SourceForge mirror..."
+            $tempZip = Join-Path $env:TEMP "nsis-3.13.zip"
+            curl.exe -L -s -o $tempZip "https://sourceforge.net/projects/nsis/files/NSIS%203/3.13/nsis-3.13.zip/download"
+            Expand-Archive -Path $tempZip -DestinationPath $env:TEMP -Force
+            $extractedDir = Join-Path $env:TEMP "nsis-3.13"
+            Copy-Item -Path "$extractedDir\*" -Destination $nsisDir -Recurse -Force
+            Copy-Item -Path $tempZip -Destination $nsisDir -Force
+            Remove-Item -Path $tempZip, $extractedDir -Recurse -Force
+            Write-Host "NSIS 3.13 extracted to $nsisDir"
+          }
+
+          # 2. Download and place nsis_tauri_utils.dll via direct GitHub API asset endpoint
+          $pluginsDir = Join-Path $nsisDir "Plugins\x86-unicode\additional"
+          if (-not (Test-Path $pluginsDir)) {
+            New-Item -ItemType Directory -Path $pluginsDir -Force | Out-Null
+          }
+          $pluginDll = Join-Path $pluginsDir "nsis_tauri_utils.dll"
+          if (-not (Test-Path $pluginDll)) {
+            Write-Host "Downloading nsis_tauri_utils.dll via GitHub API..."
+            curl.exe -s -L -H "Accept: application/octet-stream" -H "User-Agent: TauriCI" -o $pluginDll "https://api.github.com/repos/tauri-apps/nsis-tauri-utils/releases/assets/345882097"
+            $hash = (Get-FileHash -Path $pluginDll -Algorithm SHA1).Hash
+            Write-Host "nsis_tauri_utils.dll installed with SHA1: $hash"
           }
 
       - name: Build Tauri Desktop Application
