@@ -5,6 +5,21 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.1.6] - 2026-11-08
+
+### 🛡️ Critical Fixes & Hardening — Idempotent Deletions, Drive 404 Recovery & Cascade Pruning
+
+#### 🔒 Fixed & Hardened
+- **Idempotent Deletions & Trashing**: Deleting or trashing files on Google Drive that were already removed, trashed, or returned 404/410/notFound is now treated as an idempotent success rather than a fatal error. Prevents deletion jobs from retrying 5 times and permanently failing in the activity ledger.
+- **Parent Folder Deletion Cascade (Fixed Redundant Failures)**: In Mirror mode, when a rogue remote folder is pruned from Drive, all child files beneath that folder are now automatically recognized as trashed in SQLite rather than dispatching redundant individual file deletion jobs that error against non-existent parents.
+- **Recognize Remote Trash Events in Changes Feed**: Expanded Google Drive Changes API processor to treat `change.file.trashed = true` as an active remote removal event instead of skipping it, properly propagating remote deletions to local storage.
+- **Stale Drive ID Upload Recovery**: When uploading files whose previously recorded `drive_id` was deleted or purged on Google Drive (404 on `PATCH`), Twin now automatically clears the stale ID and seamlessly re-uploads the file as a clean new object (`POST`) without failing.
+- **Missing Local Files Without Remote ID**: Missing local files that were never uploaded to Drive (empty `drive_id`) are now marked `deleted` directly in SQLite without queueing useless network delete jobs.
+- **Automatic Recovery of Stuck Jobs**: Added automatic re-queuing of failed jobs upon application startup and during `Sync Now` / `Sync All` cycles, allowing any previously stuck failed delete jobs to execute cleanly through the resilient handlers and resolve automatically.
+- **UI Error Boundary & Retry-All Action**: Added a React `ErrorBoundary` protecting the main viewport, an inline **Retry all** action on the Home screen to retry all failed transfers in one click, and push-based `queue://updated` listener for instant UI updates.
+
+---
+
 ## [1.1.5] - 2026-11-08
 
 ### 🚀 Enhancements — Dedicated Folder Inspection Dashboard, True Up-To-Date Verification & Native Dialogs

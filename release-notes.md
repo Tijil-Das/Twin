@@ -1,40 +1,26 @@
-# Twin v1.1.5
+# Twin v1.1.6
 
-Major desktop refinement release introducing a dedicated full-page folder inspection dashboard, accurate active file counts eliminating false "Up to date" indicators, native Win32 folder browsing with zero terminal flashes, dynamic status-driven system tray icons, and a spacious pair configuration modal.
+Critical sync resilience and stability release introducing idempotent Google Drive deletions, automatic recovery from 404/410 errors, child cascade pruning for deleted folders, remote trash event processing, and one-click retry actions.
 
 ---
 
-### ✨ What's New in v1.1.5
+### ✨ What's New in v1.1.6
 
-#### 🖥️ Dedicated Full-Page Folder Inspection Dashboard
-- **Comprehensive Folder View**: Replaced the cramped inline row dropdown with a dedicated, spacious full-page view accessible by clicking any folder pair row or the **Details →** button.
-- **Header & Quick Actions**: Aligned page header featuring the folder title, live sync status badge (`✓ Up to date with Drive`, `Sync pending`, or `Syncing`), topology tag, and one-click actions: **Sync Now**, **Open in Explorer**, **View in Drive**, **Sync Toggle**, and **Delete**.
-- **Balanced 4-Column Metrics Bar**: High-contrast, clean status strip tracking **Synced Files** (with completion percentage), **Pending Changes**, **Drive Trash** (safely preserved for 30 days), and **Sync Issues**.
-- **Unified Configuration Property Sheet**: Clean property sheet detailing the local filesystem path, Google Drive target directory, synchronization topology, and remote deletion safety policy with inline **Explorer**, **Drive**, and **Copy** actions.
-- **Live In-Flight Transfers Stream**: Real-time progress bars showing active file transfers, transfer speeds (MB/s), remaining ETA, and direction badges (Uploading to Drive / Downloading from Drive).
-- **Per-Folder Activity Ledger**: Dedicated audit table displaying all past file uploads, downloads, and deletions specifically recorded for that folder pair.
+#### 🛡️ Idempotent Google Drive Deletions & 404 Error Recovery
+- **No More False "Failed" Deletions**: Deleting or trashing files on Google Drive that were already deleted, moved to trash, or no longer exist (returning HTTP 404 Not Found or 410 Gone) is now recognized as an idempotent success. The local database immediately marks the file as `trashed` or `deleted` without failing.
+- **Eliminated Retries on Non-Existent Remote Items**: Avoids useless 5-attempt retry loops and error noise in the Activity log when files or folders are removed from Drive.
 
-#### 🎯 True "Up to Date" Logic & Active File Counting (Fixed 880/1064 Bug)
-- **Filtered Soft-Deleted Records**: Updated SQLite database queries to exclude soft-deleted/tombstone records from active file counts (`WHERE state NOT IN ('deleted', 'deleted_local', 'remote_deleted', 'trashed')`). Soft-deleted records are now tracked independently in `deleted`.
-- **Strict Sync Status Check**: `is_synced` now strictly requires `synced == total` in addition to zero queued, running, dirty, or failed jobs.
-- **Accurate Pending Feedback**: When files remain unsynced (`synced < total`), the interface immediately displays `Sync pending • X/Y synced (Z remaining)` in amber rather than falsely claiming "Up to date with Google Drive" with a green checkmark.
-- **Overview Canvas Accuracy**: The top Overview banner now shows **Sync Pending** whenever any active folder pair has un-synced files.
+#### 🌲 Parent Folder Deletion Cascade & Prune Isolation
+- **Cascade Awareness**: When a remote folder is pruned in Mirror mode, Twin marks all tracked children within that directory tree as deleted/trashed in the database directly. It no longer spawns redundant individual deletion jobs for files whose parent folder was already trashed on Drive.
+- **Drive Path Cache Invalidation**: Pruned folders and deleted paths are instantly evicted from the internal path cache to prevent subsequent uploads from referencing deleted parent folder IDs.
 
-#### 🪟 Silent Native Folder Browser (Zero Terminal Flashing)
-- **Direct Win32 COM Integration**: Replaced PowerShell-spawned folder browser dialogs with native Win32 COM folder pickers via `rfd` (Rust File Dialog).
-- **No Console Popups**: Browsing for local folders to sync now opens instantly and silently without any command terminal window flashes.
+#### 🔄 Remote Trash Event Processing in Changes Feed
+- **Google Drive Trash Handling**: Google Drive v3 sends remote file deletions with `change.file.trashed = true`. Twin now properly processes these events as remote deletions, safely moving local files to `.twin-trash/` or deleting them according to your pair's deletion safety policy.
 
-#### 🔔 Dynamic Status-Driven System Tray Icon
-- **Live Tray Supervisor**: Real-time background tray monitor dynamically updates the system tray icon to match exact engine states:
-  - **Yellow (`syncing.png`)**: Actively uploading, downloading, or processing jobs in the transfer queue.
-  - **Green (`idle.png`)**: All files verified and up to date with Google Drive.
-  - **Paused (`paused.png`)**: Engine paused by user or governor.
-  - **Red (`error.png`)**: Unresolved sync errors requiring attention.
+#### 🚀 Self-Healing Uploads on Stale Drive IDs
+- **Automatic Fallback to New Upload**: If a file exists locally and has an old `drive_id` that was purged or deleted from Google Drive, the upload runner detects the 404 response on `PATCH`, purges the stale remote ID, and transparently re-uploads the file via `POST` as a fresh file without failing.
 
-#### 🎨 Add Synced Folder Pair Modal Redesign
-- **Spacious Layout**: Expanded modal width (`w-[680px]`) with comfortable typography (`text-xs` / `text-sm`), eliminating cramped microscopic fonts.
-- **Removed Duplicate Selection Banner**: Eliminated the redundant "Selected: <name> <id>" banner underneath the Drive folder browser.
-- **Polished Controls**: Clean, high-contrast cards for sync topologies (Two-Way Sync, Cloud Backup, Cloud Mirror) and remote deletion safety options.
-
-#### 📐 Fixed Multi-Line Status Text Wrapping
-- **Single-Line Formatting**: Applied strict `whitespace-nowrap overflow-hidden` across list rows to prevent status text like `Up to date with Google Drive` and file counts from awkwardly wrapping into multiple jagged vertical lines.
+#### 🧹 Automatic Recovery of Stuck Failed Jobs
+- **Self-Healing on Startup & Sync**: Application startup and manual **Sync Now** / **Sync All** cycles automatically re-queue previously failed jobs so that the new resilient handlers can process and complete them cleanly.
+- **Home Screen "Retry All" Action**: Added a quick **Retry all** button directly inside the transfer errors banner on the Home screen to instantly re-dispatch all failed jobs.
+- **Application Error Boundary**: Added a fallback error boundary wrapping view routes to safeguard against unexpected component crashes.
