@@ -139,7 +139,18 @@ pub(crate) async fn run_download(
         .to_string();
 
     // Fetch live file metadata from Drive.
-    let meta = fetch_file_meta(&drive, &drive_id).await?;
+    let meta = match fetch_file_meta(&drive, &drive_id).await {
+        Ok(m) => m,
+        Err(e) => {
+            let err_str = e.to_string();
+            if crate::drive::client::is_already_deleted_or_not_found(&err_str) {
+                warn!("download: remote file {} ({drive_id}) no longer exists on Drive (404/410), marking remote_deleted", job.rel_path);
+                let _ = db.mark_state(&job.pair_id, &job.rel_path, "remote_deleted");
+                return Ok(());
+            }
+            return Err(e);
+        }
+    };
     let mime = meta.mime_type.as_deref().unwrap_or("application/octet-stream");
 
     // Skip shortcuts.
@@ -543,7 +554,18 @@ pub(crate) async fn run_restore(
         }
     };
 
-    let meta = fetch_file_meta(&drive, &drive_id).await?;
+    let meta = match fetch_file_meta(&drive, &drive_id).await {
+        Ok(m) => m,
+        Err(e) => {
+            let err_str = e.to_string();
+            if crate::drive::client::is_already_deleted_or_not_found(&err_str) {
+                warn!("restore: file {} ({drive_id}) no longer exists on Drive (purged)", job.rel_path);
+                let _ = db.complete_job(job.id);
+                return Ok(());
+            }
+            return Err(e);
+        }
+    };
     let file_name = meta.name.as_deref().unwrap_or("restored_file").to_string();
 
     // Decode the destination/revision payload. Fall back to the pair root

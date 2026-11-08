@@ -36,6 +36,31 @@ fn path_ensure_lock() -> &'static Mutex<()> {
     PATH_ENSURE_LOCK.get_or_init(|| Mutex::new(()))
 }
 
+/// Evict all path cache entries starting with `{pair_id}|{rel_path}`.
+pub async fn invalidate_path_cache(pair_id: &str, rel_path: &str) {
+    let mut cache = global_path_cache().lock().await;
+    let clean_rel = rel_path.trim_matches('/');
+    let prefix = if clean_rel.is_empty() {
+        format!("{pair_id}|")
+    } else {
+        format!("{pair_id}|{clean_rel}")
+    };
+    cache.retain(|k, _| !k.starts_with(&prefix));
+}
+
+/// Check if an error message indicates the file is already deleted, trashed, or not found on Drive.
+pub fn is_already_deleted_or_not_found(err_str: &str) -> bool {
+    let s = err_str.to_ascii_lowercase();
+    s.contains("404")
+        || s.contains("410")
+        || s.contains("notfound")
+        || s.contains("not found")
+        || s.contains("alreadytrashed")
+        || s.contains("cannottrash")
+        || s.contains("item has been deleted")
+        || s.contains("item is in trash")
+}
+
 // DriveClient
 
 /// Shared Drive API client. Clone-friendly (Arc inside).
@@ -462,30 +487,62 @@ impl DriveClient {
         Ok(parent)
     }
 
-    /// Move a file to trash.
+    /// Move a file to trash. If the file is already deleted or not found (404/410), succeeds idempotently.
     pub async fn trash(&self, file_id: &str) -> Result<(), AppError> {
+        let clean_id = file_id.trim();
+        if clean_id.is_empty() {
+            return Ok(());
+        }
         let token = auth::access_token().await?;
-        let url = format!("{}/files/{file_id}", self.base_url);
+        let url = format!("{}/files/{clean_id}", self.base_url);
         let body = serde_json::json!({ "trashed": true });
-        self.execute_with_retry(|| {
+        let res = self.execute_with_retry(|| {
             self.http.patch(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[("fields", "id"), ("supportsAllDrives", "true")])
                 .json(&body)
-        }).await?;
-        Ok(())
+        }).await;
+
+        match res {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let s = e.to_string();
+                if is_already_deleted_or_not_found(&s) {
+                    debug!("trash: file {clean_id} already not found or trashed ({s}), treating as success");
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
-    /// Permanently delete a file.
+    /// Permanently delete a file. If the file is already deleted or not found (404/410), succeeds idempotently.
     pub async fn delete(&self, file_id: &str) -> Result<(), AppError> {
+        let clean_id = file_id.trim();
+        if clean_id.is_empty() {
+            return Ok(());
+        }
         let token = auth::access_token().await?;
-        let url = format!("{}/files/{file_id}", self.base_url);
-        self.execute_with_retry(|| {
+        let url = format!("{}/files/{clean_id}", self.base_url);
+        let res = self.execute_with_retry(|| {
             self.http.delete(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .query(&[("supportsAllDrives", "true")])
-        }).await?;
-        Ok(())
+        }).await;
+
+        match res {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let s = e.to_string();
+                if is_already_deleted_or_not_found(&s) {
+                    debug!("delete: file {clean_id} already not found or deleted ({s}), treating as success");
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
     /// Move a file or folder from old_parent to new_parent in Google Drive.

@@ -88,10 +88,14 @@ impl DriveClient {
 
     /// Restore a trashed file by setting `trashed=false`.
     pub async fn untrash(&self, file_id: &str) -> Result<(), AppError> {
+        let clean_id = file_id.trim();
+        if clean_id.is_empty() {
+            return Ok(());
+        }
         let token = auth::access_token().await?;
-        let url = format!("{}/files/{file_id}", self.base_url);
+        let url = format!("{}/files/{clean_id}", self.base_url);
         let body = serde_json::json!({ "trashed": false });
-        self.execute_with_retry(|| {
+        let res = self.execute_with_retry(|| {
             self.http
                 .patch(&url)
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
@@ -101,7 +105,18 @@ impl DriveClient {
                 ])
                 .json(&body)
         })
-        .await?;
-        Ok(())
+        .await;
+
+        match res {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let s = e.to_string();
+                if crate::drive::client::is_already_deleted_or_not_found(&s) || s.to_ascii_lowercase().contains("nottrashed") {
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 }

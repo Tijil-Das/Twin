@@ -192,11 +192,23 @@ async fn run_upload(
             kind: "upload".into(),
         });
 
-        let m = drive.multipart_upload(
+        let m = match drive.multipart_upload(
             &parent_id, &file_name,
             existing_drive_id.as_deref(),
-            &modified_time, data, mime,
-        ).await?;
+            &modified_time, data.clone(), mime,
+        ).await {
+            Ok(res) => res,
+            Err(e) if existing_drive_id.is_some() && crate::drive::client::is_already_deleted_or_not_found(&e.to_string()) => {
+                warn!("upload: existing drive_id was deleted or not found on Drive, creating as new file");
+                let _ = db.clear_drive_meta(&job.pair_id, &job.rel_path);
+                drive.multipart_upload(
+                    &parent_id, &file_name,
+                    None,
+                    &modified_time, data, mime,
+                ).await?
+            }
+            Err(e) => return Err(e),
+        };
 
         let _ = progress.send(ProgressUpdate {
             job_id: job.id,
@@ -210,11 +222,23 @@ async fn run_upload(
         m
     } else {
         // ── Resumable upload ──────────────────────────────────────────────────
-        resumable_upload(
+        match resumable_upload(
             &job, size, &local_path, &modified_time, &parent_id, &file_name,
             existing_drive_id.as_deref(), mime,
             &db, &cfg, &gov, &drive, &limiter, &progress,
-        ).await?
+        ).await {
+            Ok(res) => res,
+            Err(e) if existing_drive_id.is_some() && crate::drive::client::is_already_deleted_or_not_found(&e.to_string()) => {
+                warn!("resumable upload: existing drive_id was deleted or not found on Drive, creating as new file");
+                let _ = db.clear_drive_meta(&job.pair_id, &job.rel_path);
+                resumable_upload(
+                    &job, size, &local_path, &modified_time, &parent_id, &file_name,
+                    None, mime,
+                    &db, &cfg, &gov, &drive, &limiter, &progress,
+                ).await?
+            }
+            Err(e) => return Err(e),
+        }
     };
 
     // Verify md5 returned by Drive.
@@ -499,28 +523,64 @@ async fn run_delete(
         }
     };
 
+    // Safety guard: if the file exists locally, abort delete to prevent accidental loss
+    let local_path = PathBuf::from(&pair.local).join(&job.rel_path);
+    if local_path.exists() {
+        warn!("delete: file {} still exists locally, skipping deletion to prevent data loss", job.rel_path);
+        let _ = db.mark_state(&job.pair_id, &job.rel_path, "dirty");
+        return Ok(());
+    }
+
     let existing = db.get_file(&job.pair_id, &job.rel_path)?;
+    let policy = pair.deletion.clone().unwrap_or(current_cfg.policy.deletion);
+    let target_state = if policy == DeletionPolicy::Delete { "deleted" } else { "trashed" };
+
     let drive_id = match existing.as_ref().and_then(|r| r.drive_id.as_deref()) {
-        Some(id) => id.to_string(),
-        None => {
-            info!("delete: no drive_id for {}, skipping", job.rel_path);
+        Some(id) if !id.trim().is_empty() => id.to_string(),
+        _ => {
+            info!("delete: no drive_id for {}, marking {} in DB", job.rel_path, target_state);
+            let _ = db.mark_state(&job.pair_id, &job.rel_path, target_state);
             return Ok(());
         }
     };
 
-    let policy = pair.deletion.clone().unwrap_or(current_cfg.policy.deletion);
     match policy {
         DeletionPolicy::Ignore => {}
         DeletionPolicy::DriveTrash => {
-            drive.trash(&drive_id).await?;
-            db.mark_state(&job.pair_id, &job.rel_path, "trashed")?;
+            match drive.trash(&drive_id).await {
+                Ok(()) => {
+                    db.mark_state(&job.pair_id, &job.rel_path, "trashed")?;
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if crate::drive::client::is_already_deleted_or_not_found(&err_str) {
+                        info!("delete (trash): file {} ({drive_id}) already not found or deleted on Drive, marking trashed", job.rel_path);
+                        db.mark_state(&job.pair_id, &job.rel_path, "trashed")?;
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
         }
         DeletionPolicy::Delete => {
-            drive.delete(&drive_id).await?;
-            db.mark_state(&job.pair_id, &job.rel_path, "deleted")?;
+            match drive.delete(&drive_id).await {
+                Ok(()) => {
+                    db.mark_state(&job.pair_id, &job.rel_path, "deleted")?;
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if crate::drive::client::is_already_deleted_or_not_found(&err_str) {
+                        info!("delete (permanent): file {} ({drive_id}) already not found or deleted on Drive, marking deleted", job.rel_path);
+                        db.mark_state(&job.pair_id, &job.rel_path, "deleted")?;
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
         }
     }
 
+    crate::drive::client::invalidate_path_cache(&job.pair_id, &job.rel_path).await;
     info!("deleted/trashed {} (policy={:?})", job.rel_path, policy);
     Ok(())
 }
@@ -541,6 +601,12 @@ async fn run_mkdir(
             return Ok(());
         }
     };
+
+    let local_dir = PathBuf::from(&pair.local).join(&job.rel_path);
+    if !local_dir.exists() {
+        info!("mkdir: local dir {} no longer exists, skipping", job.rel_path);
+        return Ok(());
+    }
 
     drive.ensure_path(&job.pair_id, &pair.drive_folder_id, &job.rel_path).await?;
     info!("mkdir: ensured {}", job.rel_path);

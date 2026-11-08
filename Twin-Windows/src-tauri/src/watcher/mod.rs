@@ -196,6 +196,10 @@ fn expand_deleted_dir(
         };
         for row in rows {
             if !child_prefix.is_empty() && row.rel_path.starts_with(&child_prefix) {
+                // If this file row is already in a terminal deleted state, don't re-emit delete
+                if matches!(row.state.as_str(), "deleted" | "trashed" | "remote_deleted") {
+                    continue;
+                }
                 let _ = tx.send(LocalChange {
                     pair_id: pair_id.to_string(),
                     rel_path: PathBuf::from(&row.rel_path),
@@ -366,6 +370,12 @@ fn mark_missing(
         // Files excluded by rules are absent from `seen` but still on disk;
         // only mark genuinely missing files.
         if root.join(&row.rel_path).exists() {
+            continue;
+        }
+
+        // If the file was never uploaded to Drive (no drive_id), mark deleted directly without a network job
+        if row.drive_id.as_deref().unwrap_or("").trim().is_empty() {
+            db.mark_state(&pair.id, &row.rel_path, "deleted")?;
             continue;
         }
 

@@ -118,6 +118,7 @@ pub async fn reconcile_listing_with_policy(
 ) -> Result<ReconcileResult, AppError> {
     let mut result = ReconcileResult::default();
     let local_root = PathBuf::from(&pair.local);
+    let mut pruned_remote_folder_prefixes: Vec<String> = Vec::new();
 
     // In Mirror mode: prune rogue remote folders and merge duplicate folders.
     if matches!(pair.mode, PairMode::Mirror) && matches!(deletion_policy, DeletionPolicy::DriveTrash | DeletionPolicy::Delete) {
@@ -150,6 +151,8 @@ pub async fn reconcile_listing_with_policy(
                     }
                     result.deletes += 1;
                 }
+                pruned_remote_folder_prefixes.push(format!("{rel_dir}/"));
+                crate::drive::client::invalidate_path_cache(&pair.id, &rel_dir).await;
             } else if folder_entries.len() > 1 {
                 // Duplicate folders on Drive for the same local directory!
                 // Keep the first instance as primary, migrate any contents from duplicates into primary, then trash the duplicates.
@@ -200,6 +203,26 @@ pub async fn reconcile_listing_with_policy(
 
         // Decision table: (local_exists, local_changed, remote_changed)
         if !local_exists {
+            // If this file's parent directory was already pruned/trashed on Drive above,
+            // the file is already gone with it; update DB state directly without redundant jobs.
+            if pruned_remote_folder_prefixes.iter().any(|pfx| rel.starts_with(pfx)) {
+                let state_str = if matches!(deletion_policy, DeletionPolicy::Delete) { "deleted" } else { "trashed" };
+                db.upsert_file(FileRow {
+                    pair_id:       pair.id.clone(),
+                    rel_path:      rel.clone(),
+                    size:          None,
+                    mtime_ms:      None,
+                    md5:           None,
+                    drive_id:      Some(remote.id.clone()),
+                    drive_md5:     Some(remote_md5.to_string()),
+                    drive_mtime_ms: None,
+                    drive_rev:     None,
+                    state:         state_str.into(),
+                })?;
+                result.deletes += 1;
+                continue;
+            }
+
             if matches!(pair.mode, PairMode::Mirror) {
                 // In mirror mode, local is source of truth:
                 // If the file does not exist locally, the remote file MUST be deleted/trashed.
@@ -363,21 +386,28 @@ pub async fn apply_remote_change_with_policies(
 ) -> Result<(), AppError> {
     let now = now_ms();
 
-    // Removed from Drive.
-    if change.removed == Some(true) {
+    // Removed or Trashed on Drive.
+    let is_remote_removal = change.removed == Some(true)
+        || change.file.as_ref().and_then(|f| f.trashed) == Some(true);
+
+    if is_remote_removal {
         // Find local file by drive_id.
-        if let Some(row) = db.get_file_by_drive_id(&pair.id, &change.file_id)? {
+        let drive_id = change.file.as_ref().map(|f| f.id.as_str()).unwrap_or(&change.file_id);
+        if let Some(row) = db.get_file_by_drive_id(&pair.id, drive_id)? {
             let local_path = PathBuf::from(&pair.local).join(&row.rel_path);
             match pair.mode {
                 // Upload-only pairs never touch the local side for remote events.
                 PairMode::Upload => {}
-                // Mirror is remote-as-mirror-of-local: restore the file remotely.
+                // Mirror is remote-as-mirror-of-local: restore the file remotely if present locally.
                 PairMode::Mirror => {
                     if local_path.exists() {
                         // The Drive object no longer exists; recreating it on
                         // upload requires clearing the stale drive_id.
                         db.clear_drive_meta(&pair.id, &row.rel_path)?;
                         enqueue_upload(db, pair, &row.rel_path, now)?;
+                    } else {
+                        // Gone locally and on Drive: mark trashed
+                        let _ = db.mark_state(&pair.id, &row.rel_path, "trashed");
                     }
                 }
                 PairMode::TwoWay => match deletion_policy {
@@ -391,8 +421,7 @@ pub async fn apply_remote_change_with_policies(
                     }
                     DeletionPolicy::Delete => {
                         if local_path.exists() {
-                            std::fs::remove_file(&local_path)
-                                .map_err(|e| AppError::Io(format!("remote delete: {e}")))?;
+                            let _ = std::fs::remove_file(&local_path);
                         }
                         db.mark_state(&pair.id, &row.rel_path, "remote_deleted")?;
                     }
@@ -404,7 +433,7 @@ pub async fn apply_remote_change_with_policies(
 
     let Some(file) = &change.file else { return Ok(()) };
 
-    // Skip trashed.
+    // Skip trashed (already handled above under is_remote_removal).
     if file.trashed == Some(true) {
         return Ok(());
     }
