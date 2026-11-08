@@ -5,6 +5,29 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.1.5] - 2026-11-08
+
+### 🚀 Enhancements — Dedicated Folder Inspection Dashboard, True Up-To-Date Verification & Native Dialogs
+
+#### ✨ Features & Improvements
+- **Dedicated Folder Inspection Dashboard**: Replaced cramped inline row dropdowns with a dedicated full-page screen (`PairDetailScreen`) accessible by clicking any folder pair row or the `Details →` button.
+- **Aligned Folder Header**: Clean, unboxed header with folder title, live sync status badge (`✓ Up to date with Drive`, `Sync pending`, or `Syncing`), topology tag, and one-click actions: **Sync Now**, **Open in Explorer**, **View in Drive**, **Sync Toggle**, and **Delete**.
+- **Balanced Metrics Bar**: 4-column status strip tracking **Synced Files** (with percentage), **Pending Changes**, **Drive Trash** (30-day recovery), and **Sync Issues**.
+- **Unified Configuration Property Sheet**: Clean property sheet detailing local filesystem directory, Google Drive target directory, replication topology, and remote deletion safety policy.
+- **Live In-Flight Transfers Stream**: Real-time progress bars showing active file transfers, transfer speeds (MB/s), remaining ETA, and direction badges (Uploading to Drive / Downloading from Drive).
+- **Per-Folder Activity Ledger**: Dedicated audit table displaying all past file uploads, downloads, and deletions specifically for that folder pair.
+- **Silent Native Folder Browser**: Replaced PowerShell folder picker with direct Win32 COM dialog via `rfd` (Rust File Dialog), completely eliminating terminal window popups.
+- **Dynamic System Tray Status Supervisor**: Live background supervisor dynamically switches the tray icon between Yellow (uploading/downloading/queued), Green (all files up to date), Paused, and Red (errors).
+- **Add Synced Folder Pair Modal Redesign**: Expanded modal width (`w-[680px]`) with comfortable typography (`text-xs` / `text-sm`), removed duplicate selection cards, and modernized topology cards.
+
+#### 🔒 Fixed & Hardened
+- **Accurate Active File Counts (Fixed 880/1064 Bug)**: Excluded soft-deleted/tombstone records from active file counts in SQLite queries (`WHERE state NOT IN ('deleted', 'deleted_local', 'remote_deleted', 'trashed')`).
+- **Strict Sync Status Check**: `is_synced` strictly requires `synced == total` and zero dirty/queued jobs before showing green checkmarks.
+- **Accurate Pending Status**: Folders with unsynced files now accurately display `Sync pending • X/Y synced (Z remaining)` in amber instead of falsely declaring "Up to date with Google Drive".
+- **Single-Line Status Formatting**: Applied `whitespace-nowrap overflow-hidden` across list rows to prevent status text and file counts from awkwardly breaking across lines.
+
+---
+
 ## [1.1.4] - 2026-11-08
 
 ### 🎨 Refinements — Eliminate Duplicate Update Notification Cards
