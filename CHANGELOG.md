@@ -5,6 +5,19 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.1.2] - 2026-11-08
+
+### 🛡️ Refinements — Drive Scope Resolution, UI Streamlining & De-Cluttering
+
+#### 🔒 Fixed & Enhanced
+- **Drive Scope Resolution**: Eliminated `spaces=appDataFolder` API calls that caused `HTTP 403 Forbidden (insufficientScopes)`.
+- **Clean Settings Card**: Removed experimental "Sync AppData" button from Settings; stopped background AppData loop.
+- **Drive Explorer Navigation Removed**: Removed the Drive Explorer navigation item and screen for a streamlined experience.
+- **Deduplicated Action Controls**: Removed redundant `Sync All` and `Add Folder` buttons from the top Overview card.
+- **Auto-Update Delivery**: Delivers seamless background update to users on v1.1.1.
+
+---
+
 ## [1.1.1] - 2026-11-07
 
 ### 🛡️ Critical Fixes — In-App Updater Hardening, Silent NSIS Updates & UI Refinements

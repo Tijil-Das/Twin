@@ -1,22 +1,20 @@
-# Twin v1.1.1
+# Twin v1.1.2
 
-Critical stability release hardening the in-app updater engine to prevent binary corruption, introducing silent NSIS background updates, concise notification alerts, responsive update-checking feedback, and refined GitHub-style directory presentation.
+Refinement and stability release eliminating Drive permission errors, streamlining the desktop overview interface, and validating the silent in-app update pipeline.
 
 ---
 
-### 🛡️ Critical Fixes & Enhancements in v1.1.1
+### ✨ What's New in v1.1.2
 
-#### 🔒 In-App Updater Hardening & Corruption Prevention
-- **Safe Asset Selection**: Resolved a critical issue where the updater could select a `.zip` archive or mismatched binary. Installed setups now strictly download the official NSIS installer (`Twin_{ver}_x64-setup.exe`), while portable builds strictly target `Twin.exe`.
-- **Silent NSIS Execution**: For installed applications, updates now execute the NSIS installer silently (`/S`). This safely updates binaries, refreshes Windows Registry uninstaller entries (`DisplayVersion`), and maintains full integration in Windows Installed Apps.
-- **PE Magic Header Verification**: All downloaded update payloads are validated against the standard Windows PE executable signature (`0x4D, 0x5A` / `b"MZ"`) before staging. Corrupted or invalid files are rejected and purged immediately.
-- **GitHub API Cache Prevention**: Requests to GitHub Releases now enforce `Cache-Control: no-cache` and strict `Accept` headers to guarantee instant discovery of new releases.
+#### 🛡️ Google Drive Scope Resolution
+- **Removed Hidden AppData Query**: Eliminated the `spaces=appDataFolder` API call that caused `HTTP 403 Forbidden (insufficientScopes)`.
+- **Clean Settings Card**: Removed the experimental "Sync AppData" button from Settings; standard folder synchronization now operates cleanly within the granted Google Drive permissions.
+- **Resource Optimization**: Stopped background polling against the restricted application data space.
 
-#### 💬 Concise Update Notifications & Feedback
-- **JioTV Max-Style Alerts**: Streamlined update notification toasts and banners to a clean, actionable prompt: **`Update vX.Y.Z Ready`** with a 1-click **`Restart`** button.
-- **Immediate "Check for Updates" Feedback**: Fixed unhandled downloading states in Settings so clicking "Check for Updates" always provides real-time feedback (`downloading`, `ready`, `up to date`, or `error`).
+#### 🎨 Interface Streamlining & De-Cluttering
+- **Drive Explorer Navigation Removed**: Removed the Drive Explorer navigation item and screen for a focused, streamlined sync-centric experience.
+- **Deduplicated Action Controls**: Removed redundant `Sync All` and `Add Folder` buttons from the top Overview card, consolidating them into the **Synced Folders** table header.
+- **Cleaner Engine Control**: The top Overview card now focuses strictly on engine telemetry with a single **Pause Engine** / **Resume Engine** action.
 
-#### 🐙 UI Polish & GitHub Repository Presentation
-- **Zero-Overlap Synced Folders**: Resolved layout overlapping in folder pair rows on the Overview dashboard.
-- **Clean Metadata**: Removed raw alphanumeric Google Drive IDs and internal links from list views for a distraction-free, professional interface.
-- **Pixel-Perfect Brand Integrity**: Enforced strict pixel bounding on Google Drive icons across navigation and explorer views.
+#### 🔄 Verified Auto-Update Pipeline
+- Users on **v1.1.1** will receive this update automatically and silently via the background NSIS updater with the concise `"Update v1.1.2 Ready"` restart prompt.
