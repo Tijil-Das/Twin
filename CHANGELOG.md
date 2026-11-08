@@ -5,6 +5,17 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.1.4] - 2026-11-08
+
+### 🎨 Refinements — Eliminate Duplicate Update Notification Cards
+
+#### 🔒 Fixed & Polished
+- **Deduplicated Update Toasts**: Removed the redundant Sonner toast on `update://ready` in `App.tsx` that stacked directly over the dedicated `UpdateBanner` floating card.
+- **Single Source of Truth**: The bottom-right floating banner is now the sole interactive card for background update readiness, complete with the `Restart` action and `X` dismiss button.
+- **Clean Manual Check Feedback**: Manual update checks in Settings provide clean status toasts without overlapping secondary restart buttons.
+
+---
+
 ## [1.1.3] - 2026-11-08
 
 ### 🛡️ Maintenance — Automatic App Relaunch After In-App Update

@@ -177,14 +177,7 @@ export function SettingsScreen() {
       const res = await updateCheck();
       setUpdateState(res);
       if (res.ready_version) {
-        toast.success(`Update v${res.ready_version} Ready`, {
-          action: {
-            label: "Restart",
-            onClick: () => {
-              void handleInstallUpdate();
-            },
-          },
-        });
+        toast.success(`Update v${res.ready_version} is ready to apply`);
       } else if (res.status.status === "downloading" || res.status.status === "update-available") {
         toast.info(`Downloading update v${(res.status as any).version ?? "available"} in background…`);
       } else if (res.status.status === "up-to-date") {
