@@ -190,6 +190,8 @@ pub(crate) async fn run_download(
             .map_err(|e| AppError::Io(format!("create_dir_all: {e}")))?;
     }
 
+    check_free_disk_space(&dest, size, &job.rel_path)?;
+
     let part_path  = part_path(&dest);
     let sidecar    = sidecar_path(&dest);
 
@@ -618,6 +620,8 @@ pub(crate) async fn run_restore(
         _ => 0,
     };
 
+    check_free_disk_space(&dest, size, &file_name)?;
+
     let part = part_path(&dest);
     let sidecar = sidecar_path(&dest);
 
@@ -717,6 +721,8 @@ pub async fn restore_file(
         Some(serde_json::Value::Number(ref n)) => n.as_u64().unwrap_or(0),
         _ => 0,
     };
+
+    check_free_disk_space(&dest, size, &dest.display().to_string())?;
 
     if let Some(rid) = rev_id {
         // Download via revisions endpoint.
@@ -1040,6 +1046,68 @@ fn set_file_mtime_inner(path: &Path, mtime_ms: i64) -> Result<(), std::io::Error
 
 #[cfg(not(windows))]
 fn set_file_mtime_inner(_path: &Path, _mtime_ms: i64) -> Result<(), std::io::Error> {
+    Ok(())
+}
+
+/// Retrieve available free disk space in bytes for the volume hosting `path`.
+#[cfg(windows)]
+fn get_free_disk_space(path: &Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+    let mut check_path = path;
+    while !check_path.exists() {
+        match check_path.parent() {
+            Some(p) => check_path = p,
+            None => break,
+        }
+    }
+
+    let mut wide: Vec<u16> = check_path.as_os_str().encode_wide().collect();
+    wide.push(0);
+
+    let mut free_available: u64 = 0;
+    let mut total: u64 = 0;
+    let mut total_free: u64 = 0;
+
+    let ok = unsafe {
+        GetDiskFreeSpaceExW(
+            wide.as_ptr(),
+            &mut free_available,
+            &mut total,
+            &mut total_free,
+        )
+    };
+
+    if ok != 0 {
+        Some(free_available)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(windows))]
+fn get_free_disk_space(_path: &Path) -> Option<u64> {
+    None
+}
+
+/// Check if the target volume has enough available space for the download plus a safety headroom buffer.
+pub fn check_free_disk_space(dest: &Path, required_bytes: u64, name_or_path: &str) -> Result<(), AppError> {
+    if required_bytes == 0 {
+        return Ok(());
+    }
+    if let Some(free_bytes) = get_free_disk_space(dest) {
+        const HEADROOM: u64 = 64 * 1024 * 1024; // 64 MiB headroom buffer
+        let total_needed = required_bytes.saturating_add(HEADROOM);
+        if free_bytes < total_needed {
+            return Err(AppError::Io(format!(
+                "Insufficient disk space for {}: {} MiB required (including 64 MiB buffer), but only {} MiB free on volume",
+                name_or_path,
+                total_needed / (1024 * 1024),
+                free_bytes / (1024 * 1024),
+            )));
+        }
+    }
     Ok(())
 }
 

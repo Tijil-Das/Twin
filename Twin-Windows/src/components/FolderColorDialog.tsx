@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from "react";
 import {
-  Folder,
   Palette,
   Check,
   Search,
@@ -10,6 +9,7 @@ import {
   Square,
   RefreshCw,
 } from "lucide-react";
+import { GithubFolderIcon } from "@/components/ui/GithubFolderIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { driveSetFolderColor, driveSetFoldersColor } from "@/lib/tauri";
@@ -262,9 +262,9 @@ export function FolderColorDialog({
                           ) : (
                             <Square size={15} className="text-[var(--text-subtle)] shrink-0" />
                           )}
-                          <Folder
+                          <GithubFolderIcon
                             size={15}
-                            style={{ color: folderColor || "#eab308" }}
+                            color={folderColor || "#54aeff"}
                             className="shrink-0"
                           />
                           <span className="truncate text-white font-medium">{f.name}</span>

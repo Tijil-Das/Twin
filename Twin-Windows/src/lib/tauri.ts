@@ -47,12 +47,19 @@ export interface GitHubConfig {
   last_push: string | null;
 }
 
+export interface RulesConfig {
+  exclude: string[];
+  include: string[];
+  max_file_mb: number;
+}
+
 export interface Config {
   pairs?: PairEntry[];
   pair?: PairEntry[];
   policy: PolicyConfig;
   limits: LimitsConfig;
   governor: GovernorConfig;
+  rules?: RulesConfig;
   app: AppConfig;
   github: GitHubConfig;
 }

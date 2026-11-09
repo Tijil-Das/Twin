@@ -40,6 +40,10 @@ import {
   Shield,
   Layers,
   AlertTriangle,
+  Filter,
+  Plus,
+  X,
+  FileCode,
 } from "lucide-react";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -70,6 +74,41 @@ export function SettingsScreen() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [downloadingUpdate, setDownloadingUpdate] = useState<{ version: string; pct?: number } | null>(null);
   const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [newExcludePattern, setNewExcludePattern] = useState("");
+
+  const defaultExcludes = ["*.tmp", "node_modules/**", ".git/**", "~$*", "Thumbs.db"];
+  const currentExcludes = local?.rules?.exclude ?? defaultExcludes;
+  const maxFileMb = local?.rules?.max_file_mb ?? 0;
+
+  function handleAddExclude() {
+    const p = newExcludePattern.trim();
+    if (!p) return;
+    if (currentExcludes.includes(p)) {
+      toast.error(`"${p}" is already in the exclude list`);
+      return;
+    }
+    patchLocal((c) => ({
+      ...c,
+      rules: {
+        exclude: [...(c.rules?.exclude ?? defaultExcludes), p],
+        include: c.rules?.include ?? [],
+        max_file_mb: c.rules?.max_file_mb ?? 0,
+      },
+    }));
+    setNewExcludePattern("");
+    toast.success(`Added "${p}" to ignored patterns`);
+  }
+
+  function handleRemoveExclude(pattern: string) {
+    patchLocal((c) => ({
+      ...c,
+      rules: {
+        exclude: (c.rules?.exclude ?? defaultExcludes).filter((x) => x !== pattern),
+        include: c.rules?.include ?? [],
+        max_file_mb: c.rules?.max_file_mb ?? 0,
+      },
+    }));
+  }
 
   useEffect(() => {
     let unlistenStatus: (() => void) | undefined;
@@ -714,7 +753,106 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      {/* 5. Application Updates */}
+      {/* 5. Exclude & Ignore Patterns */}
+      <section className="space-y-2.5">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+          Sync Exclude Rules & Filters
+        </h2>
+
+        <div className="desktop-card p-5 space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-white flex items-center gap-2">
+                <Filter size={14} className="text-[#58a6ff]" />
+                Ignored File & Folder Patterns (Globs)
+              </label>
+              <span className="text-[11px] text-[var(--text-subtle)] font-mono">
+                {currentExcludes.length} active patterns
+              </span>
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mb-3">
+              Files or directories matching these expressions will be skipped during synchronization.
+            </p>
+
+            {/* Pattern Tags */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {currentExcludes.map((pattern) => (
+                <span
+                  key={pattern}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-[#161b22] text-[#c9d1d9] border border-[#30363d]"
+                >
+                  <FileCode size={12} className="text-[#7d8590]" />
+                  <span>{pattern}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveExclude(pattern)}
+                    className="text-[#7d8590] hover:text-[#f85149] p-0.5 rounded hover:bg-[#f85149]/10 transition-colors cursor-pointer"
+                    title={`Remove ${pattern}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            {/* Add Pattern Input */}
+            <div className="flex items-center gap-2">
+              <Input
+                value={newExcludePattern}
+                onChange={(e) => setNewExcludePattern(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddExclude();
+                  }
+                }}
+                placeholder="e.g. *.log, dist/**, .env"
+                className="font-mono text-xs max-w-sm"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleAddExclude}
+                disabled={!newExcludePattern.trim()}
+                className="flex items-center gap-1.5 text-xs border border-[#30363d]"
+              >
+                <Plus size={13} />
+                Add Pattern
+              </Button>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-white mb-1.5">
+                Max File Size Filter (MB)
+              </label>
+              <Input
+                type="number"
+                min={0}
+                value={maxFileMb}
+                onChange={(e) =>
+                  patchLocal((c) => ({
+                    ...c,
+                    rules: {
+                      exclude: c.rules?.exclude ?? defaultExcludes,
+                      include: c.rules?.include ?? [],
+                      max_file_mb: parseInt(e.target.value, 10) || 0,
+                    },
+                  }))
+                }
+                placeholder="0 = Unlimited"
+              />
+              <span className="text-xs text-[var(--text-subtle)] mt-1.5 block">
+                Skip files exceeding this size (0 = no limit)
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 6. Application Updates */}
       <section className="space-y-2.5">
         <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Software Updates

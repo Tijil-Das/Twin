@@ -41,6 +41,7 @@ import {
 } from "@/lib/tauri";
 import { progressLabel, formatBytes, formatSpeed, formatEta } from "@/lib/format";
 import { AddPairDialog } from "@/components/AddPairDialog";
+import { GithubFolderIcon } from "@/components/ui/GithubFolderIcon";
 import { toast } from "sonner";
 import gdLogo from "@/assets/gd-icon.png";
 import { cn } from "@/lib/utils";
@@ -67,21 +68,6 @@ const SYNC_MODES = {
     Icon: FlipHorizontal2,
   },
 };
-
-// ── GitHub Octicon Folder Icon ────────────────────────────────────────────────
-
-function GithubFolderIcon({ color, className }: { color?: string | null; className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      className={cn("w-4 h-4 shrink-0 fill-current", className)}
-      style={color ? { color } : undefined}
-      aria-hidden="true"
-    >
-      <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z" />
-    </svg>
-  );
-}
 
 // ── Folder Pair Row (Clean Desktop Presentation) ─────────────────────────────
 

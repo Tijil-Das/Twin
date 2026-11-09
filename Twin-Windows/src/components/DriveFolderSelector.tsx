@@ -10,8 +10,6 @@
  */
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  Folder,
-  FolderPlus,
   ChevronRight,
   ArrowUp,
   RefreshCw,
@@ -23,6 +21,7 @@ import {
   X,
   ShieldAlert,
 } from "lucide-react";
+import { GithubFolderIcon, GithubFolderPlusIcon } from "@/components/ui/GithubFolderIcon";
 import {
   driveListSubfolders,
   driveGetSharedFolders,
@@ -35,20 +34,6 @@ import type { DriveFile } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import gdLogo from "@/assets/gd-icon.png";
-
-// GitHub Octicon Folder SVG
-function GithubFolderIcon({ color, className }: { color?: string | null; className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      className={cn("w-4 h-4 shrink-0 fill-current", className)}
-      style={color ? { color } : undefined}
-      aria-hidden="true"
-    >
-      <path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z" />
-    </svg>
-  );
-}
 
 interface DriveFolder {
   id: string;
@@ -381,14 +366,14 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
             onClick={() => setIsCreatingFolder((prev) => !prev)}
             title="Create a new folder"
             className={cn(
-              "px-2 py-1 rounded-md transition-colors flex items-center gap-1 text-xs cursor-pointer",
+              "px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 text-xs cursor-pointer",
               isCreatingFolder
                 ? "bg-blue-600/25 text-blue-400 border border-blue-500/35"
                 : "text-[var(--text-muted)] hover:text-white hover:bg-[var(--surface-3)]"
             )}
           >
-            <FolderPlus size={13} />
-            <span className="text-[11px] font-medium">New</span>
+            <GithubFolderPlusIcon size={14} />
+            <span className="text-[11px] font-medium">New Folder</span>
           </button>
 
           <button
@@ -406,7 +391,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
       {/* ── Inline New Folder Creator ── */}
       {isCreatingFolder && (
         <div className="px-3 py-2 border-b border-[var(--border)] bg-[var(--surface-2)] flex items-center gap-2 animate-in fade-in duration-100">
-          <FolderPlus size={14} className="text-blue-400 shrink-0" />
+          <GithubFolderPlusIcon size={16} className="shrink-0" />
           <input
             type="text"
             value={newFolderName}
@@ -479,7 +464,7 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
           </div>
         ) : displayedFolders.length === 0 ? (
           <div className="py-7 text-center space-y-2.5">
-            <FolderPlus size={24} className="mx-auto text-zinc-600" />
+            <GithubFolderIcon size={32} className="mx-auto text-[#7d8590]/40" />
             <p className="text-xs text-zinc-400">
               {filterQuery
                 ? `No subfolders matching "${filterQuery}".`
@@ -489,9 +474,9 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
               <button
                 type="button"
                 onClick={() => setIsCreatingFolder(true)}
-                className="text-xs px-2.5 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30 inline-flex items-center gap-1.5 font-medium"
+                className="text-xs px-2.5 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30 inline-flex items-center gap-1.5 font-medium cursor-pointer"
               >
-                <FolderPlus size={13} />
+                <GithubFolderPlusIcon size={13} />
                 <span>+ Create Subfolder Here</span>
               </button>
             </div>
@@ -571,16 +556,18 @@ export function DriveFolderSelector({ selectedFolderId, onSelect, className }: P
               : "bg-[#21262d] border-[#30363d] text-[#c9d1d9] hover:text-white hover:bg-[#30363d]"
           )}
         >
-          <Folder size={13} className="text-amber-400" />
-          <span>Use Current: "{currentFolder.name}"</span>
+          <GithubFolderIcon size={14} className="text-[#54aeff]" />
+          <span>Select this folder: "{currentFolder.name}"</span>
         </button>
 
         {activeSelection ? (
           <div
-            className="text-xs text-[#7d8590] truncate max-w-[260px]"
+            className="text-xs text-[#7d8590] truncate max-w-[260px] flex items-center gap-1.5"
             title={activeSelection.name}
           >
-            Selected: <span className="font-semibold text-[#e6edf3]">{activeSelection.name}</span>
+            <GithubFolderIcon size={13} className="text-[#54aeff]" />
+            <span className="text-[#7d8590]">Target:</span>
+            <span className="font-semibold text-[#e6edf3]">{activeSelection.name}</span>
           </div>
         ) : selectedFolderId ? (
           <div

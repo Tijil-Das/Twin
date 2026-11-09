@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster } from "sonner";
+import { WifiOff } from "lucide-react";
 import { useStore, type ProgressEvent } from "@/store";
 import { getConfig, authStatus, govState, queueStatus, getPairStatuses } from "@/lib/tauri";
 import type { GovStatePayload } from "@/lib/tauri";
@@ -19,6 +20,9 @@ import { PairDetailScreen } from "@/screens/PairDetail";
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== "undefined" && typeof navigator.onLine === "boolean" ? navigator.onLine : true
+  );
   const selectedPairId = useStore((s) => s.selectedPairId);
   const setSelectedPairId = useStore((s) => s.setSelectedPairId);
 
@@ -31,6 +35,22 @@ export default function App() {
   const setPairStatuses = useStore((s) => s.setPairStatuses);
   const conflicts = useStore((s) => s.conflicts) ?? [];
   const addConflict = useStore((s) => s.addConflict);
+
+  // Monitor online / offline connectivity
+  useEffect(() => {
+    function handleOnline() {
+      setIsOnline(true);
+    }
+    function handleOffline() {
+      setIsOnline(false);
+    }
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   // Track window visibility so we stop processing events when hidden.
   const visibleRef = useRef(document.visibilityState === "visible");
@@ -175,29 +195,45 @@ export default function App() {
           }}
         />
 
-        <main className="flex-1 h-screen overflow-y-auto bg-[var(--bg)] relative">
-          <ErrorBoundary
-            fallbackTitle="View Error"
-            onReset={() => setSelectedPairId(null)}
-          >
-            {selectedPairId ? (
-              <PairDetailScreen
-                pairId={selectedPairId}
-                onBack={() => setSelectedPairId(null)}
-              />
-            ) : (
-              <>
-                {screen === "home"     && (
-                  <HomeScreen
-                    onSelectPair={(id) => setSelectedPairId(id)}
-                    onNavigate={(s) => setScreen(s)}
-                  />
-                )}
-                {screen === "activity" && <ActivityScreen />}
-                {screen === "settings" && <SettingsScreen />}
-              </>
-            )}
-          </ErrorBoundary>
+        <main className="flex-1 h-screen overflow-y-auto bg-[var(--bg)] relative flex flex-col">
+          {!isOnline && (
+            <div className="sticky top-0 z-40 shrink-0 bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 flex items-center justify-between text-xs text-amber-300 backdrop-blur-md">
+              <div className="flex items-center gap-2.5">
+                <WifiOff size={15} className="text-amber-400 shrink-0 animate-pulse" />
+                <span>
+                  <strong className="font-semibold text-amber-200">Network connection offline.</strong> Cloud synchronization is paused and will automatically resume once connectivity returns.
+                </span>
+              </div>
+              <span className="text-[10px] text-amber-400 font-mono font-semibold tracking-wider uppercase px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 shrink-0">
+                Offline
+              </span>
+            </div>
+          )}
+
+          <div className="flex-1">
+            <ErrorBoundary
+              fallbackTitle="View Error"
+              onReset={() => setSelectedPairId(null)}
+            >
+              {selectedPairId ? (
+                <PairDetailScreen
+                  pairId={selectedPairId}
+                  onBack={() => setSelectedPairId(null)}
+                />
+              ) : (
+                <>
+                  {screen === "home"     && (
+                    <HomeScreen
+                      onSelectPair={(id) => setSelectedPairId(id)}
+                      onNavigate={(s) => setScreen(s)}
+                    />
+                  )}
+                  {screen === "activity" && <ActivityScreen />}
+                  {screen === "settings" && <SettingsScreen />}
+                </>
+              )}
+            </ErrorBoundary>
+          </div>
         </main>
       </div>
 
