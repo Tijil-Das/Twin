@@ -262,6 +262,10 @@ pub fn update_folder_overlays(
                 "centered" => 2,
                 _ => 0, // top_right
             };
+            if !overlay_cfg.enabled {
+                header.count = 0;
+                return;
+            }
             header.count = statuses.len().min(256) as u32;
             header.sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed) as u32;
 

@@ -233,8 +233,8 @@ pub struct OverlaySection {
 impl Default for OverlaySection {
     fn default() -> Self {
         Self {
-            enabled: true,
-            placement: "top_right".into(),
+            enabled: false,
+            placement: "centered".into(),
         }
     }
 }

@@ -64,5 +64,5 @@ path = "config/sync-state.json"
 [vars]
 
 [overlay]
-enabled = true
+enabled = false
 placement = "centered"

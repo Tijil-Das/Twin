@@ -20,16 +20,10 @@ import {
   updateInstall,
   getDatabaseStats,
   runDatabaseMaintenance,
-  getOverlayStatus,
-  setOverlaySettings,
-  registerOverlayExtension,
-  restartExplorerShell,
-  type OverlayPlacement,
   type DatabaseStats,
   type UpdateStatePayload,
   type Config,
 } from "@/lib/tauri";
-import { GithubFolderIcon } from "@/components/ui/GithubFolderIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -65,111 +59,7 @@ interface StorageQuota {
   usageInDriveTrash: number;
 }
 
-/**
- * Authentic Windows 11 Explorer Folder with Overlay Badge.
- * Replicates folder geometry with the 3 exact badge placements from reference images:
- * - Top-Right (cx=53.5, cy=16.5)
- * - Bottom-Right (cx=53.5, cy=46.0)
- * - Center (cx=33.5, cy=31.7)
- * Radius r=8.6 gives exactly 30% diameter relative to folder width.
- */
-function WindowsFolderOverlayPreview({
-  badge = "synced",
-  className,
-}: {
-  badge?: "synced" | "syncing";
-  className?: string;
-  placement?: OverlayPlacement;
-}) {
-  // Native Windows Explorer IShellIconOverlayIdentifier lower-left slot (OneDrive / Dropbox standard)
-  const cx = 16.0;
-  const cy = 42.0;
-  const r = 8.5; // Proportional 30% badge diameter
 
-  const p1 = `${(cx - r * 0.50).toFixed(2)},${(cy + r * 0.05).toFixed(2)}`;
-  const p2 = `${(cx - r * 0.16).toFixed(2)},${(cy + r * 0.38).toFixed(2)}`;
-  const p3 = `${(cx + r * 0.50).toFixed(2)},${(cy - r * 0.34).toFixed(2)}`;
-
-  return (
-    <svg
-      viewBox="0 0 70 57"
-      className={cn("w-14 h-11 drop-shadow-sm shrink-0 select-none", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <defs>
-        <linearGradient id={`winFolderBack-${badge}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f59e0b" />
-          <stop offset="100%" stopColor="#d97706" />
-        </linearGradient>
-        <linearGradient id={`winFolderFront-${badge}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ffea79" />
-          <stop offset="15%" stopColor="#ffd84d" />
-          <stop offset="100%" stopColor="#f59e0b" />
-        </linearGradient>
-        <filter id={`badgeShadow-${badge}`} x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="1" stdDeviation="0.8" floodColor="#000" floodOpacity="0.4" />
-        </filter>
-      </defs>
-
-      {/* Back tab */}
-      <path
-        d="M 5 11 C 5 8 7 6 10 6 L 24 6 C 26.5 6 28.5 8 30 11.5 L 31.5 15 L 5 15 Z"
-        fill={`url(#winFolderBack-${badge})`}
-      />
-
-      {/* Front folder body with rounded bottom corners */}
-      <path
-        d="M 5 15 L 59 15 C 61 15 62.5 16.5 62.5 18.5 L 62.5 44 C 62.5 46.5 60.5 48.5 58 48.5 L 9.5 48.5 C 7 48.5 5 46.5 5 44 Z"
-        fill={`url(#winFolderFront-${badge})`}
-        stroke="#ca8a04"
-        strokeWidth="0.8"
-      />
-
-      {/* Front folder top highlight lip */}
-      <path
-        d="M 6 16 L 58.5 16"
-        stroke="#ffffff"
-        strokeWidth="0.75"
-        strokeOpacity="0.6"
-        strokeLinecap="round"
-      />
-
-      {/* Status Overlay Badge */}
-      <g filter={`url(#badgeShadow-${badge})`}>
-        {badge === "synced" ? (
-          <>
-            <circle
-              cx={cx}
-              cy={cy}
-              r={r}
-              fill="#22a338"
-              stroke="#15803d"
-              strokeWidth="1.1"
-            />
-            <polyline
-              points={`${p1} ${p2} ${p3}`}
-              fill="none"
-              stroke="#ffffff"
-              strokeWidth="2.1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </>
-        ) : (
-          <circle
-            cx={cx}
-            cy={cy}
-            r={r}
-            fill="#facc15"
-            stroke="#5c2605"
-            strokeWidth="1.8"
-          />
-        )}
-      </g>
-    </svg>
-  );
-}
 
 export function SettingsScreen() {
   const setConfig = useStore((s) => s.setConfig);
@@ -193,23 +83,6 @@ export function SettingsScreen() {
   const [newExcludePattern, setNewExcludePattern] = useState("");
   const [dbStats, setDbStats] = useState<DatabaseStats | null>(null);
   const [pruningDb, setPruningDb] = useState(false);
-  const [overlayEnabled, setOverlayEnabled] = useState<boolean>(true);
-  const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top_right");
-  const [overlayRegistered, setOverlayRegistered] = useState<boolean>(true);
-  const [restartingExplorer, setRestartingExplorer] = useState(false);
-  const [registeringOverlay, setRegisteringOverlay] = useState(false);
-  const [showRegisterConfirm, setShowRegisterConfirm] = useState(false);
-
-  const loadOverlayStatus = useCallback(async () => {
-    try {
-      const s = await getOverlayStatus();
-      setOverlayEnabled(s.enabled);
-      setOverlayPlacement(s.placement);
-      setOverlayRegistered(s.is_registered);
-    } catch {
-      // Ignored if unavailable
-    }
-  }, []);
 
   const loadDbStats = useCallback(async () => {
     try {
@@ -222,56 +95,7 @@ export function SettingsScreen() {
 
   useEffect(() => {
     void loadDbStats();
-    void loadOverlayStatus();
-  }, [loadDbStats, loadOverlayStatus]);
-
-  async function handleToggleOverlay(enabled: boolean) {
-    setOverlayEnabled(enabled);
-    try {
-      await setOverlaySettings(enabled, overlayPlacement);
-      const updatedConfig = await getConfig();
-      setConfig(updatedConfig);
-      setLocal(updatedConfig);
-      toast.success(
-        enabled
-          ? "Explorer folder status icon overlays enabled"
-          : "Explorer folder status icon overlays disabled"
-      );
-    } catch (err) {
-      toast.error(`Overlay update failed: ${String(err)}`);
-    }
-  }
-
-  function handleRegisterClick() {
-    setShowRegisterConfirm(true);
-  }
-
-  async function confirmRegisterOverlay() {
-    setShowRegisterConfirm(false);
-    setRegisteringOverlay(true);
-    try {
-      await registerOverlayExtension();
-      await restartExplorerShell();
-      setOverlayRegistered(true);
-      toast.success("Shell overlay identifiers registered and Explorer reloaded");
-    } catch (err) {
-      toast.error(`Registration failed: ${String(err)}`);
-    } finally {
-      setRegisteringOverlay(false);
-    }
-  }
-
-  async function handleRestartExplorer() {
-    setRestartingExplorer(true);
-    try {
-      await restartExplorerShell();
-      toast.success("Windows Explorer restarted successfully");
-    } catch (err) {
-      toast.error(`Explorer restart failed: ${String(err)}`);
-    } finally {
-      setTimeout(() => setRestartingExplorer(false), 1200);
-    }
-  }
+  }, [loadDbStats]);
 
   async function handlePruneDb() {
     setPruningDb(true);
@@ -1053,179 +877,7 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      {/* 6. Windows File Explorer Folder Overlays */}
-      <section className="space-y-2.5">
-        <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
-          Windows File Explorer Shell Integration
-        </h2>
-
-        <div className="desktop-card p-5 space-y-5">
-          {/* Main Toggle */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="space-y-0.5">
-              <label className="text-sm font-semibold text-white flex items-center gap-2">
-                <GithubFolderIcon className="w-4 h-4 text-[#54aeff]" />
-                Show status icon on folders in Explorer
-              </label>
-              <p className="text-xs text-[var(--text-muted)]">
-                Render green checkmark badges on synced local folders and yellow badges during active uploads/downloads.
-              </p>
-            </div>
-            <Switch
-              checked={overlayEnabled}
-              onCheckedChange={handleToggleOverlay}
-            />
-          </div>
-
-          {overlayEnabled && (
-            <div className="pt-4 border-t border-[var(--border-subtle)] space-y-4 animate-in fade-in duration-200">
-              {/* Shell Registration Status & Quick Actions */}
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-[#0d1117] rounded-lg border border-[#30363d]/60 text-xs">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "w-2 h-2 rounded-full",
-                      overlayRegistered ? "bg-emerald-400" : "bg-amber-400"
-                    )}
-                  />
-                  <span className="text-[#c9d1d9]">
-                    {overlayRegistered ? "Shell Extension Registered" : "Registration Pending"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {!overlayRegistered && (
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="sm"
-                      onClick={handleRegisterClick}
-                      className="text-xs bg-[#238636] hover:bg-[#2ea043] text-white"
-                    >
-                      Register Extension
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleRestartExplorer}
-                    disabled={restartingExplorer}
-                    className="text-xs bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] border border-[#30363d] flex items-center gap-1.5"
-                  >
-                    <RefreshCw size={12} className={cn(restartingExplorer && "animate-spin")} />
-                    {restartingExplorer ? "Restarting Explorer…" : "Restart Explorer"}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Explorer Folder Badge Preview */}
-              <div>
-                <div className="mb-2.5">
-                  <label className="block text-xs font-semibold text-white">
-                    Windows Explorer Folder Status Badges
-                  </label>
-                  <p className="text-[11px] text-[var(--text-muted)]">
-                    Badges appear on the native Windows Shell lower-left corner of synced pair folders, matching OneDrive and Dropbox.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Done / Synced Card */}
-                  <div className="rounded-lg p-3.5 border bg-[#161b22]/70 border-[#30363d] flex flex-col justify-between">
-                    <div className="flex items-center justify-center py-3 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60">
-                      <WindowsFolderOverlayPreview badge="synced" className="w-14 h-11" />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-semibold text-[#7ee787]">
-                          Synced & Up to Date
-                        </span>
-                        <Check size={13} className="text-[#7ee787]" />
-                      </div>
-                      <p className="text-[11px] text-[#7d8590] leading-snug">
-                        Green checkmark indicates all files in this pair are completely backed up.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Active / Syncing Card */}
-                  <div className="rounded-lg p-3.5 border bg-[#161b22]/70 border-[#30363d] flex flex-col justify-between">
-                    <div className="flex items-center justify-center py-3 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60">
-                      <WindowsFolderOverlayPreview badge="syncing" className="w-14 h-11" />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-semibold text-[#facc15]">
-                          Syncing Active
-                        </span>
-                        <RefreshCw size={12} className="text-[#facc15]" />
-                      </div>
-                      <p className="text-[11px] text-[#7d8590] leading-snug">
-                        Solid yellow badge indicates files are currently uploading or downloading.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Informational Dialog: Registration Confirmation before UAC */}
-        <Dialog.Root open={showRegisterConfirm} onOpenChange={(open) => { if (!open) setShowRegisterConfirm(false); }}>
-          <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 animate-in fade-in duration-150" />
-            <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[460px] max-w-[92vw] bg-[#0d1117] border border-[#30363d] rounded-xl p-6 z-[60] shadow-2xl animate-in zoom-in-95 duration-150 text-[#e6edf3]">
-              <div className="flex items-start gap-3.5 mb-4">
-                <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
-                  <Shield size={20} className="text-amber-400" />
-                </div>
-                <div>
-                  <Dialog.Title className="text-base font-semibold text-[#e6edf3]">
-                    Administrator Approval Required
-                  </Dialog.Title>
-                  <Dialog.Description className="text-xs text-[#7d8590] mt-1.5 leading-relaxed">
-                    Windows Explorer requires registration under HKLM to display status overlays on folders.
-                    <br /><br />
-                    A Windows Administrator approval (UAC) prompt will appear to register the extension, followed by an Explorer reload.
-                  </Dialog.Description>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-[#30363d]">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowRegisterConfirm(false)}
-                  className="text-xs text-[#7d8590] hover:text-[#e6edf3] hover:bg-[#21262d]"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={confirmRegisterOverlay}
-                  disabled={registeringOverlay}
-                  className="text-xs bg-[#238636] hover:bg-[#2ea043] text-white flex items-center gap-1.5"
-                >
-                  {registeringOverlay ? (
-                    <>
-                      <RefreshCw size={12} className="animate-spin" />
-                      Registering…
-                    </>
-                  ) : (
-                    "OK, Continue to UAC"
-                  )}
-                </Button>
-              </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
-      </section>
-
-      {/* 7. SQLite Database Storage & Maintenance */}
+      {/* 6. SQLite Database Storage & Maintenance */}
       <section className="space-y-2.5">
         <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Database Storage & Maintenance
@@ -1285,7 +937,7 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      {/* 8. Application Updates */}
+      {/* 7. Application Updates */}
       <section className="space-y-2.5">
         <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Software Updates
