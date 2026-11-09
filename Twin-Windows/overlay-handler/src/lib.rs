@@ -1,6 +1,15 @@
-//! Twin Windows Explorer Shell Icon Overlay Extension
-//! Implements IShellIconOverlayIdentifier for "synced" (green checkmark) and "syncing" (yellow badge).
-//! Zero disk/network I/O in IsMemberOf via shared memory cache.
+//! Twin Windows Explorer Folder Icon Handler
+//! Implements IExtractIcon + IPersistFile as a Directory shellex/IconHandler.
+//! This allows compositing a sync status badge at ANY position (top-right, bottom-right, center)
+//! on the native Windows 11 folder icon — bypassing IShellIconOverlayIdentifier's forced lower-left.
+//!
+//! Architecture:
+//!   - Registered under HKCR\Directory\shellex\IconHandler → {CLSID_TWIN_ICON_HANDLER}
+//!   - GetIconLocation returns GIL_NOTFILENAME | GIL_PERINSTANCE so the shell calls Extract()
+//!   - Extract() calls SHGetStockIconInfo(SIID_FOLDER) for the native W11 folder icon,
+//!     composites the badge onto a DIB at the user-configured corner, returns HICON
+//!   - Folders not in shared memory get S_FALSE so shell uses default icon unchanged
+//!   - Shared memory layout (read-only): ShmemHeader + ShmemEntry[count]
 
 #![allow(non_snake_case)]
 
@@ -8,15 +17,32 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 use windows_sys::Win32::Foundation::{
-    BOOL, FALSE, HANDLE, HMODULE, INVALID_HANDLE_VALUE, S_FALSE, S_OK, TRUE, CloseHandle,
+    BOOL, FALSE, HANDLE, HMODULE, INVALID_HANDLE_VALUE, S_FALSE, S_OK, TRUE,
+    CloseHandle,
+};
+use windows_sys::Win32::Graphics::Gdi::{
+    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject,
+    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP,
+    CreateBitmap, GetDC, ReleaseDC,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW;
 use windows_sys::Win32::System::Memory::{
-    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_READ, MEMORY_MAPPED_VIEW_ADDRESS,
+    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_READ,
+    MEMORY_MAPPED_VIEW_ADDRESS,
 };
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegDeleteKeyW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ,
+    RegCloseKey, RegDeleteKeyW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
+    HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_CLASSES_ROOT,
+    KEY_READ, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ,
+};
+use windows_sys::Win32::UI::Shell::{
+    SHGetStockIconInfo, SHGSI_ICON, SHGSI_LARGEICON, SHGSI_SMALLICON,
+    SHSTOCKICONINFO, SIID_FOLDER,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    CreateIconIndirect, DestroyIcon, DrawIconEx, DI_NORMAL, HICON, ICONINFO,
+    GetSystemMetrics, SM_CXICON, SM_CXSMICON,
+    LoadImageW, LR_LOADFROMFILE, IMAGE_ICON,
 };
 
 #[link(name = "advapi32")]
@@ -50,25 +76,17 @@ pub const E_POINTER: HRESULT = 0x80004003_u32 as i32;
 pub const E_FAIL: HRESULT = 0x80004005_u32 as i32;
 pub const CLASS_E_NOAGGREGATION: HRESULT = 0x80040110_u32 as i32;
 
-// ISIOI flags
-pub const ISIOI_ICONFILE: u32 = 0x00000001;
-pub const ISIOI_ICONINDEX: u32 = 0x00000002;
+// GIL flags for GetIconLocation
+pub const GIL_NOTFILENAME: u32 = 0x0008;  // We supply HICON directly via Extract()
+pub const GIL_PERINSTANCE: u32 = 0x0004;  // Icon can differ per folder instance
+pub const GIL_DONTCACHE: u32 = 0x0010;   // Don't cache — force re-extract on SHChangeNotify
 
-// GUIDs
-// {9B46E711-2051-417A-8D52-19253DE6C7D1}
-pub const CLSID_TWIN_SYNCED: GUID = GUID {
-    data1: 0x9B46E711,
+// {9B46E713-2051-417A-8D52-19253DE6C7D3} — IExtractIcon IconHandler
+pub const CLSID_TWIN_ICON_HANDLER: GUID = GUID {
+    data1: 0x9B46E713,
     data2: 0x2051,
     data3: 0x417A,
-    data4: [0x8D, 0x52, 0x19, 0x25, 0x3D, 0xE6, 0xC7, 0xD1],
-};
-
-// {9B46E712-2051-417A-8D52-19253DE6C7D2}
-pub const CLSID_TWIN_SYNCING: GUID = GUID {
-    data1: 0x9B46E712,
-    data2: 0x2051,
-    data3: 0x417A,
-    data4: [0x8D, 0x52, 0x19, 0x25, 0x3D, 0xE6, 0xC7, 0xD2],
+    data4: [0x8D, 0x52, 0x19, 0x25, 0x3D, 0xE6, 0xC7, 0xD3],
 };
 
 pub const IID_IUNKNOWN: GUID = GUID {
@@ -85,27 +103,36 @@ pub const IID_ICLASSFACTORY: GUID = GUID {
     data4: [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
 };
 
-// {0C6C4200-C589-11D0-999A-00C04FD655E1}
-pub const IID_ISHELLICONOVERLAYIDENTIFIER: GUID = GUID {
-    data1: 0x0C6C4200,
-    data2: 0xC589,
-    data3: 0x11D0,
-    data4: [0x99, 0x9A, 0x00, 0xC0, 0x4F, 0xD6, 0x55, 0xE1],
+// {000214FA-0000-0000-C000-000000000046} IExtractIconW
+pub const IID_IEXTRACTICONW: GUID = GUID {
+    data1: 0x000214FA,
+    data2: 0x0000,
+    data3: 0x0000,
+    data4: [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
 };
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum OverlayKind {
-    Synced,
-    Syncing,
-}
+// {0000010B-0000-0000-C000-000000000046} IPersistFile
+pub const IID_IPERSISTFILE: GUID = GUID {
+    data1: 0x0000010B,
+    data2: 0x0000,
+    data3: 0x0000,
+    data4: [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+};
 
-// ── Shared Memory Protocol ────────────────────────────────────────────────────
+// {0000010C-0000-0000-C000-000000000046} IPersist (parent of IPersistFile)
+pub const IID_IPERSIST: GUID = GUID {
+    data1: 0x0000010C,
+    data2: 0x0000,
+    data3: 0x0000,
+    data4: [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+};
+
+// ── Shared Memory Protocol (same as before) ───────────────────────────────────
 
 pub const SHMEM_MAGIC: u32 = 0x5457494E; // 'TWIN'
 pub const STATUS_NONE: u32 = 0;
 pub const STATUS_SYNCED: u32 = 1;
 pub const STATUS_SYNCING: u32 = 2;
-pub const STATUS_IS_ROOT: u32 = 4;
 
 #[repr(C)]
 pub struct ShmemHeader {
@@ -129,7 +156,6 @@ static MODULE_HANDLE: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 static OBJECT_COUNT: AtomicUsize = AtomicUsize::new(0);
 static SERVER_LOCKS: AtomicUsize = AtomicUsize::new(0);
 
-// Wide null-terminated string for "Local\Twin_Overlay_SharedMemory_v1"
 const SHMEM_NAME_W: &[u16] = &[
     b'L' as u16, b'o' as u16, b'c' as u16, b'a' as u16, b'l' as u16, b'\\' as u16,
     b'T' as u16, b'w' as u16, b'i' as u16, b'n' as u16, b'_' as u16, b'O' as u16,
@@ -160,10 +186,268 @@ unsafe fn get_or_open_shmem() -> *mut c_void {
     ptr
 }
 
-// ── IShellIconOverlayIdentifier COM Vtbl ──────────────────────────────────────
+/// Look up folder path in shared memory. Returns (enabled, placement, status).
+/// placement: 0=top_right, 1=bottom_right, 2=centered
+/// status: STATUS_NONE, STATUS_SYNCED, STATUS_SYNCING
+unsafe fn lookup_folder_status(norm_path: &[u16], norm_len: usize) -> (bool, u32, u32) {
+    let ptr = get_or_open_shmem();
+    if ptr.is_null() {
+        return (false, 0, STATUS_NONE);
+    }
+
+    let header = &*(ptr as *const ShmemHeader);
+    if header.magic != SHMEM_MAGIC {
+        SHMEM_VIEW.store(std::ptr::null_mut(), Ordering::Release);
+        return (false, 0, STATUS_NONE);
+    }
+    if header.enabled == 0 {
+        return (false, header.placement, STATUS_NONE);
+    }
+
+    let count = (header.count as usize).min(256);
+    let placement = header.placement;
+
+    if count == 0 {
+        return (true, placement, STATUS_NONE);
+    }
+
+    let entries_ptr =
+        (ptr as *const u8).add(std::mem::size_of::<ShmemHeader>()) as *const ShmemEntry;
+
+    for i in 0..count {
+        let entry = &*entries_ptr.add(i);
+        let entry_len = entry.path_len as usize;
+        if entry_len == norm_len {
+            let mut matches = true;
+            for j in 0..norm_len {
+                if norm_path[j] != entry.path[j] {
+                    matches = false;
+                    break;
+                }
+            }
+            if matches {
+                return (true, placement, entry.status);
+            }
+        }
+    }
+
+    (true, placement, STATUS_NONE)
+}
+
+/// Normalize a wide path to uppercase with backslashes, stripped of trailing backslash (unless drive root).
+unsafe fn normalize_path_w(raw: *const u16) -> ([u16; 260], usize) {
+    let mut norm = [0u16; 260];
+    let mut len = 0usize;
+    while len < 259 {
+        let ch = *raw.add(len);
+        if ch == 0 {
+            break;
+        }
+        let ch = if ch == b'/' as u16 { b'\\' as u16 } else { ch };
+        let upper = if (b'a' as u16..=b'z' as u16).contains(&ch) {
+            ch - 32
+        } else {
+            ch
+        };
+        norm[len] = upper;
+        len += 1;
+    }
+    // Strip trailing backslash unless drive root (e.g. "C:\")
+    if len > 3 && norm[len - 1] == b'\\' as u16 {
+        norm[len - 1] = 0;
+        len -= 1;
+    } else {
+        norm[len] = 0;
+    }
+    (norm, len)
+}
+
+// ── Badge icon compositing ────────────────────────────────────────────────────
+
+/// Get the native Windows folder HICON at the given size using SHGetStockIconInfo.
+unsafe fn get_stock_folder_icon(size: i32) -> HICON {
+    let mut sii: SHSTOCKICONINFO = std::mem::zeroed();
+    sii.cbSize = std::mem::size_of::<SHSTOCKICONINFO>() as u32;
+
+    let flags = SHGSI_ICON | if size <= 20 { SHGSI_SMALLICON } else { SHGSI_LARGEICON };
+    let hr = SHGetStockIconInfo(SIID_FOLDER, flags, &mut sii);
+    if hr == S_OK && !sii.hIcon.is_null() {
+        sii.hIcon
+    } else {
+        std::ptr::null_mut()
+    }
+}
+
+/// Get the overlay icons directory.
+unsafe fn get_icon_dir() -> String {
+    // First check registry HKCU\Software\Twin\Overlay\IconDir
+    let subkey: Vec<u16> = "Software\\Twin\\Overlay\0".encode_utf16().collect();
+    let mut hkey: HKEY = std::ptr::null_mut();
+    if RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut hkey) == 0 {
+        let name: Vec<u16> = "IconDir\0".encode_utf16().collect();
+        let mut buf = [0u16; 512];
+        let mut buf_bytes = (buf.len() * 2) as u32;
+        let mut reg_type = 0u32;
+        if RegQueryValueExW(
+            hkey,
+            name.as_ptr(),
+            std::ptr::null_mut(),
+            &mut reg_type,
+            buf.as_mut_ptr() as _,
+            &mut buf_bytes,
+        ) == 0 && reg_type == REG_SZ {
+            let s = String::from_utf16_lossy(&buf);
+            let trimmed = s.trim_matches('\0').trim().to_string();
+            let _ = RegCloseKey(hkey);
+            if !trimmed.is_empty() {
+                return trimmed;
+            }
+        }
+        let _ = RegCloseKey(hkey);
+    }
+
+    // Fall back to DLL directory / icons / overlay
+    let hmod = MODULE_HANDLE.load(Ordering::Relaxed) as HMODULE;
+    let mut mod_path = [0u16; 512];
+    let len = GetModuleFileNameW(hmod, mod_path.as_mut_ptr(), 512) as usize;
+    if len > 0 {
+        let full = String::from_utf16_lossy(&mod_path[..len]);
+        if let Some(parent) = std::path::Path::new(&full).parent() {
+            let overlay_dir = parent.join("icons").join("overlay");
+            if overlay_dir.exists() {
+                return overlay_dir.to_string_lossy().into_owned();
+            }
+            return parent.to_string_lossy().into_owned();
+        }
+    }
+
+    String::new()
+}
+
+/// Load badge HICON from the overlay icons directory.
+unsafe fn load_badge_icon(badge_name: &str, size: i32) -> HICON {
+    let icon_dir = get_icon_dir();
+    if icon_dir.is_empty() {
+        return std::ptr::null_mut();
+    }
+
+    let sep = if icon_dir.ends_with('\\') || icon_dir.ends_with('/') { "" } else { "\\" };
+    let ico_path = format!("{}{}{}.ico\0", icon_dir, sep, badge_name);
+    let wide: Vec<u16> = ico_path.encode_utf16().collect();
+
+    LoadImageW(
+        std::ptr::null_mut(),
+        wide.as_ptr(),
+        IMAGE_ICON,
+        size,
+        size,
+        LR_LOADFROMFILE,
+    ) as HICON
+}
+
+/// Composite base folder icon + badge at the requested placement, return new HICON.
+/// placement: 0=top_right, 1=bottom_right, 2=centered
+/// status: STATUS_SYNCED or STATUS_SYNCING
+unsafe fn composite_icon(size: i32, placement: u32, status: u32) -> HICON {
+    let badge_name = match status {
+        STATUS_SYNCED => "synced",
+        STATUS_SYNCING => "syncing",
+        _ => return std::ptr::null_mut(),
+    };
+
+    // 1. Get the base Windows 11 folder icon
+    let h_base = get_stock_folder_icon(size);
+    if h_base.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    // Badge is 42% of icon size, minimum 8px
+    let badge_size = ((size as f32) * 0.42).round() as i32;
+    let badge_size = badge_size.max(8).min(size);
+
+    // 2. Load badge icon
+    let h_badge = load_badge_icon(badge_name, badge_size);
+
+    // 3. Create 32-bit ARGB top-down DIB section
+    let hdc_screen = GetDC(std::ptr::null_mut());
+    let hdc_mem = CreateCompatibleDC(hdc_screen);
+
+    let mut bmi: BITMAPINFO = std::mem::zeroed();
+    bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    bmi.bmiHeader.biWidth = size;
+    bmi.bmiHeader.biHeight = -size; // top-down
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB as u32;
+
+    let mut pv_bits: *mut c_void = std::ptr::null_mut();
+    let h_bmp: HBITMAP = CreateDIBSection(
+        hdc_screen,
+        &bmi,
+        DIB_RGB_COLORS,
+        &mut pv_bits,
+        std::ptr::null_mut(),
+        0,
+    );
+
+    if h_bmp.is_null() {
+        if !h_base.is_null() { DestroyIcon(h_base); }
+        if !h_badge.is_null() { DestroyIcon(h_badge); }
+        DeleteDC(hdc_mem);
+        ReleaseDC(std::ptr::null_mut(), hdc_screen);
+        return std::ptr::null_mut();
+    }
+
+    let h_old = SelectObject(hdc_mem, h_bmp as _);
+
+    // 4. Clear to fully transparent
+    if !pv_bits.is_null() {
+        std::ptr::write_bytes(pv_bits as *mut u8, 0, (size * size * 4) as usize);
+    }
+
+    // 5. Draw base folder icon
+    DrawIconEx(hdc_mem, 0, 0, h_base, size, size, 0, std::ptr::null_mut(), DI_NORMAL);
+
+    // 6. Compute badge position: 3% margin from edges
+    let margin = ((size as f32) * 0.03).round() as i32;
+    let (bx, by) = match placement {
+        1 => (size - badge_size - margin, size - badge_size - margin),  // bottom_right
+        2 => ((size - badge_size) / 2, (size - badge_size) / 2),        // centered
+        _ => (size - badge_size - margin, margin),                       // top_right (default)
+    };
+
+    // 7. Draw badge on top of folder
+    if !h_badge.is_null() {
+        DrawIconEx(hdc_mem, bx, by, h_badge, badge_size, badge_size, 0, std::ptr::null_mut(), DI_NORMAL);
+    }
+
+    // 8. Build HICON from composited bitmap
+    let h_mask = CreateBitmap(size, size, 1, 1, std::ptr::null());
+    let ii = ICONINFO {
+        fIcon: TRUE,
+        xHotspot: 0,
+        yHotspot: 0,
+        hbmMask: h_mask,
+        hbmColor: h_bmp,
+    };
+    let h_icon = CreateIconIndirect(&ii);
+
+    // Cleanup GDI resources
+    SelectObject(hdc_mem, h_old);
+    DeleteObject(h_bmp as _);
+    if !h_mask.is_null() { DeleteObject(h_mask as _); }
+    DeleteDC(hdc_mem);
+    ReleaseDC(std::ptr::null_mut(), hdc_screen);
+    if !h_base.is_null() { DestroyIcon(h_base); }
+    if !h_badge.is_null() { DestroyIcon(h_badge); }
+
+    h_icon
+}
+
+// ── IExtractIconW COM VTable ──────────────────────────────────────────────────
 
 #[repr(C)]
-pub struct IShellIconOverlayIdentifierVtbl {
+pub struct IExtractIconWVtbl {
     pub QueryInterface: unsafe extern "system" fn(
         this: *mut c_void,
         riid: *const GUID,
@@ -171,30 +455,61 @@ pub struct IShellIconOverlayIdentifierVtbl {
     ) -> HRESULT,
     pub AddRef: unsafe extern "system" fn(this: *mut c_void) -> u32,
     pub Release: unsafe extern "system" fn(this: *mut c_void) -> u32,
-
-    pub IsMemberOf: unsafe extern "system" fn(
+    pub GetIconLocation: unsafe extern "system" fn(
         this: *mut c_void,
-        pwszPath: *const u16,
-        dwAttrib: u32,
+        uFlags: u32,
+        szIconFile: *mut u16,
+        cchMax: u32,
+        piIndex: *mut i32,
+        pwFlags: *mut u32,
     ) -> HRESULT,
-    pub GetOverlayInfo: unsafe extern "system" fn(
+    pub Extract: unsafe extern "system" fn(
         this: *mut c_void,
-        pwszIconFile: *mut u16,
-        cchMax: i32,
-        pIndex: *mut i32,
-        pdwFlags: *mut u32,
+        pszFile: *const u16,
+        nIconIndex: u32,
+        phiconLarge: *mut HICON,
+        phiconSmall: *mut HICON,
+        nIconSize: u32,
     ) -> HRESULT,
-    pub GetPriority: unsafe extern "system" fn(this: *mut c_void, pPriority: *mut i32) -> HRESULT,
 }
+
+// ── IPersistFile COM VTable ───────────────────────────────────────────────────
 
 #[repr(C)]
-pub struct ShellIconOverlayIdentifier {
-    pub vtbl: *const IShellIconOverlayIdentifierVtbl,
-    pub ref_count: AtomicUsize,
-    pub kind: OverlayKind,
+pub struct IPersistFileVtbl {
+    pub QueryInterface: unsafe extern "system" fn(
+        this: *mut c_void,
+        riid: *const GUID,
+        ppvObject: *mut *mut c_void,
+    ) -> HRESULT,
+    pub AddRef: unsafe extern "system" fn(this: *mut c_void) -> u32,
+    pub Release: unsafe extern "system" fn(this: *mut c_void) -> u32,
+    pub GetClassID: unsafe extern "system" fn(
+        this: *mut c_void,
+        pClassID: *mut GUID,
+    ) -> HRESULT,
+    pub IsDirty: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
+    pub Load: unsafe extern "system" fn(
+        this: *mut c_void,
+        pszFileName: *const u16,
+        dwMode: u32,
+    ) -> HRESULT,
+    pub Save: unsafe extern "system" fn(
+        this: *mut c_void,
+        pszFileName: *const u16,
+        fRemember: BOOL,
+    ) -> HRESULT,
+    pub SaveCompleted: unsafe extern "system" fn(
+        this: *mut c_void,
+        pszFileName: *const u16,
+    ) -> HRESULT,
+    pub GetCurFile: unsafe extern "system" fn(
+        this: *mut c_void,
+        ppszFileName: *mut *mut u16,
+    ) -> HRESULT,
 }
 
-// ── IClassFactory COM Vtbl ────────────────────────────────────────────────────
+// ── IClassFactory COM VTable ──────────────────────────────────────────────────
 
 #[repr(C)]
 pub struct IClassFactoryVtbl {
@@ -205,321 +520,58 @@ pub struct IClassFactoryVtbl {
     ) -> HRESULT,
     pub AddRef: unsafe extern "system" fn(this: *mut c_void) -> u32,
     pub Release: unsafe extern "system" fn(this: *mut c_void) -> u32,
-
     pub CreateInstance: unsafe extern "system" fn(
         this: *mut c_void,
-        _pUnkOuter: *mut c_void,
+        pUnkOuter: *mut c_void,
         riid: *const GUID,
         ppvObject: *mut *mut c_void,
     ) -> HRESULT,
     pub LockServer: unsafe extern "system" fn(this: *mut c_void, fLock: BOOL) -> HRESULT,
 }
 
+// ── FolderIconHandler object ──────────────────────────────────────────────────
+// Memory layout:
+//   +0:  *const IExtractIconWVtbl   (IExtractIconW vtbl — pointer at byte 0)
+//   +8:  *const IPersistFileVtbl    (IPersistFile vtbl — pointer at byte 8)
+//   +16: ref_count (AtomicUsize)
+//   ...  dir_path, dir_path_len
+
+#[repr(C)]
+pub struct FolderIconHandler {
+    pub extract_vtbl: *const IExtractIconWVtbl,
+    pub persist_vtbl: *const IPersistFileVtbl,
+    pub ref_count: AtomicUsize,
+    pub dir_path: [u16; 260],
+    pub dir_path_len: usize,
+}
+
 #[repr(C)]
 pub struct ClassFactory {
     pub vtbl: *const IClassFactoryVtbl,
     pub ref_count: AtomicUsize,
-    pub kind: OverlayKind,
 }
 
-// ── Overlay Identifier Implementation ─────────────────────────────────────────
+// ── Static VTables ────────────────────────────────────────────────────────────
 
-static OVERLAY_VTBL: IShellIconOverlayIdentifierVtbl = IShellIconOverlayIdentifierVtbl {
-    QueryInterface: overlay_query_interface,
-    AddRef: overlay_add_ref,
-    Release: overlay_release,
-    IsMemberOf: overlay_is_member_of,
-    GetOverlayInfo: overlay_get_overlay_info,
-    GetPriority: overlay_get_priority,
+static EXTRACT_VTBL: IExtractIconWVtbl = IExtractIconWVtbl {
+    QueryInterface: handler_query_interface_extract,
+    AddRef: handler_add_ref,
+    Release: handler_release,
+    GetIconLocation: handler_get_icon_location,
+    Extract: handler_extract,
 };
 
-fn format_guid(g: &GUID) -> String {
-    format!(
-        "{{{:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}}}",
-        g.data1, g.data2, g.data3, g.data4[0], g.data4[1], g.data4[2], g.data4[3], g.data4[4], g.data4[5], g.data4[6], g.data4[7]
-    )
-}
-
-unsafe extern "system" fn overlay_query_interface(
-    this: *mut c_void,
-    riid: *const GUID,
-    ppvObject: *mut *mut c_void,
-) -> HRESULT {
-    if ppvObject.is_null() || riid.is_null() {
-        return E_POINTER;
-    }
-    let guid = *riid;
-    let guid_str = format_guid(&guid);
-    if guid == IID_IUNKNOWN || guid == IID_ISHELLICONOVERLAYIDENTIFIER {
-        log_debug(&format!("overlay_query_interface matched: {}", guid_str));
-        *ppvObject = this;
-        overlay_add_ref(this);
-        S_OK
-    } else {
-        log_debug(&format!("overlay_query_interface UNMATCHED: {}", guid_str));
-        *ppvObject = std::ptr::null_mut();
-        E_NOINTERFACE
-    }
-}
-
-unsafe extern "system" fn overlay_add_ref(this: *mut c_void) -> u32 {
-    let obj = &*(this as *const ShellIconOverlayIdentifier);
-    obj.ref_count.fetch_add(1, Ordering::Relaxed) as u32 + 1
-}
-
-unsafe extern "system" fn overlay_release(this: *mut c_void) -> u32 {
-    let obj = &*(this as *const ShellIconOverlayIdentifier);
-    let prev = obj.ref_count.fetch_sub(1, Ordering::Release);
-    if prev == 1 {
-        std::sync::atomic::fence(Ordering::Acquire);
-        OBJECT_COUNT.fetch_sub(1, Ordering::Relaxed);
-        let _ = Box::from_raw(this as *mut ShellIconOverlayIdentifier);
-        0
-    } else {
-        (prev - 1) as u32
-    }
-}
-
-unsafe extern "system" fn overlay_is_member_of(
-    this: *mut c_void,
-    pwszPath: *const u16,
-    dwAttrib: u32,
-) -> HRESULT {
-    if pwszPath.is_null() {
-        return S_FALSE;
-    }
-
-    // Overlay is intended for folders: if attributes are known and object is explicitly a file, skip
-    const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x00000010;
-    if dwAttrib != 0 && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY) == 0 {
-        return S_FALSE;
-    }
-
-    let ptr = get_or_open_shmem();
-    if ptr.is_null() {
-        return S_FALSE;
-    }
-
-    let header = &*(ptr as *const ShmemHeader);
-    if header.magic != SHMEM_MAGIC {
-        SHMEM_VIEW.store(std::ptr::null_mut(), Ordering::Release);
-        return S_FALSE;
-    }
-    if header.enabled == 0 {
-        return S_FALSE;
-    }
-
-    let count = (header.count as usize).min(256);
-    if count == 0 {
-        return S_FALSE;
-    }
-
-    // Measure length of incoming path & normalize to uppercase with backslashes
-    let mut norm: [u16; 260] = [0; 260];
-    let mut len = 0;
-    while len < 259 {
-        let ch = *pwszPath.add(len);
-        if ch == 0 {
-            break;
-        }
-        let ch = if ch == b'/' as u16 { b'\\' as u16 } else { ch };
-        // ASCII uppercase
-        let upper_ch = if (b'a' as u16..=b'z' as u16).contains(&ch) {
-            ch - 32
-        } else {
-            ch
-        };
-        norm[len] = upper_ch;
-        len += 1;
-    }
-
-    // Strip trailing backslash unless it's drive root e.g. "C:\"
-    if len > 3 && norm[len - 1] == b'\\' as u16 {
-        norm[len - 1] = 0;
-        len -= 1;
-    } else {
-        norm[len] = 0;
-    }
-
-    let entries_ptr = (ptr as *const u8).add(std::mem::size_of::<ShmemHeader>()) as *const ShmemEntry;
-    let obj = &*(this as *const ShellIconOverlayIdentifier);
-
-    // Only mark the pair parent folder: require exact path match
-    for i in 0..count {
-        let entry = &*entries_ptr.add(i);
-        let entry_len = entry.path_len as usize;
-
-        if entry_len == len {
-            let mut matches = true;
-            for j in 0..len {
-                if norm[j] != entry.path[j] {
-                    matches = false;
-                    break;
-                }
-            }
-            if matches {
-                let path_s = String::from_utf16_lossy(&norm[..len]);
-                log_debug(&format!("IsMemberOf MATCH: path='{}' entry.status={}", path_s, entry.status));
-                return match obj.kind {
-                    OverlayKind::Syncing => {
-                        if (entry.status & STATUS_SYNCING) != 0 {
-                            S_OK
-                        } else {
-                            S_FALSE
-                        }
-                    }
-                    OverlayKind::Synced => {
-                        if (entry.status & STATUS_SYNCING) == 0 && (entry.status & STATUS_SYNCED) != 0 {
-                            S_OK
-                        } else {
-                            S_FALSE
-                        }
-                    }
-                };
-            }
-        }
-    }
-
-    S_FALSE
-}
-
-unsafe extern "system" fn overlay_get_overlay_info(
-    this: *mut c_void,
-    pwszIconFile: *mut u16,
-    cchMax: i32,
-    pIndex: *mut i32,
-    pdwFlags: *mut u32,
-) -> HRESULT {
-    if pwszIconFile.is_null() || pIndex.is_null() || pdwFlags.is_null() || cchMax <= 0 {
-        return E_POINTER;
-    }
-
-    *pIndex = 0;
-    *pdwFlags = ISIOI_ICONFILE | ISIOI_ICONINDEX;
-
-    let obj = &*(this as *const ShellIconOverlayIdentifier);
-
-    // Read placement and icon directory from registry, or fallback to DLL folder
-    let (placement, icon_dir) = read_overlay_config();
-
-    let prefix = match obj.kind {
-        OverlayKind::Synced => "synced",
-        OverlayKind::Syncing => "syncing",
-    };
-
-    let filename = format!("folder_{}_{}.ico", prefix, placement);
-
-let ends_with_bs = icon_dir.as_bytes().ends_with(&[0x5C]);
-let ends_with_sl = icon_dir.as_bytes().ends_with(&[0x2F]);
-let sep = if ends_with_bs || ends_with_sl { "" } else { "\\" };
-    let candidate = format!("{}{}{}", icon_dir, sep, filename);
-    let full_path = if std::path::Path::new(&candidate).exists() {
-        candidate
-    } else {
-        format!("{}{}{}.ico", icon_dir, sep, prefix)
-    };
-    log_debug(&format!("GetOverlayInfo for kind={:?}: full_path='{}'", prefix, full_path));
-
-    let mut out_len = 0;
-    for ch in full_path.encode_utf16() {
-        if out_len >= (cchMax - 1) as usize {
-            break;
-        }
-        *pwszIconFile.add(out_len) = ch;
-        out_len += 1;
-    }
-    *pwszIconFile.add(out_len) = 0;
-
-    S_OK
-}
-
-unsafe extern "system" fn overlay_get_priority(
-    _this: *mut c_void,
-    pPriority: *mut i32,
-) -> HRESULT {
-    if pPriority.is_null() {
-        return E_POINTER;
-    }
-    // Highest priority for shell overlay slots
-    *pPriority = 0;
-    S_OK
-}
-
-// ── Registry / Config Helper ──────────────────────────────────────────────────
-
-fn read_overlay_config() -> (String, String) {
-    let mut placement = "top_right".to_string();
-    let mut icon_dir = String::new();
-
-    unsafe {
-        let subkey: Vec<u16> = "Software\\Twin\\Overlay\0".encode_utf16().collect();
-        let mut hkey: HKEY = std::ptr::null_mut();
-        if RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut hkey) == 0 {
-            // Read Placement
-            let name_placement: Vec<u16> = "Placement\0".encode_utf16().collect();
-            let mut buf = [0u16; 64];
-            let mut buf_bytes = (buf.len() * 2) as u32;
-            let mut reg_type = 0;
-            if RegQueryValueExW(
-                hkey,
-                name_placement.as_ptr(),
-                std::ptr::null_mut(),
-                &mut reg_type,
-                buf.as_mut_ptr() as _,
-                &mut buf_bytes,
-            ) == 0 && reg_type == REG_SZ {
-                let s = String::from_utf16_lossy(&buf);
-                let trimmed = s.trim_matches(char::from(0)).trim();
-                if !trimmed.is_empty() {
-                    placement = trimmed.to_string();
-                }
-            }
-
-            // Read IconDir
-            let name_icondir: Vec<u16> = "IconDir\0".encode_utf16().collect();
-            let mut dir_buf = [0u16; 512];
-            let mut dir_bytes = (dir_buf.len() * 2) as u32;
-            if RegQueryValueExW(
-                hkey,
-                name_icondir.as_ptr(),
-                std::ptr::null_mut(),
-                &mut reg_type,
-                dir_buf.as_mut_ptr() as _,
-                &mut dir_bytes,
-            ) == 0 && reg_type == REG_SZ {
-                let s = String::from_utf16_lossy(&dir_buf);
-                let trimmed = s.trim_matches(char::from(0)).trim();
-                if !trimmed.is_empty() {
-                    icon_dir = trimmed.to_string();
-                }
-            }
-
-            let _ = RegCloseKey(hkey);
-        }
-
-        // If icon_dir not in registry, look in directory of the DLL
-        if icon_dir.is_empty() {
-            let hmod = MODULE_HANDLE.load(Ordering::Relaxed) as HMODULE;
-            let mut mod_path = [0u16; 512];
-            let len = GetModuleFileNameW(hmod, mod_path.as_mut_ptr(), 512) as usize;
-            if len > 0 {
-                let full = String::from_utf16_lossy(&mod_path[..len]);
-                if let Some(parent) = std::path::Path::new(&full).parent() {
-                    let overlay_subdir = parent.join("icons").join("overlay");
-                    if overlay_subdir.exists() {
-                        icon_dir = overlay_subdir.to_string_lossy().to_string();
-                    } else {
-                        icon_dir = parent.to_string_lossy().to_string();
-                    }
-                }
-            }
-        }
-    }
-
-    (placement, icon_dir)
-}
-
-// ── Class Factory Implementation ──────────────────────────────────────────────
+static PERSIST_VTBL: IPersistFileVtbl = IPersistFileVtbl {
+    QueryInterface: handler_query_interface_persist,
+    AddRef: handler_add_ref_persist,
+    Release: handler_release_persist,
+    GetClassID: handler_get_class_id,
+    IsDirty: handler_is_dirty,
+    Load: handler_load,
+    Save: handler_save,
+    SaveCompleted: handler_save_completed,
+    GetCurFile: handler_get_cur_file,
+};
 
 static CLASS_FACTORY_VTBL: IClassFactoryVtbl = IClassFactoryVtbl {
     QueryInterface: factory_query_interface,
@@ -528,6 +580,219 @@ static CLASS_FACTORY_VTBL: IClassFactoryVtbl = IClassFactoryVtbl {
     CreateInstance: factory_create_instance,
     LockServer: factory_lock_server,
 };
+
+// ── Helper: get FolderIconHandler from each vtbl pointer ──────────────────────
+
+#[inline]
+unsafe fn handler_from_extract(this: *mut c_void) -> *mut FolderIconHandler {
+    this as *mut FolderIconHandler
+}
+
+/// IPersistFile vtbl is at offset +8 from start of FolderIconHandler.
+#[inline]
+unsafe fn handler_from_persist(this: *mut c_void) -> *mut FolderIconHandler {
+    (this as *mut u8).sub(8) as *mut FolderIconHandler
+}
+
+// ── IExtractIconW Implementation ──────────────────────────────────────────────
+
+unsafe extern "system" fn handler_query_interface_extract(
+    this: *mut c_void,
+    riid: *const GUID,
+    ppvObject: *mut *mut c_void,
+) -> HRESULT {
+    if ppvObject.is_null() || riid.is_null() {
+        return E_POINTER;
+    }
+    let guid = *riid;
+    if guid == IID_IUNKNOWN || guid == IID_IEXTRACTICONW {
+        *ppvObject = this;
+        handler_add_ref(this);
+        S_OK
+    } else if guid == IID_IPERSISTFILE || guid == IID_IPERSIST {
+        // IPersistFile vtbl is at &handler.persist_vtbl
+        let handler = handler_from_extract(this);
+        let persist_ptr = &mut (*handler).persist_vtbl as *mut _ as *mut c_void;
+        *ppvObject = persist_ptr;
+        handler_add_ref(this);
+        S_OK
+    } else {
+        *ppvObject = std::ptr::null_mut();
+        E_NOINTERFACE
+    }
+}
+
+unsafe extern "system" fn handler_add_ref(this: *mut c_void) -> u32 {
+    let obj = &*(this as *const FolderIconHandler);
+    obj.ref_count.fetch_add(1, Ordering::Relaxed) as u32 + 1
+}
+
+unsafe extern "system" fn handler_release(this: *mut c_void) -> u32 {
+    let obj = &*(this as *const FolderIconHandler);
+    let prev = obj.ref_count.fetch_sub(1, Ordering::Release);
+    if prev == 1 {
+        std::sync::atomic::fence(Ordering::Acquire);
+        OBJECT_COUNT.fetch_sub(1, Ordering::Relaxed);
+        let _ = Box::from_raw(this as *mut FolderIconHandler);
+        0
+    } else {
+        (prev - 1) as u32
+    }
+}
+
+/// GetIconLocation: tell shell we provide HICON directly in Extract(), per-instance.
+unsafe extern "system" fn handler_get_icon_location(
+    _this: *mut c_void,
+    _uFlags: u32,
+    szIconFile: *mut u16,
+    cchMax: u32,
+    piIndex: *mut i32,
+    pwFlags: *mut u32,
+) -> HRESULT {
+    if !szIconFile.is_null() && cchMax > 0 {
+        *szIconFile = 0;
+    }
+    if !piIndex.is_null() {
+        *piIndex = 0;
+    }
+    if !pwFlags.is_null() {
+        *pwFlags = GIL_NOTFILENAME | GIL_PERINSTANCE | GIL_DONTCACHE;
+    }
+    S_OK
+}
+
+/// Extract: compose and return HICON with badge at user-configured position.
+unsafe extern "system" fn handler_extract(
+    this: *mut c_void,
+    _pszFile: *const u16,
+    _nIconIndex: u32,
+    phiconLarge: *mut HICON,
+    phiconSmall: *mut HICON,
+    nIconSize: u32,
+) -> HRESULT {
+    let handler = &*(this as *const FolderIconHandler);
+
+    if handler.dir_path_len == 0 {
+        return S_FALSE; // No path set, shell uses default
+    }
+
+    // Look up folder status in shared memory
+    let (enabled, placement, status) =
+        lookup_folder_status(&handler.dir_path, handler.dir_path_len);
+
+    if !enabled || status == STATUS_NONE {
+        // Not a Twin folder or overlay disabled; shell uses default icon
+        return S_FALSE;
+    }
+
+    // Extract icon sizes from nIconSize (LOWORD = large, HIWORD = small)
+    let cx_large = (nIconSize & 0xFFFF) as i32;
+    let cx_small = ((nIconSize >> 16) & 0xFFFF) as i32;
+
+    let large_size = if cx_large > 0 { cx_large } else { GetSystemMetrics(SM_CXICON) };
+    let small_size = if cx_small > 0 { cx_small } else { GetSystemMetrics(SM_CXSMICON) };
+
+    if !phiconLarge.is_null() {
+        *phiconLarge = composite_icon(large_size, placement, status);
+    }
+    if !phiconSmall.is_null() {
+        *phiconSmall = composite_icon(small_size, placement, status);
+    }
+
+    S_OK
+}
+
+// ── IPersistFile Implementation ───────────────────────────────────────────────
+
+unsafe extern "system" fn handler_query_interface_persist(
+    this: *mut c_void,
+    riid: *const GUID,
+    ppvObject: *mut *mut c_void,
+) -> HRESULT {
+    if ppvObject.is_null() || riid.is_null() {
+        return E_POINTER;
+    }
+    let guid = *riid;
+    let handler = handler_from_persist(this);
+    let extract_ptr = handler as *mut c_void;
+
+    if guid == IID_IPERSISTFILE || guid == IID_IPERSIST || guid == IID_IUNKNOWN {
+        *ppvObject = this;
+        handler_add_ref(extract_ptr);
+        S_OK
+    } else if guid == IID_IEXTRACTICONW {
+        *ppvObject = extract_ptr;
+        handler_add_ref(extract_ptr);
+        S_OK
+    } else {
+        *ppvObject = std::ptr::null_mut();
+        E_NOINTERFACE
+    }
+}
+
+unsafe extern "system" fn handler_add_ref_persist(this: *mut c_void) -> u32 {
+    handler_add_ref(handler_from_persist(this) as *mut c_void)
+}
+
+unsafe extern "system" fn handler_release_persist(this: *mut c_void) -> u32 {
+    handler_release(handler_from_persist(this) as *mut c_void)
+}
+
+unsafe extern "system" fn handler_get_class_id(
+    _this: *mut c_void,
+    pClassID: *mut GUID,
+) -> HRESULT {
+    if pClassID.is_null() {
+        return E_POINTER;
+    }
+    *pClassID = CLSID_TWIN_ICON_HANDLER;
+    S_OK
+}
+
+unsafe extern "system" fn handler_is_dirty(_this: *mut c_void) -> HRESULT {
+    S_FALSE
+}
+
+/// Load is called by the shell with the folder path before GetIconLocation/Extract.
+unsafe extern "system" fn handler_load(
+    this: *mut c_void,
+    pszFileName: *const u16,
+    _dwMode: u32,
+) -> HRESULT {
+    if pszFileName.is_null() {
+        return E_FAIL;
+    }
+    let handler = &mut *handler_from_persist(this);
+    let (norm, norm_len) = normalize_path_w(pszFileName);
+    handler.dir_path[..norm_len].copy_from_slice(&norm[..norm_len]);
+    handler.dir_path[norm_len] = 0;
+    handler.dir_path_len = norm_len;
+    S_OK
+}
+
+unsafe extern "system" fn handler_save(
+    _this: *mut c_void,
+    _pszFileName: *const u16,
+    _fRemember: BOOL,
+) -> HRESULT {
+    E_FAIL
+}
+
+unsafe extern "system" fn handler_save_completed(
+    _this: *mut c_void,
+    _pszFileName: *const u16,
+) -> HRESULT {
+    S_OK
+}
+
+unsafe extern "system" fn handler_get_cur_file(
+    _this: *mut c_void,
+    _ppszFileName: *mut *mut u16,
+) -> HRESULT {
+    E_FAIL
+}
+
+// ── Class Factory ─────────────────────────────────────────────────────────────
 
 unsafe extern "system" fn factory_query_interface(
     this: *mut c_void,
@@ -567,8 +832,8 @@ unsafe extern "system" fn factory_release(this: *mut c_void) -> u32 {
 }
 
 unsafe extern "system" fn factory_create_instance(
-    this: *mut c_void,
-    _pUnkOuter: *mut c_void,
+    _this: *mut c_void,
+    pUnkOuter: *mut c_void,
     riid: *const GUID,
     ppvObject: *mut *mut c_void,
 ) -> HRESULT {
@@ -577,20 +842,22 @@ unsafe extern "system" fn factory_create_instance(
     }
     *ppvObject = std::ptr::null_mut();
 
-    let riid_str = format_guid(&*riid);
-    log_debug(&format!("factory_create_instance called with riid={}", riid_str));
+    if !pUnkOuter.is_null() {
+        return CLASS_E_NOAGGREGATION;
+    }
 
-    let factory = &*(this as *const ClassFactory);
-    let instance = Box::new(ShellIconOverlayIdentifier {
-        vtbl: &OVERLAY_VTBL,
+    let handler = Box::new(FolderIconHandler {
+        extract_vtbl: &EXTRACT_VTBL,
+        persist_vtbl: &PERSIST_VTBL,
         ref_count: AtomicUsize::new(1),
-        kind: factory.kind,
+        dir_path: [0u16; 260],
+        dir_path_len: 0,
     });
     OBJECT_COUNT.fetch_add(1, Ordering::Relaxed);
 
-    let raw = Box::into_raw(instance) as *mut c_void;
-    let hr = overlay_query_interface(raw, riid, ppvObject);
-    overlay_release(raw);
+    let raw = Box::into_raw(handler) as *mut c_void;
+    let hr = handler_query_interface_extract(raw, riid, ppvObject);
+    handler_release(raw);
     hr
 }
 
@@ -603,12 +870,7 @@ unsafe extern "system" fn factory_lock_server(_this: *mut c_void, fLock: BOOL) -
     S_OK
 }
 
-#[inline]
-fn log_debug(_msg: &str) {
-    // Debug logging disabled for production performance
-}
-
-// ── Exported DLL Functions ────────────────────────────────────────────────────
+// ── DLL Exports ───────────────────────────────────────────────────────────────
 
 #[no_mangle]
 pub unsafe extern "system" fn DllMain(
@@ -621,9 +883,7 @@ pub unsafe extern "system" fn DllMain(
 
     if fdwReason == DLL_PROCESS_ATTACH {
         MODULE_HANDLE.store(hinstDLL as _, Ordering::Relaxed);
-        log_debug("DllMain DLL_PROCESS_ATTACH");
     } else if fdwReason == DLL_PROCESS_DETACH {
-        log_debug("DllMain DLL_PROCESS_DETACH");
         let ptr = SHMEM_VIEW.swap(std::ptr::null_mut(), Ordering::AcqRel);
         if !ptr.is_null() {
             let _ = UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS { Value: ptr });
@@ -638,27 +898,18 @@ pub unsafe extern "system" fn DllGetClassObject(
     riid: *const GUID,
     ppv: *mut *mut c_void,
 ) -> HRESULT {
-    let clsid_str = if !rclsid.is_null() { format_guid(&*rclsid) } else { "null".into() };
-    let riid_str = if !riid.is_null() { format_guid(&*riid) } else { "null".into() };
-    log_debug(&format!("DllGetClassObject clsid={} riid={}", clsid_str, riid_str));
     if rclsid.is_null() || riid.is_null() || ppv.is_null() {
         return E_POINTER;
     }
     *ppv = std::ptr::null_mut();
 
-    let clsid = *rclsid;
-    let kind = if clsid == CLSID_TWIN_SYNCED {
-        OverlayKind::Synced
-    } else if clsid == CLSID_TWIN_SYNCING {
-        OverlayKind::Syncing
-    } else {
+    if *rclsid != CLSID_TWIN_ICON_HANDLER {
         return E_FAIL;
-    };
+    }
 
     let factory = Box::new(ClassFactory {
         vtbl: &CLASS_FACTORY_VTBL,
         ref_count: AtomicUsize::new(1),
-        kind,
     });
     OBJECT_COUNT.fetch_add(1, Ordering::Relaxed);
 
@@ -677,7 +928,8 @@ pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
     }
 }
 
-// Helper to set a registry string value
+// ── Registry Helpers ──────────────────────────────────────────────────────────
+
 unsafe fn set_reg_str(root: HKEY, subkey: &str, value_name: Option<&str>, data: &str) -> bool {
     let subkey_w: Vec<u16> = format!("{subkey}\0").encode_utf16().collect();
     let mut hkey: HKEY = std::ptr::null_mut();
@@ -717,6 +969,8 @@ unsafe fn del_reg_key(root: HKEY, subkey: &str) -> bool {
     RegDeleteKeyW(root, subkey_w.as_ptr()) == 0
 }
 
+// ── DllRegisterServer / DllUnregisterServer ───────────────────────────────────
+
 #[no_mangle]
 pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
     let hmod = MODULE_HANDLE.load(Ordering::Relaxed) as HMODULE;
@@ -727,27 +981,34 @@ pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
     }
     let dll_path = String::from_utf16_lossy(&mod_path[..len]);
 
-    let synced_clsid_str = "{9B46E711-2051-417A-8D52-19253DE6C7D1}";
-    let syncing_clsid_str = "{9B46E712-2051-417A-8D52-19253DE6C7D2}";
+    let clsid_str = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
 
-    // Register CLSIDs in HKLM and HKCU
+    // Register CLSID in HKLM and HKCU
     for &root in &[HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
-        // 1. Synced CLSID
-        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}");
-        set_reg_str(root, &clsid_key, None, "Twin Synced Icon Overlay");
+        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{clsid_str}");
+        set_reg_str(root, &clsid_key, None, "Twin Folder Icon Handler");
         set_reg_str(root, &format!("{clsid_key}\\InprocServer32"), None, &dll_path);
-        set_reg_str(root, &format!("{clsid_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
+        set_reg_str(
+            root,
+            &format!("{clsid_key}\\InprocServer32"),
+            Some("ThreadingModel"),
+            "Apartment",
+        );
+    }
 
-        // 2. Syncing CLSID
-        let syncing_key = format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}");
-        set_reg_str(root, &syncing_key, None, "Twin Syncing Icon Overlay");
-        set_reg_str(root, &format!("{syncing_key}\\InprocServer32"), None, &dll_path);
-        set_reg_str(root, &format!("{syncing_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
-
-        // 3. ShellIconOverlayIdentifiers with 3 leading spaces for sorting priority in Windows 15-overlay limit
-        let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
-        set_reg_str(root, &format!("{shell_overlays}\\   TwinSynced"), None, synced_clsid_str);
-        set_reg_str(root, &format!("{shell_overlays}\\   TwinSyncing"), None, syncing_clsid_str);
+    // Register as IconHandler for all NTFS directories/folders in Explorer.
+    // Both "Directory" (physical folders) and "Folder" (all folder items) must be registered.
+    for subkey in &[
+        "Directory\\shellex\\IconHandler",
+        "Folder\\shellex\\IconHandler",
+    ] {
+        set_reg_str(HKEY_CLASSES_ROOT, subkey, None, clsid_str);
+        set_reg_str(
+            HKEY_LOCAL_MACHINE,
+            &format!("SOFTWARE\\Classes\\{subkey}"),
+            None,
+            clsid_str,
+        );
     }
 
     S_OK
@@ -755,19 +1016,25 @@ pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
 
 #[no_mangle]
 pub unsafe extern "system" fn DllUnregisterServer() -> HRESULT {
-    let synced_clsid_str = "{9B46E711-2051-417A-8D52-19253DE6C7D1}";
-    let syncing_clsid_str = "{9B46E712-2051-417A-8D52-19253DE6C7D2}";
+    let clsid_str = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
 
     for &root in &[HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
-        let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
-        del_reg_key(root, &format!("{shell_overlays}\\   TwinSynced"));
-        del_reg_key(root, &format!("{shell_overlays}\\   TwinSyncing"));
+        del_reg_key(
+            root,
+            &format!("SOFTWARE\\Classes\\CLSID\\{clsid_str}\\InprocServer32"),
+        );
+        del_reg_key(root, &format!("SOFTWARE\\Classes\\CLSID\\{clsid_str}"));
+    }
 
-        del_reg_key(root, &format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}\\InprocServer32"));
-        del_reg_key(root, &format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}"));
-
-        del_reg_key(root, &format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}\\InprocServer32"));
-        del_reg_key(root, &format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}"));
+    for subkey in &[
+        "Directory\\shellex\\IconHandler",
+        "Folder\\shellex\\IconHandler",
+    ] {
+        del_reg_key(HKEY_CLASSES_ROOT, subkey);
+        del_reg_key(
+            HKEY_LOCAL_MACHINE,
+            &format!("SOFTWARE\\Classes\\{subkey}"),
+        );
     }
 
     S_OK

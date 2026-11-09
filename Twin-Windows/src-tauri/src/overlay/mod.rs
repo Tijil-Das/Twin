@@ -493,34 +493,37 @@ pub fn find_admin_script(script_name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Check if the shell overlay identifiers are registered in HKEY_LOCAL_MACHINE
-/// Note: Windows Explorer strictly reads overlay extensions from HKLM only.
+/// Check if the Twin folder icon handler is registered.
+/// Checks for the IconHandler CLSID in HKLM or HKCU Classes.
 #[cfg(windows)]
 pub fn is_overlay_registered() -> bool {
-    let synced_clsid_str = "{9B46E711-2051-417A-8D52-19253DE6C7D1}";
+    let icon_handler_clsid = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
 
-    let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers\\   TwinSynced\0"
+    // Check HKLM\SOFTWARE\Classes\Directory\shellex\IconHandler
+    let subkey: Vec<u16> = "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler\0"
         .encode_utf16()
         .collect();
     let mut hkey: HKEY = std::ptr::null_mut();
     unsafe {
-        if RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey.as_ptr(), 0, KEY_READ, &mut hkey) == 0 {
-            let mut buf = [0u16; 64];
-            let mut buf_bytes = (buf.len() * 2) as u32;
-            let mut reg_type = 0;
-            let q_res = RegQueryValueExW(
-                hkey,
-                std::ptr::null(),
-                std::ptr::null_mut(),
-                &mut reg_type,
-                buf.as_mut_ptr() as _,
-                &mut buf_bytes,
-            );
-            let _ = RegCloseKey(hkey);
-            if q_res == 0 {
-                let val = String::from_utf16_lossy(&buf);
-                if val.contains(synced_clsid_str) {
-                    return true;
+        for &root in &[HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
+            if RegOpenKeyExW(root, subkey.as_ptr(), 0, KEY_READ, &mut hkey) == 0 {
+                let mut buf = [0u16; 64];
+                let mut buf_bytes = (buf.len() * 2) as u32;
+                let mut reg_type = 0;
+                let q_res = RegQueryValueExW(
+                    hkey,
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    &mut reg_type,
+                    buf.as_mut_ptr() as _,
+                    &mut buf_bytes,
+                );
+                let _ = RegCloseKey(hkey);
+                if q_res == 0 {
+                    let val = String::from_utf16_lossy(&buf);
+                    if val.contains(icon_handler_clsid) {
+                        return true;
+                    }
                 }
             }
         }
@@ -534,10 +537,11 @@ pub fn is_overlay_registered() -> bool {
 }
 
 /// Register `twin_overlay.dll` into Windows Registry (HKLM + HKCU)
+/// Uses the new IExtractIcon IconHandler approach (CLSID_TWIN_ICON_HANDLER).
 #[cfg(windows)]
 pub fn register_overlay_handler() -> Result<(), String> {
     if is_overlay_registered() {
-        info!("Twin Explorer Overlay is already registered in HKLM.");
+        info!("Twin Explorer Overlay is already registered.");
         return Ok(());
     }
 
@@ -546,48 +550,50 @@ pub fn register_overlay_handler() -> Result<(), String> {
     })?;
 
     let dll_str = dll_path.to_string_lossy().to_string();
-    let synced_clsid_str = "{9B46E711-2051-417A-8D52-19253DE6C7D1}";
-    let syncing_clsid_str = "{9B46E712-2051-417A-8D52-19253DE6C7D2}";
+    let icon_handler_clsid = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
 
-    // Always register in HKCU so COM can find InprocServer32 in the interactive session
+    // Register CLSID in HKCU (always works without elevation)
     unsafe {
-        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}");
-        set_reg_val(HKEY_CURRENT_USER, &clsid_key, None, "Twin Synced Icon Overlay");
+        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}");
+        set_reg_val(HKEY_CURRENT_USER, &clsid_key, None, "Twin Folder Icon Handler");
         set_reg_val(HKEY_CURRENT_USER, &format!("{clsid_key}\\InprocServer32"), None, &dll_str);
         set_reg_val(HKEY_CURRENT_USER, &format!("{clsid_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
 
-        let syncing_key = format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}");
-        set_reg_val(HKEY_CURRENT_USER, &syncing_key, None, "Twin Syncing Icon Overlay");
-        set_reg_val(HKEY_CURRENT_USER, &format!("{syncing_key}\\InprocServer32"), None, &dll_str);
-        set_reg_val(HKEY_CURRENT_USER, &format!("{syncing_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
+        // IconHandler keys in HKCU Classes (works for current user without elevation)
+        for subkey in &[
+            "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler",
+            "SOFTWARE\\Classes\\Folder\\shellex\\IconHandler",
+        ] {
+            set_reg_val(HKEY_CURRENT_USER, subkey, None, icon_handler_clsid);
+        }
     }
 
-    // Attempt direct write to HKLM (succeeds if running as Administrator)
+    // Try HKLM (needs elevation — succeeds if running as Administrator)
     let hklm_success = unsafe {
-        let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
-        let r1 = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{shell_overlays}\\   TwinSynced"), None, synced_clsid_str);
-        let r2 = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{shell_overlays}\\   TwinSyncing"), None, syncing_clsid_str);
-
-        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}");
-        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &clsid_key, None, "Twin Synced Icon Overlay");
+        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}");
+        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &clsid_key, None, "Twin Folder Icon Handler");
         let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{clsid_key}\\InprocServer32"), None, &dll_str);
         let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{clsid_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
 
-        let syncing_key = format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}");
-        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &syncing_key, None, "Twin Syncing Icon Overlay");
-        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{syncing_key}\\InprocServer32"), None, &dll_str);
-        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{syncing_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
-
-        r1 && r2
+        let mut ok = true;
+        for subkey in &[
+            "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler",
+            "SOFTWARE\\Classes\\Folder\\shellex\\IconHandler",
+        ] {
+            if !set_reg_val(HKEY_LOCAL_MACHINE, subkey, None, icon_handler_clsid) {
+                ok = false;
+            }
+        }
+        ok
     };
 
     if hklm_success {
-        info!("Registered Twin Explorer Overlay Shell Extension directly into HKLM with path {}", dll_str);
+        info!("Registered Twin Folder Icon Handler into HKLM with path {}", dll_str);
         let _ = restart_explorer();
         return Ok(());
     }
 
-    // Direct write to HKLM was denied (standard user). Elevate with Windows UAC runas dialog.
+    // Direct HKLM write denied — elevate
     elevate_and_register_overlay()
 }
 
@@ -652,26 +658,32 @@ pub fn register_overlay_handler() -> Result<(), String> {
 /// Unregister `twin_overlay.dll` from Windows Registry
 #[cfg(windows)]
 pub fn unregister_overlay_handler() -> Result<(), String> {
-    let synced_clsid_str = "{9B46E711-2051-417A-8D52-19253DE6C7D1}";
-    let syncing_clsid_str = "{9B46E712-2051-417A-8D52-19253DE6C7D2}";
+    let icon_handler_clsid = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
 
     unsafe {
-        let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
-        del_reg_val(HKEY_CURRENT_USER, &format!("{shell_overlays}\\   TwinSynced"));
-        del_reg_val(HKEY_CURRENT_USER, &format!("{shell_overlays}\\   TwinSyncing"));
+        // Remove HKCU CLSID entries
+        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}\\InprocServer32"));
+        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}"));
 
-        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}\\InprocServer32"));
-        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}"));
-
-        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}\\InprocServer32"));
-        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}"));
+        // Remove HKCU IconHandler keys
+        for subkey in &[
+            "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler",
+            "SOFTWARE\\Classes\\Folder\\shellex\\IconHandler",
+        ] {
+            del_reg_val(HKEY_CURRENT_USER, subkey);
+        }
     }
 
-    // Try deleting HKLM directly
+    // Try HKLM directly
     let hklm_del = unsafe {
-        let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
-        let r1 = del_reg_val(HKEY_LOCAL_MACHINE, &format!("{shell_overlays}\\   TwinSynced"));
-        let r2 = del_reg_val(HKEY_LOCAL_MACHINE, &format!("{shell_overlays}\\   TwinSyncing"));
+        let r1 = del_reg_val(HKEY_LOCAL_MACHINE, &format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}\\InprocServer32"));
+        let r2 = del_reg_val(HKEY_LOCAL_MACHINE, &format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}"));
+        for subkey in &[
+            "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler",
+            "SOFTWARE\\Classes\\Folder\\shellex\\IconHandler",
+        ] {
+            del_reg_val(HKEY_LOCAL_MACHINE, subkey);
+        }
         r1 || r2
     };
 
@@ -680,7 +692,7 @@ pub fn unregister_overlay_handler() -> Result<(), String> {
     }
 
     let _ = restart_explorer();
-    info!("Unregistered Twin Explorer Overlay Shell Extension");
+    info!("Unregistered Twin Folder Icon Handler");
     Ok(())
 }
 
