@@ -65,28 +65,6 @@ interface StorageQuota {
   usageInDriveTrash: number;
 }
 
-const OVERLAY_PLACEMENTS: {
-  id: OverlayPlacement;
-  title: string;
-  description: string;
-}[] = [
-  {
-    id: "top_right",
-    title: "Top-Right",
-    description: "Mark sits on the upper-right shoulder of the folder.",
-  },
-  {
-    id: "bottom_right",
-    title: "Bottom-Right",
-    description: "Mark sits on the bottom-right corner hanging slightly off the edge.",
-  },
-  {
-    id: "centered",
-    title: "Center",
-    description: "Mark sits directly over the middle of the folder body.",
-  },
-];
-
 /**
  * Authentic Windows 11 Explorer Folder with Overlay Badge.
  * Replicates folder geometry with the 3 exact badge placements from reference images:
@@ -98,29 +76,15 @@ const OVERLAY_PLACEMENTS: {
 function WindowsFolderOverlayPreview({
   badge = "synced",
   className,
-  placement = "centered",
 }: {
   badge?: "synced" | "syncing";
   className?: string;
   placement?: OverlayPlacement;
 }) {
-  let cx = 34.0;
-  let cy = 30.0;
+  // Native Windows Explorer IShellIconOverlayIdentifier lower-left slot (OneDrive / Dropbox standard)
+  const cx = 16.0;
+  const cy = 42.0;
   const r = 8.5; // Proportional 30% badge diameter
-
-  if (placement === "top_right") {
-    // Top-right shoulder of folder body (matches Image 1)
-    cx = 56.8;
-    cy = 13.2;
-  } else if (placement === "bottom_right") {
-    // Bottom-right corner hanging (matches Image 2)
-    cx = 56.3;
-    cy = 46.4;
-  } else {
-    // Center of folder body (matches Image 3)
-    cx = 34.0;
-    cy = 30.0;
-  }
 
   const p1 = `${(cx - r * 0.50).toFixed(2)},${(cy + r * 0.05).toFixed(2)}`;
   const p2 = `${(cx - r * 0.16).toFixed(2)},${(cy + r * 0.38).toFixed(2)}`;
@@ -235,7 +199,6 @@ export function SettingsScreen() {
   const [restartingExplorer, setRestartingExplorer] = useState(false);
   const [registeringOverlay, setRegisteringOverlay] = useState(false);
   const [showRegisterConfirm, setShowRegisterConfirm] = useState(false);
-  const [needsExplorerRestart, setNeedsExplorerRestart] = useState(false);
 
   const loadOverlayStatus = useCallback(async () => {
     try {
@@ -279,20 +242,6 @@ export function SettingsScreen() {
     }
   }
 
-  async function handlePlacementChange(placement: OverlayPlacement) {
-    setOverlayPlacement(placement);
-    setNeedsExplorerRestart(true);
-    try {
-      await setOverlaySettings(overlayEnabled, placement);
-      const updatedConfig = await getConfig();
-      setConfig(updatedConfig);
-      setLocal(updatedConfig);
-      toast.info(`Placement set to ${placement.replace('_', ' ')}. Restart Explorer to apply.`);
-    } catch (err) {
-      toast.error(`Placement update failed: ${String(err)}`);
-    }
-  }
-
   function handleRegisterClick() {
     setShowRegisterConfirm(true);
   }
@@ -304,7 +253,6 @@ export function SettingsScreen() {
       await registerOverlayExtension();
       await restartExplorerShell();
       setOverlayRegistered(true);
-      setNeedsExplorerRestart(false);
       toast.success("Shell overlay identifiers registered and Explorer reloaded");
     } catch (err) {
       toast.error(`Registration failed: ${String(err)}`);
@@ -317,7 +265,6 @@ export function SettingsScreen() {
     setRestartingExplorer(true);
     try {
       await restartExplorerShell();
-      setNeedsExplorerRestart(false);
       toast.success("Windows Explorer restarted successfully");
     } catch (err) {
       toast.error(`Explorer restart failed: ${String(err)}`);
@@ -1171,72 +1118,6 @@ export function SettingsScreen() {
                 </div>
               </div>
 
-              {/* Placement Options Grid & Live Interactive Preview */}
-              <div>
-                <label className="block text-xs font-semibold text-white mb-2">
-                  Overlay Placement on Folders
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {OVERLAY_PLACEMENTS.map((opt) => {
-                    const isSelected = overlayPlacement === opt.id;
-                    return (
-                      <div
-                        key={opt.id}
-                        onClick={() => handlePlacementChange(opt.id)}
-                        className={cn(
-                          "relative rounded-lg p-3.5 border transition-all cursor-pointer flex flex-col justify-between",
-                          isSelected
-                            ? "bg-[#1f2937]/50 border-[#58a6ff] ring-1 ring-[#58a6ff]/40 shadow-sm"
-                            : "bg-[#161b22]/70 border-[#30363d] hover:bg-[#161b22] hover:border-[#484f58]"
-                        )}
-                      >
-                        {/* Interactive Folder Preview */}
-                        <div className="flex items-center justify-center py-2.5 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60">
-                          <WindowsFolderOverlayPreview badge="synced" placement={opt.id} className="w-12 h-9" />
-                        </div>
-
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-semibold text-[#e6edf3]">
-                              {opt.title}
-                            </span>
-                            {isSelected && (
-                              <CheckCircle2 size={13} className="text-[#58a6ff] shrink-0" />
-                            )}
-                          </div>
-                          <p className="text-[11px] text-[#7d8590] leading-snug">
-                            {opt.description}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Restart Explorer Notification / Banner */}
-              {needsExplorerRestart && (
-                <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200 animate-in fade-in duration-150">
-                  <div className="flex items-center gap-2.5">
-                    <AlertTriangle size={15} className="text-amber-400 shrink-0" />
-                    <span>
-                      Placement updated! Windows Explorer reads icon overlay files at startup — restart Explorer to apply immediately.
-                    </span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleRestartExplorer}
-                    disabled={restartingExplorer}
-                    className="shrink-0 text-xs bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200"
-                  >
-                    <RefreshCw size={12} className={cn("mr-1.5", restartingExplorer && "animate-spin")} />
-                    {restartingExplorer ? "Restarting…" : "Restart Explorer"}
-                  </Button>
-                </div>
-              )}
-
               {/* Explorer Folder Badge Preview */}
               <div>
                 <div className="mb-2.5">
@@ -1244,7 +1125,7 @@ export function SettingsScreen() {
                     Windows Explorer Folder Status Badges
                   </label>
                   <p className="text-[11px] text-[var(--text-muted)]">
-                    Badges appear on synced pair folders with real-time sync state.
+                    Badges appear on the native Windows Shell lower-left corner of synced pair folders, matching OneDrive and Dropbox.
                   </p>
                 </div>
 
@@ -1252,7 +1133,7 @@ export function SettingsScreen() {
                   {/* Done / Synced Card */}
                   <div className="rounded-lg p-3.5 border bg-[#161b22]/70 border-[#30363d] flex flex-col justify-between">
                     <div className="flex items-center justify-center py-3 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60">
-                      <WindowsFolderOverlayPreview badge="synced" placement={overlayPlacement} className="w-14 h-11" />
+                      <WindowsFolderOverlayPreview badge="synced" className="w-14 h-11" />
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-1">
@@ -1270,7 +1151,7 @@ export function SettingsScreen() {
                   {/* Active / Syncing Card */}
                   <div className="rounded-lg p-3.5 border bg-[#161b22]/70 border-[#30363d] flex flex-col justify-between">
                     <div className="flex items-center justify-center py-3 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60">
-                      <WindowsFolderOverlayPreview badge="syncing" placement={overlayPlacement} className="w-14 h-11" />
+                      <WindowsFolderOverlayPreview badge="syncing" className="w-14 h-11" />
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-1">

@@ -407,8 +407,11 @@ unsafe extern "system" fn overlay_get_overlay_info(
         OverlayKind::Syncing => "syncing",
     };
 
-    let filename = format!("{}_{}.ico", prefix, placement);
-    let sep = if icon_dir.ends_with('\\') || icon_dir.ends_with('/') { "" } else { "\\" };
+    let filename = format!("folder_{}_{}.ico", prefix, placement);
+
+let ends_with_bs = icon_dir.as_bytes().ends_with(&[0x5C]);
+let ends_with_sl = icon_dir.as_bytes().ends_with(&[0x2F]);
+let sep = if ends_with_bs || ends_with_sl { "" } else { "\\" };
     let candidate = format!("{}{}{}", icon_dir, sep, filename);
     let full_path = if std::path::Path::new(&candidate).exists() {
         candidate
