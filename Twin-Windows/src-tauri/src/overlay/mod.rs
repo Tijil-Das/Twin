@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use tracing::{info, warn};
@@ -14,11 +14,6 @@ use crate::db::PairSyncStatus;
 
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, BOOL};
-#[cfg(windows)]
-use windows_sys::Win32::Storage::FileSystem::{
-    GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_NORMAL,
-    FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM, INVALID_FILE_ATTRIBUTES,
-};
 #[cfg(windows)]
 use windows_sys::Win32::System::Memory::{
     MapViewOfFile, FILE_MAP_ALL_ACCESS, PAGE_READWRITE,
@@ -95,42 +90,6 @@ extern "system" {
         lpSecurityAttributes: *mut c_void,
         phkResult: *mut HKEY,
         lpdwDisposition: *mut u32,
-    ) -> i32;
-}
-
-#[cfg(windows)]
-#[repr(C)]
-#[allow(non_snake_case)]
-struct SHFOLDERCUSTOMSETTINGS {
-    dwSize: u32,
-    dwMask: u32,
-    pvid: *mut c_void,
-    pszWebViewTemplate: *mut u16,
-    cchWebViewTemplate: u32,
-    pszWebViewTemplateVersion: *mut u16,
-    pszInfoTip: *mut u16,
-    cchInfoTip: u32,
-    pclsid: *mut c_void,
-    dwFlags: u32,
-    pszIconFile: *mut u16,
-    cchIconFile: u32,
-    iIconIndex: i32,
-    pszLogo: *mut u16,
-    cchLogo: u32,
-}
-
-#[cfg(windows)]
-const FCSM_ICONFILE: u32 = 0x00000010;
-#[cfg(windows)]
-const FCS_FORCEWRITE: u32 = 0x00000002;
-
-#[cfg(windows)]
-#[link(name = "shell32")]
-extern "system" {
-    fn SHGetSetFolderCustomSettings(
-        pfcs: *mut SHFOLDERCUSTOMSETTINGS,
-        pszPath: *const u16,
-        dwReadWrite: u32,
     ) -> i32;
 }
 
@@ -297,8 +256,7 @@ pub fn update_folder_overlays(
             let header = &mut *(view as *mut ShmemHeader);
             header.magic = SHMEM_MAGIC;
             header.version = 1;
-            // Disabled in twin_overlay.dll so Explorer does not draw duplicate lower-left badge
-            header.enabled = 0;
+            header.enabled = if overlay_cfg.enabled { 1 } else { 0 };
             header.placement = match overlay_cfg.placement.as_str() {
                 "bottom_right" => 1,
                 "centered" => 2,
@@ -328,41 +286,6 @@ pub fn update_folder_overlays(
         }
     }
 
-    // Apply custom folder icons matching the exact settings graphics on Windows
-    #[cfg(windows)]
-    {
-        if overlay_cfg.enabled {
-            let placement = match overlay_cfg.placement.as_str() {
-                "bottom_right" => "bottom_right",
-                "centered" => "centered",
-                _ => "top_right",
-            };
-            if let Some(icons_dir) = find_overlay_icons_dir() {
-                for (norm_path, &status) in &statuses {
-                    let kind = if status == STATUS_SYNCING {
-                        "syncing"
-                    } else if status == STATUS_SYNCED {
-                        "synced"
-                    } else {
-                        ""
-                    };
-                    if !kind.is_empty() {
-                        let ico_path = icons_dir.join(format!("folder_{kind}_{placement}.ico"));
-                        if ico_path.exists() {
-                            let _ = apply_folder_icon(norm_path, &ico_path);
-                        }
-                    } else {
-                        clear_folder_icon(norm_path);
-                    }
-                }
-            }
-        } else {
-            for norm_path in statuses.keys() {
-                clear_folder_icon(norm_path);
-            }
-        }
-    }
-
     // Compare with last status and notify Explorer
     let mut last_guard = match LAST_FOLDER_STATUSES.lock() {
         Ok(g) => g,
@@ -386,8 +309,6 @@ pub fn update_folder_overlays(
     for (old_path, _) in &prev {
         if !statuses.contains_key(old_path) {
             changed_paths.push(old_path.clone());
-            #[cfg(windows)]
-            clear_folder_icon(old_path);
         }
     }
 
@@ -397,102 +318,6 @@ pub fn update_folder_overlays(
         notify_explorer_folder_changed(&path);
     }
 }
-
-#[cfg(windows)]
-pub fn apply_folder_icon(folder_path: &str, icon_path: &Path) -> Result<(), String> {
-    use std::os::windows::ffi::OsStrExt;
-
-    let folder_w: Vec<u16> = std::ffi::OsStr::new(folder_path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    let icon_w: Vec<u16> = icon_path
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    let mut fcs: SHFOLDERCUSTOMSETTINGS = unsafe { std::mem::zeroed() };
-    fcs.dwSize = std::mem::size_of::<SHFOLDERCUSTOMSETTINGS>() as u32;
-    fcs.dwMask = FCSM_ICONFILE;
-    fcs.pszIconFile = icon_w.as_ptr() as *mut u16;
-    fcs.iIconIndex = 0;
-
-    let hr = unsafe {
-        SHGetSetFolderCustomSettings(
-            &mut fcs,
-            folder_w.as_ptr(),
-            FCS_FORCEWRITE,
-        )
-    };
-
-    // Ensure folder has ReadOnly attribute and desktop.ini has Hidden + System
-    unsafe {
-        let cur = GetFileAttributesW(folder_w.as_ptr());
-        if cur != INVALID_FILE_ATTRIBUTES {
-            SetFileAttributesW(folder_w.as_ptr(), cur | FILE_ATTRIBUTE_READONLY);
-        }
-
-        let ini_path = PathBuf::from(folder_path).join("desktop.ini");
-        let ini_w: Vec<u16> = ini_path
-            .as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        let ini_cur = GetFileAttributesW(ini_w.as_ptr());
-        if ini_cur != INVALID_FILE_ATTRIBUTES {
-            SetFileAttributesW(ini_w.as_ptr(), ini_cur | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
-        }
-    }
-
-    if hr < 0 {
-        return Err(format!("SHGetSetFolderCustomSettings failed with 0x{hr:08X}"));
-    }
-
-    notify_explorer_folder_changed(folder_path);
-    Ok(())
-}
-
-#[cfg(windows)]
-pub fn clear_folder_icon(folder_path: &str) {
-    use std::os::windows::ffi::OsStrExt;
-
-    let ini_path = PathBuf::from(folder_path).join("desktop.ini");
-    if ini_path.exists() {
-        let ini_w: Vec<u16> = ini_path
-            .as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        unsafe {
-            SetFileAttributesW(ini_w.as_ptr(), FILE_ATTRIBUTE_NORMAL);
-        }
-        let _ = std::fs::remove_file(&ini_path);
-    }
-
-    let folder_w: Vec<u16> = std::ffi::OsStr::new(folder_path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    unsafe {
-        let cur = GetFileAttributesW(folder_w.as_ptr());
-        if cur != INVALID_FILE_ATTRIBUTES {
-            SetFileAttributesW(folder_w.as_ptr(), cur & !FILE_ATTRIBUTE_READONLY);
-        }
-    }
-
-    notify_explorer_folder_changed(folder_path);
-}
-
-#[cfg(not(windows))]
-pub fn apply_folder_icon(_folder_path: &str, _icon_path: &Path) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(not(windows))]
-pub fn clear_folder_icon(_folder_path: &str) {}
 
 #[cfg(not(windows))]
 pub fn update_folder_overlays(
@@ -622,7 +447,7 @@ pub fn find_overlay_icons_dir() -> Option<PathBuf> {
 
     // 2. Check development workspace paths
     let icon_pack = PathBuf::from(r"T:\Coding\Twin\Icon-Pack");
-    if icon_pack.exists() && (icon_pack.join("folder_synced_top_right.ico").exists() || icon_pack.join("synced_top_right.ico").exists()) {
+    if icon_pack.exists() && icon_pack.join("synced.ico").exists() {
         return Some(icon_pack);
     }
 

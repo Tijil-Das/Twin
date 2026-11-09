@@ -1,34 +1,19 @@
 """
-Generates multi-resolution Windows File Explorer overlay icons for Twin.
-
-Supported placements matching user reference specifications:
-- top_right: shifted towards upper-right (Image 1)
-- bottom_right: shifted towards bottom-right (Image 2)
-- centered: centered on the badge canvas (Image 3)
-
-Badge radius r = 0.27 * sz produces a 30% diameter badge relative to the folder icon,
-accurately matching the reference proportions.
+Generates multi-resolution Windows File Explorer shell icon overlays for Twin.
+Standard IShellIconOverlayIdentifier extensions in Windows Explorer:
+- synced: Green circle with crisp white checkmark
+- syncing: Solid yellow circle with dark outline (no symbol inside)
+Multi-resolution ICOs (16x16 to 256x256) for crisp rendering at all display scalings.
 """
 import os
 from PIL import Image, ImageDraw
 
-def render_badge(sz: int, placement: str, kind: str) -> Image.Image:
+def render_badge(sz: int, kind: str) -> Image.Image:
     scale = 4
     s = sz * scale
-    r = s * 0.27
-
-    if placement == "top_right":
-        cx = s * 0.62
-        cy = s * 0.38
-    elif placement == "bottom_right":
-        cx = s * 0.62
-        cy = s * 0.62
-    elif placement == "centered":
-        cx = s * 0.50
-        cy = s * 0.50
-    else:
-        cx = s * 0.50
-        cy = s * 0.50
+    r = s * 0.43
+    cx = s * 0.50
+    cy = s * 0.50
 
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -44,7 +29,7 @@ def render_badge(sz: int, placement: str, kind: str) -> Image.Image:
         p1 = (cx - r * 0.50, cy + r * 0.05)
         p2 = (cx - r * 0.16, cy + r * 0.38)
         p3 = (cx + r * 0.50, cy - r * 0.34)
-        tick_w = max(1, int(round(0.26 * r)))
+        tick_w = max(1, int(round(0.24 * r)))
         draw.line([p1, p2, p3], fill=(255, 255, 255, 255), width=tick_w, joint="curve")
 
         # Smooth rounded end caps
@@ -55,9 +40,10 @@ def render_badge(sz: int, placement: str, kind: str) -> Image.Image:
                 fill=(255, 255, 255, 255),
             )
     elif kind == "syncing":
+        # Solid yellow circle with dark outline, NO inner symbols
         yellow_fill = (250, 204, 21, 255)   # #facc15
         yellow_outline = (92, 38, 5, 255)   # #5c2605
-        outline_w = max(1, int(round(0.16 * r)))
+        outline_w = max(1, int(round(0.14 * r)))
         draw.ellipse(bbox, fill=yellow_fill, outline=yellow_outline, width=outline_w)
 
     return img.resize((sz, sz), Image.Resampling.LANCZOS)
@@ -73,22 +59,23 @@ def main():
     sizes = [16, 20, 24, 32, 40, 48, 60, 64, 72, 80, 96, 120, 128, 144, 192, 256]
     size_tuples = [(sz, sz) for sz in sizes]
 
-    for placement in ["top_right", "bottom_right", "centered"]:
-        for kind in ["synced", "syncing"]:
-            frames = {sz: render_badge(sz, placement, kind) for sz in sizes}
-            largest = frames[256]
-            others = [frames[sz] for sz in sizes if sz != 256]
+    for kind in ["synced", "syncing"]:
+        frames = {sz: render_badge(sz, kind) for sz in sizes}
+        largest = frames[256]
+        others = [frames[sz] for sz in sizes if sz != 256]
 
-            filenames = [f"{kind}_{placement}.ico"]
-            # Default un-suffixed filename gets centered
-            if placement == "centered":
-                filenames.append(f"{kind}.ico")
+        filenames = [
+            f"{kind}.ico",
+            f"{kind}_centered.ico",
+            f"{kind}_top_right.ico",
+            f"{kind}_bottom_right.ico",
+        ]
 
-            for fname in filenames:
-                for target_dir in [out_dir_tauri, out_dir_iconpack]:
-                    filepath = os.path.join(target_dir, fname)
-                    largest.save(filepath, format="ICO", append_images=others, sizes=size_tuples)
-                print(f"Generated {fname} ({len(sizes)} resolutions: {sizes[0]}px..{sizes[-1]}px)")
+        for fname in filenames:
+            for target_dir in [out_dir_tauri, out_dir_iconpack]:
+                filepath = os.path.join(target_dir, fname)
+                largest.save(filepath, format="ICO", append_images=others, sizes=size_tuples)
+            print(f"Generated {fname} ({len(sizes)} resolutions: {sizes[0]}px..{sizes[-1]}px)")
 
 if __name__ == "__main__":
     main()
