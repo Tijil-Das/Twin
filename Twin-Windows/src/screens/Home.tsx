@@ -309,7 +309,7 @@ function FolderPairRow({
                     </span>
                   )}
                   <span
-                    className="text-[#e6edf3] font-mono font-medium truncate max-w-[240px] sm:max-w-[340px]"
+                    className="text-[#e6edf3] font-mono font-medium truncate max-w-[240px] sm:max-w-md lg:max-w-xl xl:max-w-2xl"
                     title={primaryTransfer.relPath}
                   >
                     "{primaryTransfer.fileName}"
@@ -612,7 +612,7 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
   const enabledPairsCount = pairs.filter((p) => p.enabled).length;
 
   return (
-    <div className="p-7 max-w-4xl w-full mx-auto space-y-6">
+    <div className="p-6 sm:p-8 w-full space-y-6">
       {/* ── Status Canvas & Control Bar ── */}
       <div className="desktop-card p-5 sm:p-6 bg-[#0d1117] border border-[#30363d] rounded-lg shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">

@@ -669,7 +669,7 @@ async fn read_file_blocking(path: &Path) -> Result<Vec<u8>, AppError> {
     .map_err(|e| AppError::Other(format!("spawn_blocking: {e}")))?
 }
 
-async fn compute_md5_blocking(path: &Path) -> Result<String, AppError> {
+pub async fn compute_md5_blocking(path: &Path) -> Result<String, AppError> {
     use md5::{Digest, Md5};
     let path = path.to_path_buf();
     let path = path.clone();

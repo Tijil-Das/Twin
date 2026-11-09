@@ -600,6 +600,11 @@ fn main() {
             commands::set_description,
             commands::set_starred,
             commands::drive_search,
+            commands::list_pair_subfolders,
+            commands::verify_pair_integrity,
+            commands::repair_pair_mismatches,
+            db::get_database_stats,
+            db::run_database_maintenance,
             appdata_sync_now,
             updater::update_get_state,
             updater::update_check,
@@ -621,6 +626,8 @@ fn main() {
                 .join("state.db");
             let state_db = db::Db::open(&db_path)
                 .map_err(|e| format!("Failed to open state DB: {e}"))?;
+            // Startup auto-prune: retain 30 days of activity & compact database pages
+            let _ = state_db.prune_and_optimize(&db_path, 30, 5000);
             app.manage(db::DbState(state_db, db_path.clone()));
 
             // Start the resource governor.
@@ -757,12 +764,13 @@ fn main() {
                     gov_live.update_cfg(gov_cfg);
 
                     // 3. Rebuild rules and enqueue rescan
-                    let r = rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
                     let d = Arc::clone(&db_live);
                     let g = gov_live.clone();
                     let pairs = cfg.pairs.clone();
+                    let rules_cfg = cfg.rules.clone();
                     tauri::async_runtime::spawn(async move {
                         for pair in pairs.iter().filter(|p| p.enabled) {
+                            let r = rules::Rules::for_pair(&rules_cfg, pair);
                             let _ = watcher::scan_pair(pair, Arc::clone(&d), &r, &g).await;
                         }
                     });
@@ -775,7 +783,7 @@ fn main() {
                 let gov_init = gov.clone();
                 let q_init = q.clone();
                 let pairs_init = cfg.pairs.clone();
-                let rules_init = rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
+                let rules_cfg_init = cfg.rules.clone();
                 let policy_init = cfg.policy.clone();
                 let handle_init = handle.clone();
                 let echo_init = Arc::new(sync::SelfWritten::new());
@@ -784,6 +792,7 @@ fn main() {
                     let drive_opt = drive::DriveClient::new().ok();
                     for pair in pairs_init.iter().filter(|p| p.enabled) {
                         info!("Starting initial auto-gap check for pair {} ({})", pair.id, pair.local);
+                        let pair_rules = rules::Rules::for_pair(&rules_cfg_init, pair);
 
                         if let Some(ref drive) = drive_opt {
                             let ctx = sync::Ctx {
@@ -795,11 +804,11 @@ fn main() {
                                 app: Some(handle_init.clone()),
                                 queue: Some(q_init.clone()),
                             };
-                            if let Err(e) = sync::reconcile_pair_gap(pair, &ctx, &rules_init).await {
+                            if let Err(e) = sync::reconcile_pair_gap(pair, &ctx, &pair_rules).await {
                                 warn!("Initial auto-gap check error for pair {}: {e}", pair.id);
                             }
                         } else {
-                            if let Err(e) = watcher::scan_pair(pair, Arc::clone(&db_init), &rules_init, &gov_init).await {
+                            if let Err(e) = watcher::scan_pair(pair, Arc::clone(&db_init), &pair_rules, &gov_init).await {
                                 warn!("Initial local scan error for pair {}: {e}", pair.id);
                             }
                         }
@@ -821,7 +830,7 @@ fn main() {
                                 Some(p) => p.clone(),
                                 None => continue,
                             };
-                            let rules = rules::Rules::new(&current_cfg.rules.include, &current_cfg.rules.exclude, current_cfg.rules.max_file_mb);
+                            let rules = rules::Rules::for_pair(&current_cfg.rules, &pair);
                             let root = std::path::PathBuf::from(&pair.local);
                             let full_path = root.join(&change.rel_path);
                             let rel_str = change.rel_path.to_string_lossy().replace('\\', "/");
@@ -1003,7 +1012,7 @@ fn main() {
                                         let d = Arc::clone(&db_sup);
                                         let g = gov_sup.clone();
                                         let q = q_sup.clone();
-                                        let r = rules::Rules::new(&current_cfg.rules.include, &current_cfg.rules.exclude, current_cfg.rules.max_file_mb);
+                                        let r = rules::Rules::for_pair(&current_cfg.rules, &pair);
                                         tauri::async_runtime::spawn(async move {
                                             let _ = watcher::scan_pair(&p, d, &r, &g).await;
                                             q.wake();
@@ -1049,8 +1058,8 @@ fn main() {
                         );
                         if last_heartbeat.elapsed() >= rescan_interval {
                             last_heartbeat = std::time::Instant::now();
-                            let rules = rules::Rules::new(&current_cfg.rules.include, &current_cfg.rules.exclude, current_cfg.rules.max_file_mb);
                             for pair in &enabled_pairs {
+                                let rules = rules::Rules::for_pair(&current_cfg.rules, pair);
                                 let _ = watcher::scan_pair(pair, Arc::clone(&db_sup), &rules, &gov_sup).await;
                             }
                             q_sup.wake();

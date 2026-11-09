@@ -763,6 +763,74 @@ impl Db {
         .map_err(|e| AppError::Db(format!("get_file_by_drive_id: {e}")))
     }
 
+    pub fn get_stats(&self, db_path: &std::path::Path) -> Result<DatabaseStats, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let file_size_bytes = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
+        let total_files: usize = conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0)).unwrap_or(0);
+        let activity_count: usize = conn.query_row("SELECT COUNT(*) FROM activity", [], |r| r.get(0)).unwrap_or(0);
+        let completed_jobs: usize = conn.query_row("SELECT COUNT(*) FROM jobs WHERE status='done'", [], |r| r.get(0)).unwrap_or(0);
+        let failed_jobs: usize = conn.query_row("SELECT COUNT(*) FROM jobs WHERE status='failed'", [], |r| r.get(0)).unwrap_or(0);
+
+        Ok(DatabaseStats {
+            file_size_bytes,
+            total_files,
+            activity_count,
+            completed_jobs,
+            failed_jobs,
+        })
+    }
+
+    pub fn prune_and_optimize(&self, db_path: &std::path::Path, keep_days: u32, max_rows: usize) -> Result<PruneStats, AppError> {
+        let before_size = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+
+        let cutoff_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+            - (keep_days as i64 * 86_400_000);
+
+        // 1. Delete activity older than cutoff_ms OR exceeding max_rows
+        let act_count_before: usize = conn.query_row("SELECT COUNT(*) FROM activity", [], |r| r.get(0)).unwrap_or(0);
+        let _ = conn.execute("DELETE FROM activity WHERE ts_ms < ?1", params![cutoff_ms]);
+        let _ = conn.execute(
+            "DELETE FROM activity WHERE id NOT IN (
+                SELECT id FROM activity ORDER BY id DESC LIMIT ?1
+            )",
+            params![max_rows],
+        );
+        let act_count_after: usize = conn.query_row("SELECT COUNT(*) FROM activity", [], |r| r.get(0)).unwrap_or(0);
+        let activity_rows_removed = act_count_before.saturating_sub(act_count_after);
+
+        // 2. Delete done and cancelled jobs older than 7 days
+        let job_cutoff_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+            - (7 * 86_400_000);
+        let jobs_removed = conn.execute(
+            "DELETE FROM jobs WHERE (status='done' OR status='cancelled') AND created_at < ?1",
+            params![job_cutoff_ms],
+        )
+        .unwrap_or(0);
+
+        // 3. Compact & optimize
+        let _ = conn.execute_batch("
+            PRAGMA optimize;
+            PRAGMA wal_checkpoint(TRUNCATE);
+            VACUUM;
+        ");
+
+        let after_size = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
+
+        Ok(PruneStats {
+            activity_rows_removed,
+            jobs_removed,
+            db_size_before_bytes: before_size,
+            db_size_after_bytes: after_size,
+        })
+    }
+
     /// Aggregated sync status for all folder pairs (< 1ms execution time).
     pub fn get_all_pair_sync_statuses(&self) -> Result<std::collections::HashMap<String, PairSyncStatus>, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
@@ -1073,6 +1141,37 @@ pub fn get_pair_statuses(
     state: tauri::State<'_, DbState>,
 ) -> Result<std::collections::HashMap<String, PairSyncStatus>, String> {
     state.0.get_all_pair_sync_statuses().map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseStats {
+    pub file_size_bytes: u64,
+    pub total_files: usize,
+    pub activity_count: usize,
+    pub completed_jobs: usize,
+    pub failed_jobs: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PruneStats {
+    pub activity_rows_removed: usize,
+    pub jobs_removed: usize,
+    pub db_size_before_bytes: u64,
+    pub db_size_after_bytes: u64,
+}
+
+#[tauri::command]
+pub fn get_database_stats(state: tauri::State<'_, DbState>) -> Result<DatabaseStats, String> {
+    state.0.get_stats(&state.1).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn run_database_maintenance(
+    state: tauri::State<'_, DbState>,
+    keep_days: Option<u32>,
+    max_rows: Option<usize>,
+) -> Result<PruneStats, String> {
+    state.0.prune_and_optimize(&state.1, keep_days.unwrap_or(30), max_rows.unwrap_or(5000)).map_err(|e| e.to_string())
 }
 
 /// Tauri managed state wrapper.

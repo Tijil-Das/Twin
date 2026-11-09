@@ -175,6 +175,10 @@ pub struct PairEntry {
     pub enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deletion: Option<DeletionPolicy>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub excluded_folders: Vec<String>,
 }
 
 impl Default for PairEntry {
@@ -186,6 +190,8 @@ impl Default for PairEntry {
             mode: PairMode::TwoWay,
             enabled: true,
             deletion: None,
+            exclude: Vec::new(),
+            excluded_folders: Vec::new(),
         }
     }
 }

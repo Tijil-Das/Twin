@@ -17,6 +17,9 @@ import {
   updateGetState,
   updateCheck,
   updateInstall,
+  getDatabaseStats,
+  runDatabaseMaintenance,
+  type DatabaseStats,
   type UpdateStatePayload,
   type Config,
 } from "@/lib/tauri";
@@ -44,6 +47,7 @@ import {
   Plus,
   X,
   FileCode,
+  Database,
 } from "lucide-react";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -75,6 +79,36 @@ export function SettingsScreen() {
   const [downloadingUpdate, setDownloadingUpdate] = useState<{ version: string; pct?: number } | null>(null);
   const [installingUpdate, setInstallingUpdate] = useState(false);
   const [newExcludePattern, setNewExcludePattern] = useState("");
+  const [dbStats, setDbStats] = useState<DatabaseStats | null>(null);
+  const [pruningDb, setPruningDb] = useState(false);
+
+  const loadDbStats = useCallback(async () => {
+    try {
+      const stats = await getDatabaseStats();
+      setDbStats(stats);
+    } catch (e) {
+      console.warn("Failed to get db stats:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDbStats();
+  }, [loadDbStats]);
+
+  async function handlePruneDb() {
+    setPruningDb(true);
+    try {
+      const res = await runDatabaseMaintenance(30, 5000);
+      toast.success(
+        `Database vacuumed! ${res.activity_rows_removed} activity logs pruned, ${res.jobs_removed} dead jobs cleared.`
+      );
+      void loadDbStats();
+    } catch (e) {
+      toast.error(`Database maintenance failed: ${String(e)}`);
+    } finally {
+      setPruningDb(false);
+    }
+  }
 
   const defaultExcludes = ["*.tmp", "node_modules/**", ".git/**", "~$*", "Thumbs.db"];
   const currentExcludes = local?.rules?.exclude ?? defaultExcludes;
@@ -327,7 +361,7 @@ export function SettingsScreen() {
     quota && quota.limit ? Math.min(100, Math.round((quota.usage / quota.limit) * 100)) : 0;
 
   return (
-    <div className="p-7 max-w-3xl w-full mx-auto space-y-7 pb-28">
+    <div className="p-6 sm:p-8 w-full space-y-7 pb-28">
       {/* Header */}
       <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
         <div>
@@ -852,7 +886,67 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      {/* 6. Application Updates */}
+      {/* 6. SQLite Database Storage & Maintenance */}
+      <section className="space-y-2.5">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+          Database Storage & Maintenance
+        </h2>
+
+        <div className="desktop-card p-5 space-y-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="space-y-1">
+              <span className="text-xs font-semibold text-white flex items-center gap-2">
+                <Database size={14} className="text-[#58a6ff]" />
+                SQLite Activity Ledger & Sync Cache
+              </span>
+              <p className="text-xs text-[var(--text-muted)]">
+                Local database indexing tracked files, real-time sync states, and transfer audit history. Automatically pruned on startup.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handlePruneDb}
+              disabled={pruningDb}
+              className="flex items-center gap-1.5 text-xs border border-[#30363d] cursor-pointer"
+            >
+              <RefreshCw size={13} className={cn(pruningDb && "animate-spin text-blue-400")} />
+              <span>{pruningDb ? "Vacuuming…" : "Vacuum & Prune Database"}</span>
+            </Button>
+          </div>
+
+          <div className="pt-3 border-t border-[var(--border-subtle)] grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-[var(--surface-2)]/60 border border-[var(--border-subtle)]">
+              <span className="text-[11px] text-[var(--text-subtle)] block">Disk Size</span>
+              <span className="text-sm font-bold text-white font-mono mt-0.5 block">
+                {dbStats ? formatBytes(dbStats.file_size_bytes) : "–"}
+              </span>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--surface-2)]/60 border border-[var(--border-subtle)]">
+              <span className="text-[11px] text-[var(--text-subtle)] block">Tracked Files</span>
+              <span className="text-sm font-bold text-white font-mono mt-0.5 block">
+                {dbStats ? dbStats.total_files.toLocaleString() : "–"}
+              </span>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--surface-2)]/60 border border-[var(--border-subtle)]">
+              <span className="text-[11px] text-[var(--text-subtle)] block">Activity Events</span>
+              <span className="text-sm font-bold text-white font-mono mt-0.5 block">
+                {dbStats ? dbStats.activity_count.toLocaleString() : "–"}
+              </span>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--surface-2)]/60 border border-[var(--border-subtle)]">
+              <span className="text-[11px] text-[var(--text-subtle)] block">Completed Jobs</span>
+              <span className="text-sm font-bold text-emerald-400 font-mono mt-0.5 block">
+                {dbStats ? dbStats.completed_jobs.toLocaleString() : "–"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 7. Application Updates */}
       <section className="space-y-2.5">
         <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Software Updates

@@ -25,6 +25,30 @@ impl Rules {
         }
     }
 
+    /// Build rules combining global rules with pair-specific exclude patterns and selective subfolder exclusions.
+    pub fn for_pair(global: &crate::config::RulesSection, pair: &crate::config::PairEntry) -> Self {
+        let mut combined_excludes = global.exclude.clone();
+        for pat in &pair.exclude {
+            let trimmed = pat.trim();
+            if !trimmed.is_empty() && !combined_excludes.iter().any(|x| x == trimmed) {
+                combined_excludes.push(trimmed.to_string());
+            }
+        }
+        for folder in &pair.excluded_folders {
+            let trimmed = folder.trim_matches('/').trim_matches('\\').replace('\\', "/");
+            if !trimmed.is_empty() {
+                let deep = format!("{trimmed}/**");
+                if !combined_excludes.contains(&deep) {
+                    combined_excludes.push(deep);
+                }
+                if !combined_excludes.contains(&trimmed) {
+                    combined_excludes.push(trimmed.clone());
+                }
+            }
+        }
+        Self::new(&global.include, &combined_excludes, global.max_file_mb)
+    }
+
     /// Return `true` if the file at `rel` (relative path, any slash direction)
     /// with `size` bytes is allowed to be synced.
     pub fn allowed(&self, rel: &Path, size: u64) -> bool {

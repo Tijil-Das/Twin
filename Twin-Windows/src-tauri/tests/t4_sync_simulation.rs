@@ -24,6 +24,7 @@ fn make_pair(id: &str, local: &str, mode: PairMode) -> PairEntry {
         mode,
         enabled: true,
         deletion: None,
+        ..Default::default()
     }
 }
 

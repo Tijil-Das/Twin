@@ -57,6 +57,7 @@ async fn setup_transfer_env() -> (tempfile::TempDir, Arc<Db>, Config, FakeDrive,
         mode: PairMode::TwoWay,
         enabled: true,
         deletion: None,
+        ..Default::default()
     });
 
     (dir, db, cfg, fake_drive, drive_client)

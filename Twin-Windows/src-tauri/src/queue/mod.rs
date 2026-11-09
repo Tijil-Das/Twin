@@ -237,7 +237,6 @@ pub async fn sync_now(
     pair_id: Option<String>,
 ) -> Result<(), String> {
     let cfg = crate::config::load().unwrap_or_default();
-    let rules = crate::rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
     let db_path = db_state.db_path();
     let db = match crate::db::Db::open(&db_path) {
         Ok(d) => std::sync::Arc::new(d),
@@ -271,7 +270,8 @@ pub async fn sync_now(
                 };
                 let _ = crate::sync::run_pair_cycle(pair, &ctx).await;
             } else {
-                let _ = crate::watcher::scan_pair(pair, std::sync::Arc::clone(&db), &rules, &gov).await;
+                let pair_rules = crate::rules::Rules::for_pair(&cfg.rules, pair);
+                let _ = crate::watcher::scan_pair(pair, std::sync::Arc::clone(&db), &pair_rules, &gov).await;
             }
         }
         q.wake();

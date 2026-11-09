@@ -65,7 +65,7 @@ pub async fn run_pair_cycle(pair: &PairEntry, ctx: &Ctx) -> Result<CycleReport, 
 
     // 1. Scan local filesystem so Db has all local files, modifications, and deletions recorded.
     let cfg = crate::config::load().unwrap_or_default();
-    let rules = crate::rules::Rules::new(&cfg.rules.include, &cfg.rules.exclude, cfg.rules.max_file_mb);
+    let rules = crate::rules::Rules::for_pair(&cfg.rules, pair);
     let _ = crate::watcher::scan_pair(pair, Arc::clone(&ctx.db), &rules, &ctx.gov).await;
 
     // Only two_way and mirror modes participate in the Changes feed.

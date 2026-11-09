@@ -146,6 +146,7 @@ async fn unchanged_hash_skips_push() {
             mode: PairMode::TwoWay,
             enabled: true,
             deletion: None,
+            ..Default::default()
         }],
         ..Default::default()
     };

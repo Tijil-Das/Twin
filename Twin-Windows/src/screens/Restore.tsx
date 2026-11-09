@@ -90,7 +90,7 @@ export function RestoreScreen() {
   const [tab, setTab] = useState<Tab>("files");
 
   return (
-    <div className="p-7 max-w-5xl w-full mx-auto space-y-6">
+    <div className="p-6 sm:p-8 w-full space-y-6">
       {/* Header & Mode Switcher */}
       <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
         <div className="flex items-center gap-3">

@@ -188,7 +188,16 @@ pub async fn reconcile_listing_with_policy(
 
     // Walk Drive entries and compare against Db.
     let now = now_ms();
+    let cfg = crate::config::load().unwrap_or_default();
+    let rules = crate::rules::Rules::for_pair(&cfg.rules, pair);
+
     for (rel, remote) in &remote_by_rel {
+        let rel_path = std::path::Path::new(rel);
+        let remote_size = remote.size.as_deref().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+        if rules.is_dir_excluded(rel) || !rules.allowed(rel_path, remote_size) {
+            continue;
+        }
+
         let local_path = local_root.join(rel);
         let db_row = db.get_file(&pair.id, rel)?;
 
@@ -931,6 +940,7 @@ mod tests {
             mode,
             enabled:        true,
             deletion:       None,
+            ..Default::default()
         }
     }
 

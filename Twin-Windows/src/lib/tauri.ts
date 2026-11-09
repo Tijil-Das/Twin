@@ -14,6 +14,8 @@ export interface PairEntry {
   mode: PairMode;
   enabled: boolean;
   deletion?: "ignore" | "drive_trash" | "delete";
+  exclude?: string[];
+  excluded_folders?: string[];
 }
 
 export interface PolicyConfig {
@@ -268,4 +270,63 @@ export const updateGetState = () => invoke<UpdateStatePayload>("update_get_state
 export const updateCheck = () => invoke<UpdateStatePayload>("update_check");
 export const updateInstall = () => invoke<void>("update_install");
 export const updateClearPending = () => invoke<void>("update_clear_pending");
+
+// ── Selective Sync & Subfolders ───────────────────────────────────────────────
+
+export interface SubfolderItem {
+  name: string;
+  rel_path: string;
+  is_excluded: boolean;
+  file_count: number;
+  total_bytes: number;
+}
+
+export const listPairSubfolders = (pairId: string) =>
+  invoke<SubfolderItem[]>("list_pair_subfolders", { pairId });
+
+// ── On-Demand Hash & Integrity Verification ───────────────────────────────────
+
+export interface FileMismatch {
+  rel_path: string;
+  local_md5: string;
+  drive_md5: string;
+  size_bytes: number;
+}
+
+export interface IntegrityReport {
+  pair_id: string;
+  total_scanned: number;
+  matched: number;
+  mismatches: FileMismatch[];
+  local_missing: string[];
+  remote_missing: string[];
+  duration_ms: number;
+}
+
+export const verifyPairIntegrity = (pairId: string) =>
+  invoke<IntegrityReport>("verify_pair_integrity", { pairId });
+
+export const repairPairMismatches = (pairId: string, paths: string[]) =>
+  invoke<number>("repair_pair_mismatches", { pairId, paths });
+
+// ── Database Stats & Maintenance ──────────────────────────────────────────────
+
+export interface DatabaseStats {
+  file_size_bytes: number;
+  total_files: number;
+  activity_count: number;
+  completed_jobs: number;
+  failed_jobs: number;
+}
+
+export interface PruneStats {
+  activity_rows_removed: number;
+  jobs_removed: number;
+  db_size_before_bytes: number;
+  db_size_after_bytes: number;
+}
+
+export const getDatabaseStats = () => invoke<DatabaseStats>("get_database_stats");
+export const runDatabaseMaintenance = (keepDays?: number, maxRows?: number) =>
+  invoke<PruneStats>("run_database_maintenance", { keepDays, maxRows });
 

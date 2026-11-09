@@ -3,7 +3,7 @@
  * Dedicated full-page view for deep inspection, live telemetry,
  * file activity, and controls for an individual synced folder pair.
  */
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft,
   RefreshCw,
@@ -18,10 +18,18 @@ import {
   Clock,
   Layers,
   ShieldCheck,
+  ShieldAlert,
   ArrowUp,
   ArrowDown,
+  FolderTree,
+  CheckSquare,
+  Square,
+  FileCode,
+  Plus,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { useStore, type ProgressEvent } from "@/store";
@@ -32,11 +40,17 @@ import {
   updateConfig,
   openLocalPath,
   openUrlExternal,
+  listPairSubfolders,
+  verifyPairIntegrity,
+  repairPairMismatches,
   type PairEntry,
+  type SubfolderItem,
+  type IntegrityReport,
 } from "@/lib/tauri";
 import { formatBytes, formatSpeed, formatEta, formatRelTime } from "@/lib/format";
 import { toast } from "sonner";
 import gdLogo from "@/assets/gd-icon.png";
+import { GithubFolderIcon } from "@/components/ui/GithubFolderIcon";
 import { cn } from "@/lib/utils";
 
 const SYNC_MODES = {
@@ -79,7 +93,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
 
   if (!pair) {
     return (
-      <div className="p-8 max-w-4xl mx-auto space-y-4">
+      <div className="p-6 sm:p-8 w-full space-y-4">
         <button
           onClick={onBack}
           className="text-xs text-[#7d8590] hover:text-[#e6edf3] flex items-center gap-1.5 cursor-pointer"
@@ -264,8 +278,136 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
     }
   }
 
+  // ── Selective Sync & Subfolders ──
+  const [subfolders, setSubfolders] = useState<SubfolderItem[]>([]);
+  const [loadingSubfolders, setLoadingSubfolders] = useState(false);
+  const [newExcludePattern, setNewExcludePattern] = useState("");
+
+  const loadSubfolders = useCallback(async () => {
+    setLoadingSubfolders(true);
+    try {
+      const items = await listPairSubfolders(pairId);
+      setSubfolders(items);
+    } catch (e) {
+      console.warn("Failed to list subfolders:", e);
+    } finally {
+      setLoadingSubfolders(false);
+    }
+  }, [pairId]);
+
+  useEffect(() => {
+    void loadSubfolders();
+  }, [loadSubfolders]);
+
+  async function handleToggleSubfolder(relPath: string) {
+    if (!config) return;
+    const currentExcluded = pair?.excluded_folders ?? [];
+    const isCurrentlyExcluded = currentExcluded.includes(relPath);
+    const updated = isCurrentlyExcluded
+      ? currentExcluded.filter((p) => p !== relPath)
+      : [...currentExcluded, relPath];
+
+    const updatedPairs = (config.pairs ?? []).map((p) =>
+      p.id === pairId ? { ...p, excluded_folders: updated } : p
+    );
+    try {
+      await updateConfig({ ...config, pairs: updatedPairs });
+      setConfig({ ...config, pairs: updatedPairs });
+      toast.success(
+        isCurrentlyExcluded
+          ? `Included "${relPath}" in synchronization`
+          : `Excluded "${relPath}" from synchronization`
+      );
+      void loadSubfolders();
+    } catch (e) {
+      toast.error(`Failed to update selective sync: ${String(e)}`);
+    }
+  }
+
+  async function handleAddPairExclude() {
+    if (!newExcludePattern.trim() || !config) return;
+    const p = newExcludePattern.trim();
+    const current = pair?.exclude ?? [];
+    if (current.includes(p)) {
+      toast.error(`"${p}" is already in ignore rules`);
+      return;
+    }
+    const updated = [...current, p];
+    const updatedPairs = (config.pairs ?? []).map((item) =>
+      item.id === pairId ? { ...item, exclude: updated } : item
+    );
+    try {
+      await updateConfig({ ...config, pairs: updatedPairs });
+      setConfig({ ...config, pairs: updatedPairs });
+      setNewExcludePattern("");
+      toast.success(`Added "${p}" to folder ignore rules`);
+    } catch (e) {
+      toast.error(`Failed to add pattern: ${String(e)}`);
+    }
+  }
+
+  async function handleRemovePairExclude(pattern: string) {
+    if (!config) return;
+    const current = pair?.exclude ?? [];
+    const updated = current.filter((x) => x !== pattern);
+    const updatedPairs = (config.pairs ?? []).map((item) =>
+      item.id === pairId ? { ...item, exclude: updated } : item
+    );
+    try {
+      await updateConfig({ ...config, pairs: updatedPairs });
+      setConfig({ ...config, pairs: updatedPairs });
+      toast.success(`Removed "${pattern}" from folder ignore rules`);
+    } catch (e) {
+      toast.error(`Failed to remove pattern: ${String(e)}`);
+    }
+  }
+
+  // ── On-Demand Hash Integrity Audit ──
+  const [verifyingIntegrity, setVerifyingIntegrity] = useState(false);
+  const [integrityReport, setIntegrityReport] = useState<IntegrityReport | null>(null);
+  const [repairing, setRepairing] = useState(false);
+
+  async function handleVerifyIntegrity() {
+    setVerifyingIntegrity(true);
+    setIntegrityReport(null);
+    try {
+      const report = await verifyPairIntegrity(pairId);
+      setIntegrityReport(report);
+      if (report.mismatches.length === 0 && report.local_missing.length === 0 && report.remote_missing.length === 0) {
+        toast.success(`Integrity verified! All ${report.total_scanned} files match cloud checksums.`);
+      } else {
+        toast.warning(
+          `Found ${report.mismatches.length} checksum mismatches and ${report.local_missing.length + report.remote_missing.length} unaligned files.`
+        );
+      }
+    } catch (e) {
+      toast.error(`Integrity check failed: ${String(e)}`);
+    } finally {
+      setVerifyingIntegrity(false);
+    }
+  }
+
+  async function handleRepairMismatches() {
+    if (!integrityReport) return;
+    const toRepair = [
+      ...integrityReport.mismatches.map((m) => m.rel_path),
+      ...integrityReport.remote_missing,
+    ];
+    if (toRepair.length === 0) return;
+    setRepairing(true);
+    try {
+      const count = await repairPairMismatches(pairId, toRepair);
+      toast.success(`Enqueued ${count} files for repair and cloud re-alignment`);
+      void handleVerifyIntegrity();
+    } catch (e) {
+      toast.error(`Repair failed: ${String(e)}`);
+    } finally {
+      setRepairing(false);
+    }
+  }
+
   return (
-    <div className="p-7 max-w-4xl w-full mx-auto space-y-6">
+    <div className="p-6 sm:p-8 w-full space-y-6">
       {/* ── Top Navigation Bar & Breadcrumb ── */}
       <div className="flex items-center justify-between pb-3 border-b border-[#30363d]/70">
         <button
@@ -473,7 +615,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
             </div>
 
             <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
-              <div className="px-3 py-1.5 rounded-lg bg-[#161b22] border border-[#30363d] font-mono text-xs text-[#c9d1d9] truncate select-all max-w-sm" title={pair.local}>
+              <div className="px-3 py-1.5 rounded-lg bg-[#161b22] border border-[#30363d] font-mono text-xs text-[#c9d1d9] truncate select-all max-w-md lg:max-w-xl xl:max-w-3xl" title={pair.local}>
                 {pair.local}
               </div>
               <Button
@@ -508,7 +650,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
             </div>
 
             <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
-              <div className="px-3 py-1.5 rounded-lg bg-[#161b22] border border-[#30363d] font-mono text-xs text-[#c9d1d9] truncate select-all max-w-sm" title={pair.drive_folder_id || "Root"}>
+              <div className="px-3 py-1.5 rounded-lg bg-[#161b22] border border-[#30363d] font-mono text-xs text-[#c9d1d9] truncate select-all max-w-md lg:max-w-xl xl:max-w-3xl" title={pair.drive_folder_id || "Root"}>
                 {pair.drive_folder_id ? `ID: ${pair.drive_folder_id}` : "My Drive (Root)"}
               </div>
               <Button
@@ -569,6 +711,237 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
             )}>
               {pair.deletion === "delete" ? "Permanent Deletion" : "Drive Trash (30-day recovery)"}
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Data Integrity & Hash Verification ── */}
+      <div className="rounded-xl border border-[#30363d] bg-[#0d1117] overflow-hidden shadow-sm">
+        <div className="px-5 py-3 bg-[#161b22] border-b border-[#30363d] flex items-center justify-between">
+          <span className="text-xs font-semibold text-[#e6edf3] flex items-center gap-2">
+            <ShieldCheck size={14} className="text-[#3fb950]" />
+            On-Demand Hash Integrity & Cloud Verification
+          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={handleVerifyIntegrity}
+            disabled={verifyingIntegrity || syncing}
+            className="h-7 px-3 text-xs font-medium bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] border border-[#30363d] cursor-pointer flex items-center gap-1.5"
+          >
+            <RefreshCw size={12} className={cn(verifyingIntegrity && "animate-spin text-[#58a6ff]")} />
+            <span>{verifyingIntegrity ? "Auditing Checksums…" : "Verify Integrity"}</span>
+          </Button>
+        </div>
+
+        <div className="p-5 space-y-3 text-xs">
+          <p className="text-[#7d8590] leading-relaxed">
+            Directly cross-checks the cryptographic MD5 hash of every local file on disk against Google Drive's cloud checksum to guarantee 100% data integrity and detect silent bit rot.
+          </p>
+
+          {integrityReport && (
+            <div className="mt-3 space-y-3">
+              {integrityReport.mismatches.length === 0 &&
+              integrityReport.local_missing.length === 0 &&
+              integrityReport.remote_missing.length === 0 ? (
+                <div className="p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3 text-emerald-400">
+                  <CheckCircle2 size={18} className="shrink-0" />
+                  <div>
+                    <div className="font-semibold text-white">100% Verified Match</div>
+                    <div className="text-[11px] text-emerald-300">
+                      All {integrityReport.total_scanned} files on disk bit-for-bit match remote Google Drive MD5 checksums ({integrityReport.duration_ms}ms).
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-amber-300 font-semibold">
+                      <ShieldAlert size={16} className="text-amber-400" />
+                      <span>
+                        Integrity Discrepancies Found ({integrityReport.mismatches.length} mismatches,{" "}
+                        {integrityReport.remote_missing.length} unaligned)
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleRepairMismatches}
+                      disabled={repairing}
+                      className="h-7 px-3 text-xs font-semibold bg-[#238636] hover:bg-[#2ea043] text-white cursor-pointer"
+                    >
+                      <RefreshCw size={11} className={cn("mr-1", repairing && "animate-spin")} />
+                      {repairing ? "Enqueuing…" : "Repair & Resync Mismatches"}
+                    </Button>
+                  </div>
+
+                  {integrityReport.mismatches.length > 0 && (
+                    <div className="max-h-36 overflow-y-auto space-y-1 divide-y divide-[#30363d]/50 pr-1">
+                      {integrityReport.mismatches.map((m) => (
+                        <div key={m.rel_path} className="pt-1.5 flex items-center justify-between text-[11px] font-mono">
+                          <span className="text-[#e6edf3] truncate max-w-xs">{m.rel_path}</span>
+                          <span className="text-[#7d8590] shrink-0">
+                            Local: <span className="text-amber-400">{m.local_md5.slice(0, 8)}…</span> | Drive:{" "}
+                            <span className="text-blue-400">{m.drive_md5.slice(0, 8)}…</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Selective Subfolder Sync & Pair Exclude Rules ── */}
+      <div className="rounded-xl border border-[#30363d] bg-[#0d1117] overflow-hidden shadow-sm">
+        <div className="px-5 py-3 bg-[#161b22] border-b border-[#30363d] flex items-center justify-between">
+          <span className="text-xs font-semibold text-[#e6edf3] flex items-center gap-2">
+            <FolderTree size={14} className="text-[#58a6ff]" />
+            Selective Sync & Folder-Specific Exclusions
+          </span>
+          <button
+            type="button"
+            onClick={() => void loadSubfolders()}
+            disabled={loadingSubfolders}
+            className="text-[11px] text-[#7d8590] hover:text-[#58a6ff] flex items-center gap-1 cursor-pointer transition-colors"
+          >
+            <RefreshCw size={11} className={cn(loadingSubfolders && "animate-spin")} />
+            <span>Refresh Subfolders</span>
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5 text-xs">
+          {/* Subfolders list */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold text-white">Subfolders in this Directory</span>
+              <span className="text-[11px] text-[#7d8590]">
+                Uncheck a subfolder to omit it from cloud replication
+              </span>
+            </div>
+
+            {loadingSubfolders ? (
+              <div className="p-4 text-center text-[#7d8590]">
+                <RefreshCw size={14} className="animate-spin inline mr-2 text-[#58a6ff]" />
+                Scanning subfolders…
+              </div>
+            ) : subfolders.length === 0 ? (
+              <div className="p-4 rounded-lg bg-[#161b22] border border-[#30363d] text-center text-[#7d8590]">
+                No top-level subfolders found in this directory.
+              </div>
+            ) : (
+              <div className="border border-[#30363d] rounded-lg divide-y divide-[#30363d]/60 bg-[#161b22]">
+                {subfolders.map((sf) => {
+                  const isChecked = !sf.is_excluded;
+                  return (
+                    <div
+                      key={sf.rel_path}
+                      onClick={() => handleToggleSubfolder(sf.rel_path)}
+                      className={cn(
+                        "px-4 py-2.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-[#21262d] transition-colors select-none",
+                        !isChecked && "opacity-60 bg-[#0d1117]/50"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {isChecked ? (
+                          <CheckSquare size={16} className="text-[#58a6ff] shrink-0" />
+                        ) : (
+                          <Square size={16} className="text-[#7d8590] shrink-0" />
+                        )}
+                        <GithubFolderIcon size={16} className={isChecked ? "text-[#54aeff]" : "text-[#7d8590]"} />
+                        <span className={cn("font-medium truncate", isChecked ? "text-[#e6edf3]" : "text-[#7d8590] line-through")}>
+                          {sf.name}/
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 shrink-0 text-[11px] font-mono">
+                        {sf.file_count > 0 && (
+                          <span className="text-[#7d8590]">
+                            {sf.file_count} files • {formatBytes(sf.total_bytes)}
+                          </span>
+                        )}
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-semibold border",
+                            isChecked
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                              : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                          )}
+                        >
+                          {isChecked ? "Syncing" : "Excluded"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Folder-specific exclude globs */}
+          <div className="pt-4 border-t border-[#30363d]/70">
+            <span className="font-semibold text-white block mb-1">Pair Ignore Patterns (Globs)</span>
+            <p className="text-[#7d8590] text-[11px] mb-3">
+              Patterns entered here apply only to this folder pair (e.g. <code className="text-[#58a6ff]">node_modules/**</code>, <code className="text-[#58a6ff]">*.tmp</code>).
+            </p>
+
+            {/* Pattern Badges */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {(pair.exclude ?? []).map((pat) => (
+                <span
+                  key={pat}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-[#161b22] text-[#c9d1d9] border border-[#30363d]"
+                >
+                  <FileCode size={12} className="text-[#7d8590]" />
+                  <span>{pat}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemovePairExclude(pat);
+                    }}
+                    className="text-[#7d8590] hover:text-[#f85149] p-0.5 rounded hover:bg-[#f85149]/10 transition-colors cursor-pointer"
+                    title={`Remove ${pat}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+              {(pair.exclude ?? []).length === 0 && (
+                <span className="text-[11px] text-[#7d8590] italic">No folder-specific patterns added yet.</span>
+              )}
+            </div>
+
+            {/* Input to add pattern */}
+            <div className="flex items-center gap-2">
+              <Input
+                value={newExcludePattern}
+                onChange={(e) => setNewExcludePattern(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddPairExclude();
+                  }
+                }}
+                placeholder="e.g. *.tmp, build/**, cache/"
+                className="font-mono text-xs max-w-sm h-8 bg-[#161b22] border-[#30363d] text-[#e6edf3]"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleAddPairExclude}
+                disabled={!newExcludePattern.trim()}
+                className="h-8 flex items-center gap-1.5 text-xs bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#e6edf3] cursor-pointer"
+              >
+                <Plus size={13} />
+                <span>Add Pattern</span>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
