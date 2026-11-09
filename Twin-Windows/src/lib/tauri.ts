@@ -55,6 +55,19 @@ export interface RulesConfig {
   max_file_mb: number;
 }
 
+export type OverlayPlacement = "top_right" | "bottom_right" | "centered";
+
+export interface OverlayConfig {
+  enabled: boolean;
+  placement: OverlayPlacement;
+}
+
+export interface OverlayStatus {
+  enabled: boolean;
+  placement: OverlayPlacement;
+  is_registered: boolean;
+}
+
 export interface Config {
   pairs?: PairEntry[];
   pair?: PairEntry[];
@@ -64,6 +77,7 @@ export interface Config {
   rules?: RulesConfig;
   app: AppConfig;
   github: GitHubConfig;
+  overlay?: OverlayConfig;
 }
 
 // ── DB types ───────────────────────────────────────────────────────────────────
@@ -329,4 +343,13 @@ export interface PruneStats {
 export const getDatabaseStats = () => invoke<DatabaseStats>("get_database_stats");
 export const runDatabaseMaintenance = (keepDays?: number, maxRows?: number) =>
   invoke<PruneStats>("run_database_maintenance", { keepDays, maxRows });
+
+// ── Windows File Explorer Icon Overlays ───────────────────────────────────────
+
+export const getOverlayStatus = () => invoke<OverlayStatus>("get_overlay_status");
+export const setOverlaySettings = (enabled: boolean, placement: OverlayPlacement) =>
+  invoke<void>("set_overlay_settings", { enabled, placement });
+export const registerOverlayExtension = () => invoke<void>("register_overlay_extension");
+export const unregisterOverlayExtension = () => invoke<void>("unregister_overlay_extension");
+export const restartExplorerShell = () => invoke<void>("restart_explorer_shell");
 

@@ -19,10 +19,16 @@ import {
   updateInstall,
   getDatabaseStats,
   runDatabaseMaintenance,
+  getOverlayStatus,
+  setOverlaySettings,
+  registerOverlayExtension,
+  restartExplorerShell,
+  type OverlayPlacement,
   type DatabaseStats,
   type UpdateStatePayload,
   type Config,
 } from "@/lib/tauri";
+import { GithubFolderIcon } from "@/components/ui/GithubFolderIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -59,6 +65,32 @@ interface StorageQuota {
   usageInDriveTrash: number;
 }
 
+const OVERLAY_PLACEMENTS: {
+  id: OverlayPlacement;
+  title: string;
+  description: string;
+  previewClass: string;
+}[] = [
+  {
+    id: "top_right",
+    title: "Top-Right Overlay",
+    description: "Mark sits inside the folder body, in the top-right corner.",
+    previewClass: "top-1 right-2",
+  },
+  {
+    id: "bottom_right",
+    title: "Bottom-Right Corner Hanging",
+    description: "Mark sits at the bottom-right and extends beyond the folder's border.",
+    previewClass: "-bottom-1.5 -right-1.5",
+  },
+  {
+    id: "centered",
+    title: "Centered Overlay",
+    description: "Mark sits directly over the middle of the folder body.",
+    previewClass: "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2",
+  },
+];
+
 export function SettingsScreen() {
   const setConfig = useStore((s) => s.setConfig);
   const setAuthed = useStore((s) => s.setAuthed);
@@ -81,6 +113,23 @@ export function SettingsScreen() {
   const [newExcludePattern, setNewExcludePattern] = useState("");
   const [dbStats, setDbStats] = useState<DatabaseStats | null>(null);
   const [pruningDb, setPruningDb] = useState(false);
+  const [overlayEnabled, setOverlayEnabled] = useState<boolean>(true);
+  const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top_right");
+  const [overlayRegistered, setOverlayRegistered] = useState<boolean>(true);
+  const [restartingExplorer, setRestartingExplorer] = useState(false);
+  const [registeringOverlay, setRegisteringOverlay] = useState(false);
+  const [needsExplorerRestart, setNeedsExplorerRestart] = useState(false);
+
+  const loadOverlayStatus = useCallback(async () => {
+    try {
+      const s = await getOverlayStatus();
+      setOverlayEnabled(s.enabled);
+      setOverlayPlacement(s.placement);
+      setOverlayRegistered(s.is_registered);
+    } catch {
+      // Ignored if unavailable
+    }
+  }, []);
 
   const loadDbStats = useCallback(async () => {
     try {
@@ -93,7 +142,73 @@ export function SettingsScreen() {
 
   useEffect(() => {
     void loadDbStats();
-  }, [loadDbStats]);
+    void loadOverlayStatus();
+  }, [loadDbStats, loadOverlayStatus]);
+
+  async function handleToggleOverlay(enabled: boolean) {
+    setOverlayEnabled(enabled);
+    patchLocal((c) => ({
+      ...c,
+      overlay: {
+        enabled,
+        placement: overlayPlacement,
+      },
+    }));
+    try {
+      await setOverlaySettings(enabled, overlayPlacement);
+      toast.success(
+        enabled
+          ? "Explorer folder status icon overlays enabled"
+          : "Explorer folder status icon overlays disabled"
+      );
+    } catch (err) {
+      toast.error(`Overlay update failed: ${String(err)}`);
+    }
+  }
+
+  async function handlePlacementChange(placement: OverlayPlacement) {
+    setOverlayPlacement(placement);
+    patchLocal((c) => ({
+      ...c,
+      overlay: {
+        enabled: overlayEnabled,
+        placement,
+      },
+    }));
+    setNeedsExplorerRestart(true);
+    try {
+      await setOverlaySettings(overlayEnabled, placement);
+      toast.info("Placement updated. Restart Windows Explorer to reload icons.");
+    } catch (err) {
+      toast.error(`Placement update failed: ${String(err)}`);
+    }
+  }
+
+  async function handleRestartExplorer() {
+    setRestartingExplorer(true);
+    try {
+      await restartExplorerShell();
+      setNeedsExplorerRestart(false);
+      toast.success("Windows Explorer restarted successfully");
+    } catch (err) {
+      toast.error(`Explorer restart failed: ${String(err)}`);
+    } finally {
+      setTimeout(() => setRestartingExplorer(false), 1200);
+    }
+  }
+
+  async function handleRegisterOverlay() {
+    setRegisteringOverlay(true);
+    try {
+      await registerOverlayExtension();
+      setOverlayRegistered(true);
+      toast.success("Shell overlay identifiers registered successfully");
+    } catch (err) {
+      toast.error(`Registration failed: ${String(err)}`);
+    } finally {
+      setRegisteringOverlay(false);
+    }
+  }
 
   async function handlePruneDb() {
     setPruningDb(true);
@@ -886,7 +1001,150 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      {/* 6. SQLite Database Storage & Maintenance */}
+      {/* 6. Windows File Explorer Folder Overlays */}
+      <section className="space-y-2.5">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+          Windows File Explorer Shell Integration
+        </h2>
+
+        <div className="desktop-card p-5 space-y-5">
+          {/* Main Toggle */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <label className="text-sm font-semibold text-white flex items-center gap-2">
+                <GithubFolderIcon className="w-4 h-4 text-[#54aeff]" />
+                Show status icon on folders in Explorer
+              </label>
+              <p className="text-xs text-[var(--text-muted)]">
+                Render green checkmark badges on synced local folders and yellow badges during active uploads/downloads.
+              </p>
+            </div>
+            <Switch
+              checked={overlayEnabled}
+              onCheckedChange={handleToggleOverlay}
+            />
+          </div>
+
+          {overlayEnabled && (
+            <div className="pt-4 border-t border-[var(--border-subtle)] space-y-4 animate-in fade-in duration-200">
+              {/* Registration Status Indicator */}
+              <div className="flex items-center justify-between bg-[#161b22] border border-[#30363d] rounded-lg p-3 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className={cn(
+                      "w-2.5 h-2.5 rounded-full shrink-0",
+                      overlayRegistered ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" : "bg-amber-400"
+                    )}
+                  />
+                  <div>
+                    <span className="font-semibold text-[#e6edf3]">
+                      {overlayRegistered ? "Shell Extension Active & Registered" : "Shell Extension Registration Pending"}
+                    </span>
+                    <p className="text-[11px] text-[#7d8590]">
+                      {overlayRegistered
+                        ? "Registered under ShellIconOverlayIdentifiers with priority sorting."
+                        : "Click register to enable overlay icons in Windows File Explorer."}
+                    </p>
+                  </div>
+                </div>
+
+                {!overlayRegistered && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleRegisterOverlay}
+                    disabled={registeringOverlay}
+                    className="text-xs border border-[#30363d] shrink-0"
+                  >
+                    {registeringOverlay ? "Registering…" : "Register Extension"}
+                  </Button>
+                )}
+              </div>
+
+              {/* Placement Dropdown & Preview */}
+              <div>
+                <label className="block text-xs font-semibold text-white mb-2">
+                  Icon Placement
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {OVERLAY_PLACEMENTS.map((opt) => {
+                    const isSelected = overlayPlacement === opt.id;
+                    return (
+                      <div
+                        key={opt.id}
+                        onClick={() => handlePlacementChange(opt.id)}
+                        className={cn(
+                          "relative rounded-lg p-3.5 border transition-all cursor-pointer flex flex-col justify-between",
+                          isSelected
+                            ? "bg-[#1f2937]/50 border-[#58a6ff] ring-1 ring-[#58a6ff]/40 shadow-sm"
+                            : "bg-[#161b22]/70 border-[#30363d] hover:bg-[#161b22] hover:border-[#484f58]"
+                        )}
+                      >
+                        {/* Interactive Folder Preview */}
+                        <div className="flex items-center justify-center py-3 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60 relative">
+                          <div className="relative inline-block">
+                            <GithubFolderIcon className="w-10 h-10 text-[#54aeff]" />
+                            {/* Overlay Badge Preview */}
+                            <span
+                              className={cn(
+                                "absolute w-3.5 h-3.5 rounded-full flex items-center justify-center shadow-md",
+                                opt.previewClass,
+                                "bg-emerald-500 border border-emerald-600 text-white"
+                              )}
+                            >
+                              <Check size={9} strokeWidth={3} />
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-[#e6edf3]">
+                              {opt.title}
+                            </span>
+                            {isSelected && (
+                              <CheckCircle2 size={13} className="text-[#58a6ff] shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-[11px] text-[#7d8590] leading-snug">
+                            {opt.description}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Restart Explorer Notification / Banner */}
+              <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle size={15} className="text-amber-400 shrink-0" />
+                  <span>
+                    {needsExplorerRestart
+                      ? "Icon placement updated! Windows Explorer reads overlay files at startup — restart Explorer to apply immediately."
+                      : "Explorer reads icon position caches on startup. If you change icon placement, restart Explorer."}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleRestartExplorer}
+                  disabled={restartingExplorer}
+                  className="shrink-0 text-xs bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200"
+                >
+                  <RefreshCw size={12} className={cn("mr-1.5", restartingExplorer && "animate-spin")} />
+                  {restartingExplorer ? "Restarting…" : "Restart Explorer"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 7. SQLite Database Storage & Maintenance */}
       <section className="space-y-2.5">
         <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Database Storage & Maintenance
@@ -946,7 +1204,7 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      {/* 7. Application Updates */}
+      {/* 8. Application Updates */}
       <section className="space-y-2.5">
         <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Software Updates

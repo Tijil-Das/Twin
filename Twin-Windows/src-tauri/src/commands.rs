@@ -245,3 +245,59 @@ pub fn repair_pair_mismatches(
     queue_state.0.wake();
     Ok(repaired)
 }
+
+// ── File Explorer Icon Overlays ───────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OverlayStatus {
+    pub enabled: bool,
+    pub placement: String,
+    pub is_registered: bool,
+}
+
+#[tauri::command]
+pub fn get_overlay_status() -> Result<OverlayStatus, String> {
+    let cfg = crate::config::load().map_err(|e| e.to_string())?;
+    let is_registered = crate::overlay::is_overlay_registered();
+    Ok(OverlayStatus {
+        enabled: cfg.overlay.enabled,
+        placement: cfg.overlay.placement,
+        is_registered,
+    })
+}
+
+#[tauri::command]
+pub fn set_overlay_settings(
+    enabled: bool,
+    placement: String,
+    db_state: tauri::State<'_, crate::db::DbState>,
+) -> Result<(), String> {
+    let mut cfg = crate::config::load().map_err(|e| e.to_string())?;
+    cfg.overlay.enabled = enabled;
+    cfg.overlay.placement = placement;
+    crate::config::save_shared(&cfg).map_err(|e| e.to_string())?;
+
+    let _ = crate::overlay::sync_registry_settings(&cfg.overlay);
+
+    if let Ok(pair_statuses) = db_state.0.get_all_pair_sync_statuses() {
+        crate::overlay::update_folder_overlays(&cfg.pairs, &pair_statuses, &cfg.overlay);
+    }
+    crate::overlay::refresh_all_folder_overlays(&cfg.pairs);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn register_overlay_extension() -> Result<(), String> {
+    crate::overlay::register_overlay_handler()
+}
+
+#[tauri::command]
+pub fn unregister_overlay_extension() -> Result<(), String> {
+    crate::overlay::unregister_overlay_handler()
+}
+
+#[tauri::command]
+pub fn restart_explorer_shell() -> Result<(), String> {
+    crate::overlay::restart_explorer()
+}

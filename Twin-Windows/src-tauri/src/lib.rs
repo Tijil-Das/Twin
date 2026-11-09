@@ -12,6 +12,7 @@ pub mod sync;
 pub mod transfer;
 pub mod updater;
 pub mod watcher;
+pub mod overlay;
 
 use tauri::{
     image::Image,

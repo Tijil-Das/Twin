@@ -223,6 +223,22 @@ impl Default for GitHubSection {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct OverlaySection {
+    pub enabled: bool,
+    pub placement: String,
+}
+
+impl Default for OverlaySection {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            placement: "top_right".into(),
+        }
+    }
+}
+
 /// User-defined path variable table from config.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct VarsSection(pub std::collections::HashMap<String, String>);
@@ -239,6 +255,7 @@ pub struct Config {
     pub pairs: Vec<PairEntry>,
     pub github: GitHubSection,
     pub vars: VarsSection,
+    pub overlay: OverlaySection,
 }
 
 impl Config {

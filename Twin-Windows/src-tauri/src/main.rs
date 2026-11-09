@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use tauri::{Emitter, Manager};
 use tracing::{info, warn};
-use twin_lib::{auth, commands, config, db, drive, github, governor, queue, rules, sync, transfer, updater, watcher, setup_tray, set_tray_state, TrayState};
+use twin_lib::{auth, commands, config, db, drive, github, governor, overlay, queue, rules, sync, transfer, updater, watcher, setup_tray, set_tray_state, TrayState};
 use twin_lib::drive::revisions::Revision;
 use twin_lib::drive::client::DriveFile;
 use twin_lib::drive::trash::TrashedFile;
@@ -610,6 +610,11 @@ fn main() {
             updater::update_check,
             updater::update_install,
             updater::update_clear_pending,
+            commands::get_overlay_status,
+            commands::set_overlay_settings,
+            commands::register_overlay_extension,
+            commands::unregister_overlay_extension,
+            commands::restart_explorer_shell,
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -674,6 +679,13 @@ fn main() {
             let _ = db_arc.retry_failed_jobs(None);
             q.wake();
 
+            // Initialize Windows Explorer File Icon Overlays
+            let _ = overlay::sync_registry_settings(&cfg.overlay);
+            let _ = overlay::register_overlay_handler();
+            if let Ok(pair_statuses) = db_arc.get_all_pair_sync_statuses() {
+                overlay::update_folder_overlays(&cfg.pairs, &pair_statuses, &cfg.overlay);
+            }
+
             // Spawn GitHub push loop (P11).
             {
                 let db_arc2 = Arc::clone(&db_arc);
@@ -712,6 +724,13 @@ fn main() {
                         if current_counts != last_counts {
                             let _ = handle_tray.emit("queue://updated", ());
                             last_counts = current_counts;
+
+                            // Update Explorer icon overlays on queue/sync state change
+                            if let Ok(c) = config::load() {
+                                if let Ok(ps) = db_tray.get_all_pair_sync_statuses() {
+                                    overlay::update_folder_overlays(&c.pairs, &ps, &c.overlay);
+                                }
+                            }
                         }
 
                         let (new_state, tooltip) = if is_paused {
