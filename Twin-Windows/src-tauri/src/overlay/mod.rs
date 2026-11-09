@@ -538,10 +538,42 @@ pub fn is_overlay_registered() -> bool {
 
 /// Register `twin_overlay.dll` into Windows Registry (HKLM + HKCU)
 /// Uses the new IExtractIcon IconHandler approach (CLSID_TWIN_ICON_HANDLER).
+/// Automatically:
+///   1. Kills Explorer (so the DLL is not locked)
+///   2. Copies twin_overlay_new.dll → twin_overlay.dll if a pending update exists
+///   3. Writes registry keys (HKCU always; HKLM if elevated or via UAC prompt)
+///   4. Restarts Explorer
 #[cfg(windows)]
 pub fn register_overlay_handler() -> Result<(), String> {
+    // --- Step 1: Kill Explorer so the DLL is unlocked ---
+    let _ = kill_explorer();
+
+    // --- Step 2: Swap pending DLL update if present ---
+    if let Some(icons_dir) = find_overlay_icons_dir() {
+        let new_dll = icons_dir.join("twin_overlay_new.dll");
+        let cur_dll = icons_dir.join("twin_overlay.dll");
+        if new_dll.exists() {
+            // Backup old DLL
+            if cur_dll.exists() {
+                let backup = icons_dir.join("twin_overlay.dll.old");
+                let _ = std::fs::copy(&cur_dll, &backup);
+                let _ = std::fs::remove_file(&cur_dll);
+            }
+            match std::fs::copy(&new_dll, &cur_dll) {
+                Ok(_) => {
+                    let _ = std::fs::remove_file(&new_dll);
+                    info!("Auto-updated twin_overlay.dll from twin_overlay_new.dll");
+                }
+                Err(e) => {
+                    warn!("Could not copy twin_overlay_new.dll: {e}");
+                }
+            }
+        }
+    }
+
     if is_overlay_registered() {
-        info!("Twin Explorer Overlay is already registered.");
+        info!("Twin Explorer Overlay is already registered — restarting Explorer.");
+        let _ = restart_explorer();
         return Ok(());
     }
 
@@ -644,6 +676,7 @@ fn elevate_and_register_overlay() -> Result<(), String> {
 
     if is_overlay_registered() {
         info!("Shell overlays successfully registered in HKLM via elevated script");
+        let _ = restart_explorer();
         Ok(())
     } else {
         Err("Registration script executed, but HKLM keys were not found. Please right-click register_overlay_admin.cmd and choose 'Run as administrator'.".to_string())
@@ -788,6 +821,25 @@ unsafe fn set_reg_val(root: HKEY, subkey: &str, value_name: Option<&str>, data: 
 unsafe fn del_reg_val(root: HKEY, subkey: &str) -> bool {
     let subkey_w: Vec<u16> = format!("{subkey}\0").encode_utf16().collect();
     RegDeleteKeyW(root, subkey_w.as_ptr()) == 0
+}
+
+/// Kill Windows Explorer process (without restarting — used before DLL swap)
+pub fn kill_explorer() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        info!("Killing Windows Explorer to unlock the overlay DLL");
+        let _ = Command::new("taskkill")
+            .args(["/f", "/im", "explorer.exe"])
+            .output();
+        // Brief pause so Explorer fully releases file handles
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(())
+    }
 }
 
 /// Restart Windows Explorer (taskkill + start explorer.exe)

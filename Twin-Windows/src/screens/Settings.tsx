@@ -278,15 +278,22 @@ export function SettingsScreen() {
 
   async function handlePlacementChange(placement: OverlayPlacement) {
     setOverlayPlacement(placement);
-    setNeedsExplorerRestart(true);
     try {
       await setOverlaySettings(overlayEnabled, placement);
       const updatedConfig = await getConfig();
       setConfig(updatedConfig);
       setLocal(updatedConfig);
-      toast.info(`Placement set to ${placement.replace('_', ' ')}. Restart Explorer to apply.`);
+      // Auto-restart Explorer so placement applies immediately (no manual step needed)
+      setRestartingExplorer(true);
+      toast.info(`Placement set to ${placement.replace('_', ' ')} — restarting Explorer…`);
+      await restartExplorerShell();
+      setNeedsExplorerRestart(false);
+      toast.success("Explorer restarted — new placement is now active");
     } catch (err) {
       toast.error(`Placement update failed: ${String(err)}`);
+      setNeedsExplorerRestart(true);
+    } finally {
+      setTimeout(() => setRestartingExplorer(false), 1200);
     }
   }
 
@@ -299,10 +306,10 @@ export function SettingsScreen() {
     setRegisteringOverlay(true);
     try {
       await registerOverlayExtension();
-      await restartExplorerShell();
+      // register_overlay_handler() in Rust kills Explorer, swaps DLL, registers, then restarts Explorer automatically
       setOverlayRegistered(true);
       setNeedsExplorerRestart(false);
-      toast.success("Shell overlay identifiers registered and Explorer reloaded");
+      toast.success("Shell extension registered and Explorer reloaded automatically");
     } catch (err) {
       toast.error(`Registration failed: ${String(err)}`);
     } finally {
@@ -1298,12 +1305,12 @@ export function SettingsScreen() {
                 </div>
                 <div>
                   <Dialog.Title className="text-base font-semibold text-[#e6edf3]">
-                    Administrator Approval Required
+                    Register Shell Extension
                   </Dialog.Title>
                   <Dialog.Description className="text-xs text-[#7d8590] mt-1.5 leading-relaxed">
-                    Windows Explorer requires registration under HKLM to display status overlays on folders.
+                    Registering the shell extension will briefly kill and restart Windows Explorer to unlock the DLL.
                     <br /><br />
-                    A Windows Administrator approval (UAC) prompt will appear to register the extension, followed by an Explorer reload.
+                    Your desktop will flicker for 1–2 seconds while Explorer restarts — this is normal and everything will come back automatically.
                   </Dialog.Description>
                 </div>
               </div>
