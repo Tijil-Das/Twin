@@ -208,7 +208,7 @@ pub struct IClassFactoryVtbl {
 
     pub CreateInstance: unsafe extern "system" fn(
         this: *mut c_void,
-        pUnkOuter: *mut c_void,
+        _pUnkOuter: *mut c_void,
         riid: *const GUID,
         ppvObject: *mut *mut c_void,
     ) -> HRESULT,
@@ -565,7 +565,7 @@ unsafe extern "system" fn factory_release(this: *mut c_void) -> u32 {
 
 unsafe extern "system" fn factory_create_instance(
     this: *mut c_void,
-    pUnkOuter: *mut c_void,
+    _pUnkOuter: *mut c_void,
     riid: *const GUID,
     ppvObject: *mut *mut c_void,
 ) -> HRESULT {

@@ -106,7 +106,7 @@ function WindowsFolderOverlayPreview({
 }) {
   let cx = 34.0;
   let cy = 30.0;
-  const r = 8.5; // Matches exact reference geometry (30% diameter of folder body)
+  const r = 8.5; // Proportional 30% badge diameter
 
   if (placement === "top_right") {
     // Top-right shoulder of folder body (matches Image 1)
@@ -235,6 +235,7 @@ export function SettingsScreen() {
   const [restartingExplorer, setRestartingExplorer] = useState(false);
   const [registeringOverlay, setRegisteringOverlay] = useState(false);
   const [showRegisterConfirm, setShowRegisterConfirm] = useState(false);
+  const [needsExplorerRestart, setNeedsExplorerRestart] = useState(false);
 
   const loadOverlayStatus = useCallback(async () => {
     try {
@@ -280,12 +281,13 @@ export function SettingsScreen() {
 
   async function handlePlacementChange(placement: OverlayPlacement) {
     setOverlayPlacement(placement);
+    setNeedsExplorerRestart(true);
     try {
       await setOverlaySettings(overlayEnabled, placement);
       const updatedConfig = await getConfig();
       setConfig(updatedConfig);
       setLocal(updatedConfig);
-      toast.success(`Overlay placement set to ${placement.replace('_', ' ')}.`);
+      toast.info(`Placement set to ${placement.replace('_', ' ')}. Restart Explorer to apply.`);
     } catch (err) {
       toast.error(`Placement update failed: ${String(err)}`);
     }
@@ -302,6 +304,7 @@ export function SettingsScreen() {
       await registerOverlayExtension();
       await restartExplorerShell();
       setOverlayRegistered(true);
+      setNeedsExplorerRestart(false);
       toast.success("Shell overlay identifiers registered and Explorer reloaded");
     } catch (err) {
       toast.error(`Registration failed: ${String(err)}`);
@@ -314,6 +317,7 @@ export function SettingsScreen() {
     setRestartingExplorer(true);
     try {
       await restartExplorerShell();
+      setNeedsExplorerRestart(false);
       toast.success("Windows Explorer restarted successfully");
     } catch (err) {
       toast.error(`Explorer restart failed: ${String(err)}`);
@@ -1167,10 +1171,10 @@ export function SettingsScreen() {
                 </div>
               </div>
 
-              {/* Icon Placement Options */}
+              {/* Placement Options Grid & Live Interactive Preview */}
               <div>
                 <label className="block text-xs font-semibold text-white mb-2">
-                  Icon Placement
+                  Overlay Placement on Folders
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {OVERLAY_PLACEMENTS.map((opt) => {
@@ -1210,6 +1214,29 @@ export function SettingsScreen() {
                 </div>
               </div>
 
+              {/* Restart Explorer Notification / Banner */}
+              {needsExplorerRestart && (
+                <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2.5">
+                    <AlertTriangle size={15} className="text-amber-400 shrink-0" />
+                    <span>
+                      Placement updated! Windows Explorer reads icon overlay files at startup — restart Explorer to apply immediately.
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleRestartExplorer}
+                    disabled={restartingExplorer}
+                    className="shrink-0 text-xs bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200"
+                  >
+                    <RefreshCw size={12} className={cn("mr-1.5", restartingExplorer && "animate-spin")} />
+                    {restartingExplorer ? "Restarting…" : "Restart Explorer"}
+                  </Button>
+                </div>
+              )}
+
               {/* Explorer Folder Badge Preview */}
               <div>
                 <div className="mb-2.5">
@@ -1217,7 +1244,7 @@ export function SettingsScreen() {
                     Windows Explorer Folder Status Badges
                   </label>
                   <p className="text-[11px] text-[var(--text-muted)]">
-                    Badges appear on the native Windows Shell corner of synced pair folders, matching OneDrive and Dropbox.
+                    Badges appear on synced pair folders with real-time sync state.
                   </p>
                 </div>
 
@@ -1253,7 +1280,7 @@ export function SettingsScreen() {
                         <RefreshCw size={12} className="text-[#facc15]" />
                       </div>
                       <p className="text-[11px] text-[#7d8590] leading-snug">
-                        Yellow badge indicates files are currently uploading or downloading.
+                        Solid yellow badge indicates files are currently uploading or downloading.
                       </p>
                     </div>
                   </div>
