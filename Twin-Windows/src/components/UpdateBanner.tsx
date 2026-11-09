@@ -3,7 +3,7 @@ import { Sparkles, RefreshCw, X } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { updateGetState, updateInstall, updateClearPending } from "@/lib/tauri";
 
-export function UpdateBanner() {
+export function UpdateBanner({ currentScreen }: { currentScreen?: string }) {
   const [readyVersion, setReadyVersion] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -30,7 +30,7 @@ export function UpdateBanner() {
     };
   }, []);
 
-  if (!readyVersion || dismissed) return null;
+  if (!readyVersion || dismissed || currentScreen === "settings") return null;
 
   const displayVersion = readyVersion.startsWith("v")
     ? readyVersion.slice(1)

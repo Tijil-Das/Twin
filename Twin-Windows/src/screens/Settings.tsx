@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useStore } from "@/store";
 import {
   getConfig,
@@ -67,7 +68,69 @@ export function SettingsScreen() {
   const [upgradingScope, setUpgradingScope] = useState<boolean>(false);
   const [updateState, setUpdateState] = useState<UpdateStatePayload | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [downloadingUpdate, setDownloadingUpdate] = useState<{ version: string; pct?: number } | null>(null);
   const [installingUpdate, setInstallingUpdate] = useState(false);
+
+  useEffect(() => {
+    let unlistenStatus: (() => void) | undefined;
+    let unlistenReady: (() => void) | undefined;
+
+    void listen<{ status: string; version?: string; progress_pct?: number; error?: string }>(
+      "update://status",
+      (ev) => {
+        if (ev.payload.status === "checking") {
+          setCheckingUpdate(true);
+          setDownloadingUpdate(null);
+        } else if (ev.payload.status === "downloading") {
+          setCheckingUpdate(false);
+          setDownloadingUpdate({
+            version: ev.payload.version ?? "",
+            pct: ev.payload.progress_pct ?? 0,
+          });
+        } else if (ev.payload.status === "ready") {
+          setCheckingUpdate(false);
+          setDownloadingUpdate(null);
+          if (ev.payload.version) {
+            setUpdateState((prev) => ({
+              status: { status: "ready", version: ev.payload.version! },
+              current_version: prev?.current_version ?? "1.1.7",
+              ready_version: ev.payload.version!,
+              release_notes: prev?.release_notes ?? null,
+              last_checked: new Date().toISOString(),
+            }));
+          }
+        } else if (
+          ev.payload.status === "up-to-date" ||
+          ev.payload.status === "idle" ||
+          ev.payload.status === "error"
+        ) {
+          setCheckingUpdate(false);
+          setDownloadingUpdate(null);
+        }
+      }
+    ).then((u) => {
+      unlistenStatus = u;
+    });
+
+    void listen<{ version: string; notes?: string }>("update://ready", (ev) => {
+      setCheckingUpdate(false);
+      setDownloadingUpdate(null);
+      setUpdateState((prev) => ({
+        status: { status: "ready", version: ev.payload.version },
+        current_version: prev?.current_version ?? "1.1.7",
+        ready_version: ev.payload.version,
+        release_notes: prev?.release_notes ?? null,
+        last_checked: new Date().toISOString(),
+      }));
+    }).then((u) => {
+      unlistenReady = u;
+    });
+
+    return () => {
+      if (unlistenStatus) unlistenStatus();
+      if (unlistenReady) unlistenReady();
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     const [cfg, a, uState] = await Promise.all([
@@ -173,19 +236,18 @@ export function SettingsScreen() {
 
   async function handleCheckUpdate() {
     setCheckingUpdate(true);
+    setDownloadingUpdate(null);
     try {
       const res = await updateCheck();
       setUpdateState(res);
+      setDownloadingUpdate(null);
       if (res.ready_version) {
-        toast.success(`Update v${res.ready_version} is ready to apply`);
-      } else if (res.status.status === "downloading" || res.status.status === "update-available") {
-        toast.info(`Downloading update v${(res.status as any).version ?? "available"} in background…`);
+        // Update ready to apply: UI transitions immediately to "Restart & Apply".
+        // No duplicate toast info balloon!
       } else if (res.status.status === "up-to-date") {
         toast.info(`Twin is up to date (v${res.current_version})`);
       } else if (res.status.status === "error") {
         toast.error(`Update check error: ${(res.status as any).error}`);
-      } else {
-        toast.info("Update check completed");
       }
     } catch (e) {
       toast.error(`Update check error: ${String(e)}`);
@@ -662,12 +724,22 @@ export function SettingsScreen() {
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
               <span className="font-bold text-sm text-white">
-                Twin Desktop v{updateState?.current_version ?? "1.0.0"}
+                Twin Desktop v{updateState?.current_version ?? "1.1.7"}
               </span>
               {updateState?.ready_version ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                   <Sparkles size={13} />
                   v{updateState.ready_version} Ready to Apply
+                </span>
+              ) : downloadingUpdate ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                  <RefreshCw size={12} className="animate-spin" />
+                  Downloading {downloadingUpdate.version ? `v${downloadingUpdate.version} ` : "update"}… {downloadingUpdate.pct && downloadingUpdate.pct > 0 ? `(${downloadingUpdate.pct}%)` : ""}
+                </span>
+              ) : checkingUpdate ? (
+                <span className="text-xs code-text px-2 py-0.5 rounded-md bg-[var(--surface-2)] text-[var(--text-subtle)] border border-[var(--border)] flex items-center gap-1.5">
+                  <RefreshCw size={11} className="animate-spin text-blue-400" />
+                  Checking for updates…
                 </span>
               ) : (
                 <span className="text-xs code-text px-2 py-0.5 rounded-md bg-[var(--surface-2)] text-[var(--text-subtle)] border border-[var(--border)]">
@@ -678,6 +750,10 @@ export function SettingsScreen() {
             <p className="text-xs text-[var(--text-muted)]">
               {updateState?.ready_version
                 ? "Update downloaded seamlessly. Click Restart to apply."
+                : downloadingUpdate
+                ? `Downloading update ${downloadingUpdate.version ? `v${downloadingUpdate.version} ` : ""}in the background…`
+                : checkingUpdate
+                ? "Checking for new releases on GitHub…"
                 : "Automatic silent background update checks."}
             </p>
           </div>
@@ -692,6 +768,15 @@ export function SettingsScreen() {
                 <ArrowDownCircle size={15} />
                 {installingUpdate ? "Applying…" : "Restart & Apply"}
               </Button>
+            ) : downloadingUpdate ? (
+              <Button
+                variant="secondary"
+                disabled
+                className="flex items-center gap-2 cursor-wait opacity-85"
+              >
+                <RefreshCw size={14} className="animate-spin text-blue-400" />
+                Downloading update… {downloadingUpdate.pct && downloadingUpdate.pct > 0 ? `${downloadingUpdate.pct}%` : ""}
+              </Button>
             ) : (
               <Button
                 variant="secondary"
@@ -703,7 +788,7 @@ export function SettingsScreen() {
                   size={14}
                   className={cn("text-[var(--text-muted)]", checkingUpdate && "animate-spin text-blue-400")}
                 />
-                {checkingUpdate ? "Checking…" : "Check for Updates"}
+                {checkingUpdate ? "Checking for updates…" : "Check for Updates"}
               </Button>
             )}
           </div>

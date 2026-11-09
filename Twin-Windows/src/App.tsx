@@ -207,7 +207,7 @@ export default function App() {
       ))}
 
       {/* JioTV Max Autonomous Update Floating Banner */}
-      <UpdateBanner />
+      <UpdateBanner currentScreen={screen} />
 
       {/* Toast notifications */}
       <Toaster

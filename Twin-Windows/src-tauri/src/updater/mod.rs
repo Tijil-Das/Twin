@@ -395,6 +395,10 @@ pub async fn check_for_updates(
     state.status = UpdateStatus::Checking;
     drop(state);
 
+    let _ = app.emit("update://status", serde_json::json!({
+        "status": "checking"
+    }));
+
     let client = if let Some(c) = custom_client {
         c.clone()
     } else {
@@ -448,6 +452,10 @@ pub async fn check_for_updates(
         guard.status = UpdateStatus::UpToDate {
             current_version: current_ver.to_string(),
         };
+        let _ = app.emit("update://status", serde_json::json!({
+            "status": "up-to-date",
+            "version": current_ver
+        }));
         return Ok(build_payload(&guard));
     }
 
@@ -462,6 +470,10 @@ pub async fn check_for_updates(
                 version: remote_ver.to_string(),
                 notes: release_info.body.clone(),
             };
+            let _ = app.emit("update://status", serde_json::json!({
+                "status": "update-available",
+                "version": remote_ver
+            }));
             return Ok(build_payload(&guard));
         }
     };
@@ -480,6 +492,11 @@ pub async fn check_for_updates(
             version: remote_ver.to_string(),
         };
     }
+    let _ = app.emit("update://status", serde_json::json!({
+        "status": "downloading",
+        "version": remote_ver,
+        "progress_pct": 0
+    }));
 
     let download_dir = updates_dir(app);
     let target_bin = download_dir.join(if update_type == UpdateType::SetupInstaller {
@@ -498,10 +515,38 @@ pub async fn check_for_updates(
 
     match dl_resp {
         Ok(res) if res.status().is_success() => {
-            let bytes = res.bytes().await.map_err(|e| {
-                let err_msg = format!("Failed to read update stream: {e}");
-                AppError::Network(err_msg)
-            })?;
+            let total_size = res.content_length().unwrap_or(0);
+            let mut bytes = Vec::with_capacity(if total_size > 0 { total_size as usize } else { 10 * 1024 * 1024 });
+            let mut downloaded: u64 = 0;
+            let mut last_emit = Instant::now();
+
+            use futures::StreamExt;
+            let mut stream = res.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| {
+                    let err_msg = format!("Failed to read update stream: {e}");
+                    AppError::Network(err_msg)
+                })?;
+                downloaded += chunk.len() as u64;
+                bytes.extend_from_slice(&chunk);
+
+                if total_size > 0 && last_emit.elapsed() >= Duration::from_millis(250) {
+                    last_emit = Instant::now();
+                    let pct = ((downloaded as f64 / total_size as f64) * 100.0).min(99.0) as u8;
+                    {
+                        let mut guard = updater_state().lock().await;
+                        guard.status = UpdateStatus::Downloading {
+                            progress_pct: pct,
+                            version: remote_ver.to_string(),
+                        };
+                    }
+                    let _ = app.emit("update://status", serde_json::json!({
+                        "status": "downloading",
+                        "version": remote_ver,
+                        "progress_pct": pct
+                    }));
+                }
+            }
 
             // Strict PE magic header validation ('MZ' = 0x4D, 0x5A)
             if bytes.len() < 2 || &bytes[0..2] != b"MZ" {
@@ -511,12 +556,20 @@ pub async fn check_for_updates(
                 );
                 error!("{err_msg}");
                 set_error(err_msg.clone()).await;
+                let _ = app.emit("update://status", serde_json::json!({
+                    "status": "error",
+                    "error": err_msg
+                }));
                 return Err(AppError::Other(err_msg));
             }
 
             if let Err(e) = std::fs::write(&target_bin, &bytes) {
                 let err_msg = format!("Failed to write update binary to disk: {e}");
                 set_error(err_msg.clone()).await;
+                let _ = app.emit("update://status", serde_json::json!({
+                    "status": "error",
+                    "error": err_msg
+                }));
                 return Err(AppError::Other(err_msg));
             }
 
@@ -544,6 +597,10 @@ pub async fn check_for_updates(
                 "version": remote_ver,
                 "notes": release_info.body
             }));
+            let _ = app.emit("update://status", serde_json::json!({
+                "status": "ready",
+                "version": remote_ver
+            }));
 
             info!("Twin v{} is downloaded and ready to apply", remote_ver);
             Ok(build_payload(&guard))
@@ -551,11 +608,19 @@ pub async fn check_for_updates(
         Ok(res) => {
             let err_msg = format!("Download returned HTTP {}", res.status());
             set_error(err_msg.clone()).await;
+            let _ = app.emit("update://status", serde_json::json!({
+                "status": "error",
+                "error": err_msg
+            }));
             Err(AppError::Network(err_msg))
         }
         Err(e) => {
             let err_msg = format!("Download failed: {e}");
             set_error(err_msg.clone()).await;
+            let _ = app.emit("update://status", serde_json::json!({
+                "status": "error",
+                "error": err_msg
+            }));
             Err(AppError::Network(err_msg))
         }
     }
