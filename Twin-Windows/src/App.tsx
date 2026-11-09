@@ -247,7 +247,7 @@ export default function App() {
 
       {/* Toast notifications */}
       <Toaster
-        position="top-right"
+        position="bottom-center"
         toastOptions={{
           style: {
             background: "var(--surface)",
@@ -257,7 +257,7 @@ export default function App() {
             fontSize: 12,
             boxShadow: "0 12px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)",
           },
-          duration: 4000,
+          duration: 3500,
         }}
       />
     </>

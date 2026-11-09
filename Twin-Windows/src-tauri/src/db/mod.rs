@@ -1044,6 +1044,44 @@ impl Db {
         }))
     }
 
+    /// Retrieve relative paths for all currently active syncing jobs or dirty files.
+    pub fn get_active_syncing_paths(&self) -> Result<Vec<(String, String)>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+
+        let mut stmt = conn
+            .prepare("SELECT pair_id, rel_path FROM jobs WHERE status IN ('running', 'queued')")
+            .map_err(|e| AppError::Db(format!("prepare active jobs: {e}")))?;
+
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| AppError::Db(format!("query active jobs: {e}")))?;
+
+        let mut results = Vec::new();
+        while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
+            let pair_id: String = row.get(0).map_err(|e| AppError::Db(e.to_string()))?;
+            let rel_path: String = row.get(1).map_err(|e| AppError::Db(e.to_string()))?;
+            if !rel_path.is_empty() {
+                results.push((pair_id, rel_path));
+            }
+        }
+
+        if let Ok(mut f_stmt) = conn.prepare(
+            "SELECT pair_id, rel_path FROM files WHERE state IN ('dirty', 'conflict')"
+        ) {
+            if let Ok(mut f_rows) = f_stmt.query([]) {
+                while let Ok(Some(row)) = f_rows.next() {
+                    let pair_id: String = row.get(0).unwrap_or_default();
+                    let rel_path: String = row.get(1).unwrap_or_default();
+                    if !rel_path.is_empty() {
+                        results.push((pair_id, rel_path));
+                    }
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
     /// Checkpoint SQLite WAL file to keep disk space lean and commit WAL pages.
     pub fn checkpoint_wal(&self) -> Result<(), AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;

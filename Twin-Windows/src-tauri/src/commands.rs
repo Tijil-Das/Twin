@@ -280,7 +280,8 @@ pub fn set_overlay_settings(
     let _ = crate::overlay::sync_registry_settings(&cfg.overlay);
 
     if let Ok(pair_statuses) = db_state.0.get_all_pair_sync_statuses() {
-        crate::overlay::update_folder_overlays(&cfg.pairs, &pair_statuses, &cfg.overlay);
+        let active_paths = db_state.0.get_active_syncing_paths().unwrap_or_default();
+        crate::overlay::update_folder_overlays(&cfg.pairs, &pair_statuses, &active_paths, &cfg.overlay);
     }
     crate::overlay::refresh_all_folder_overlays(&cfg.pairs);
 

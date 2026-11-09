@@ -39,4 +39,7 @@ updater-cli/scratch/
 .idea/
 *.suo
 *.user
+*.dll.old
+**/*.dll.old
+
 

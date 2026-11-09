@@ -6,6 +6,7 @@ fallback_rescan_mins = 30
 github_push_mins = 30
 start_hidden = true
 dry_run = false
+color_drive_folders = true
 
 [limits]
 upload_kbps = 0
@@ -47,9 +48,21 @@ drive_folder_id = "1WXlyFFegaGptY153gITUha9a2uzSJ2Qh"
 mode = "mirror"
 enabled = true
 
+[[pair]]
+id = "beecb441-9c87-40c2-aaf3-e7e254d63f1c"
+local = 'D:\SOME INFORMATIONS'
+drive_folder_id = "1kItE2LfCcbn0npKClUR7uwO9FL0iCYBK"
+mode = "mirror"
+enabled = true
+deletion = "delete"
+
 [github]
 repo = "owner/name"
 branch = "main"
 path = "config/sync-state.json"
 
 [vars]
+
+[overlay]
+enabled = true
+placement = "bottom_right"

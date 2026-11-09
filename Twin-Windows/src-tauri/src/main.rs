@@ -679,11 +679,11 @@ fn main() {
             let _ = db_arc.retry_failed_jobs(None);
             q.wake();
 
-            // Initialize Windows Explorer File Icon Overlays
+            // Initialize Windows Explorer File Icon Overlays (HKCU settings only, no UAC on startup)
             let _ = overlay::sync_registry_settings(&cfg.overlay);
-            let _ = overlay::register_overlay_handler();
             if let Ok(pair_statuses) = db_arc.get_all_pair_sync_statuses() {
-                overlay::update_folder_overlays(&cfg.pairs, &pair_statuses, &cfg.overlay);
+                let active_paths = db_arc.get_active_syncing_paths().unwrap_or_default();
+                overlay::update_folder_overlays(&cfg.pairs, &pair_statuses, &active_paths, &cfg.overlay);
             }
 
             // Spawn GitHub push loop (P11).
@@ -724,12 +724,15 @@ fn main() {
                         if current_counts != last_counts {
                             let _ = handle_tray.emit("queue://updated", ());
                             last_counts = current_counts;
+                        }
 
-                            // Update Explorer icon overlays on queue/sync state change
-                            if let Ok(c) = config::load() {
-                                if let Ok(ps) = db_tray.get_all_pair_sync_statuses() {
-                                    overlay::update_folder_overlays(&c.pairs, &ps, &c.overlay);
-                                }
+                        // Continuously monitor and refresh Explorer icon overlays every 800ms.
+                        // update_folder_overlays diffs against LAST_FOLDER_STATUSES in memory and
+                        // only fires SHChangeNotify when a folder's status actually transitions.
+                        if let Ok(c) = config::load() {
+                            if let Ok(ps) = db_tray.get_all_pair_sync_statuses() {
+                                let active_paths = db_tray.get_active_syncing_paths().unwrap_or_default();
+                                overlay::update_folder_overlays(&c.pairs, &ps, &active_paths, &c.overlay);
                             }
                         }
 

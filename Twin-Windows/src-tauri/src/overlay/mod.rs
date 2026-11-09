@@ -13,7 +13,7 @@ use crate::config::{OverlaySection, PairEntry};
 use crate::db::PairSyncStatus;
 
 #[cfg(windows)]
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, BOOL};
 #[cfg(windows)]
 use windows_sys::Win32::System::Memory::{
     MapViewOfFile, FILE_MAP_ALL_ACCESS, PAGE_READWRITE,
@@ -25,6 +25,44 @@ use windows_sys::Win32::System::Registry::{
 };
 #[cfg(windows)]
 use windows_sys::Win32::UI::Shell::{SHChangeNotify, SHCNE_ATTRIBUTES, SHCNE_UPDATEITEM, SHCNF_PATHW};
+
+#[cfg(windows)]
+#[repr(C)]
+#[allow(non_snake_case)]
+struct SHELLEXECUTEINFOW {
+    cbSize: u32,
+    fMask: u32,
+    hwnd: isize,
+    lpVerb: *const u16,
+    lpFile: *const u16,
+    lpParameters: *const u16,
+    lpDirectory: *const u16,
+    nShow: i32,
+    hInstApp: isize,
+    lpIDList: *mut c_void,
+    lpClass: *const u16,
+    hkeyClass: HKEY,
+    dwHotKey: u32,
+    hIconOrMonitor: HANDLE,
+    hProcess: HANDLE,
+}
+
+#[cfg(windows)]
+const SEE_MASK_NOCLOSEPROCESS: u32 = 0x00000040;
+#[cfg(windows)]
+const SW_HIDE: i32 = 0;
+
+#[cfg(windows)]
+#[link(name = "shell32")]
+extern "system" {
+    fn ShellExecuteExW(pExecInfo: *mut SHELLEXECUTEINFOW) -> BOOL;
+}
+
+#[cfg(windows)]
+#[link(name = "kernel32")]
+extern "system" {
+    fn WaitForSingleObject(hHandle: HANDLE, dwMilliseconds: u32) -> u32;
+}
 
 #[cfg(windows)]
 #[link(name = "kernel32")]
@@ -59,6 +97,7 @@ pub const SHMEM_MAGIC: u32 = 0x5457494E; // 'TWIN'
 pub const STATUS_NONE: u32 = 0;
 pub const STATUS_SYNCED: u32 = 1;
 pub const STATUS_SYNCING: u32 = 2;
+pub const STATUS_IS_ROOT: u32 = 4;
 
 #[repr(C)]
 pub struct ShmemHeader {
@@ -121,6 +160,7 @@ pub fn normalize_folder_path(path: &str) -> String {
 pub fn calculate_folder_statuses(
     pairs: &[PairEntry],
     pair_statuses: &HashMap<String, PairSyncStatus>,
+    _active_paths: &[(String, String)],
 ) -> HashMap<String, u32> {
     let mut folder_pairs_map: HashMap<String, Vec<&PairEntry>> = HashMap::new();
 
@@ -136,6 +176,7 @@ pub fn calculate_folder_statuses(
 
     let mut result = HashMap::new();
 
+    // Evaluate pair parent folders only (children do not receive overlays)
     for (norm_path, pair_list) in folder_pairs_map {
         if pair_list.is_empty() {
             continue;
@@ -146,8 +187,8 @@ pub fn calculate_folder_statuses(
 
         for pair in pair_list {
             if let Some(status) = pair_statuses.get(&pair.id) {
-                // If any transfers queued or running -> syncing
-                if status.running > 0 || status.queued > 0 {
+                // If any transfers queued, running, or pending dirty files -> syncing (active)
+                if status.running > 0 || status.queued > 0 || status.dirty > 0 {
                     has_syncing = true;
                     all_done = false;
                     break;
@@ -174,9 +215,10 @@ pub fn calculate_folder_statuses(
 pub fn update_folder_overlays(
     pairs: &[PairEntry],
     pair_statuses: &HashMap<String, PairSyncStatus>,
+    active_paths: &[(String, String)],
     overlay_cfg: &OverlaySection,
 ) {
-    let statuses = calculate_folder_statuses(pairs, pair_statuses);
+    let statuses = calculate_folder_statuses(pairs, pair_statuses, active_paths);
 
     // Write to shared memory
     unsafe {
@@ -281,25 +323,36 @@ pub fn update_folder_overlays(
 pub fn update_folder_overlays(
     _pairs: &[PairEntry],
     _pair_statuses: &HashMap<String, PairSyncStatus>,
+    _active_paths: &[(String, String)],
     _overlay_cfg: &OverlaySection,
 ) {}
 
 /// Tell Windows Explorer to refresh icon overlays for a path immediately
 #[cfg(windows)]
 pub fn notify_explorer_folder_changed(path: &str) {
+    const SHCNF_FLUSHNOWAIT: u32 = 0x00002000;
+    const SHCNE_UPDATEDIR: i32 = 0x00001000;
+
     unsafe {
         let mut wide: Vec<u16> = path.encode_utf16().collect();
         wide.push(0);
 
+        let flags = SHCNF_PATHW | SHCNF_FLUSHNOWAIT;
         SHChangeNotify(
             SHCNE_UPDATEITEM as i32,
-            SHCNF_PATHW,
+            flags,
+            wide.as_ptr() as _,
+            std::ptr::null(),
+        );
+        SHChangeNotify(
+            SHCNE_UPDATEDIR,
+            flags,
             wide.as_ptr() as _,
             std::ptr::null(),
         );
         SHChangeNotify(
             SHCNE_ATTRIBUTES as i32,
-            SHCNF_PATHW,
+            flags,
             wide.as_ptr() as _,
             std::ptr::null(),
         );
@@ -393,6 +446,11 @@ pub fn find_overlay_icons_dir() -> Option<PathBuf> {
     }
 
     // 2. Check development workspace paths
+    let icon_pack = PathBuf::from(r"T:\Coding\Twin\Icon-Pack");
+    if icon_pack.exists() && icon_pack.join("synced_top_right.ico").exists() {
+        return Some(icon_pack);
+    }
+
     let dev_path = PathBuf::from(r"T:\Coding\Twin\Twin-Windows\src-tauri\icons\overlay");
     if dev_path.exists() {
         return Some(dev_path);
@@ -418,35 +476,51 @@ pub fn find_overlay_dll_path() -> Option<PathBuf> {
     None
 }
 
-/// Check if the shell overlay identifiers are registered in the Windows registry
+/// Locate the helper administrative registration batch script
+pub fn find_admin_script(script_name: &str) -> Option<PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let p = parent.join(script_name);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    let ws = PathBuf::from(r"T:\Coding\Twin").join(script_name);
+    if ws.exists() {
+        return Some(ws);
+    }
+    None
+}
+
+/// Check if the shell overlay identifiers are registered in HKEY_LOCAL_MACHINE
+/// Note: Windows Explorer strictly reads overlay extensions from HKLM only.
 #[cfg(windows)]
 pub fn is_overlay_registered() -> bool {
     let synced_clsid_str = "{9B46E711-2051-417A-8D52-19253DE6C7D1}";
 
-    for &root in &[HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
-        let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers\\   TwinSynced\0"
-            .encode_utf16()
-            .collect();
-        let mut hkey: HKEY = std::ptr::null_mut();
-        unsafe {
-            if RegOpenKeyExW(root, subkey.as_ptr(), 0, KEY_READ, &mut hkey) == 0 {
-                let mut buf = [0u16; 64];
-                let mut buf_bytes = (buf.len() * 2) as u32;
-                let mut reg_type = 0;
-                let q_res = RegQueryValueExW(
-                    hkey,
-                    std::ptr::null(),
-                    std::ptr::null_mut(),
-                    &mut reg_type,
-                    buf.as_mut_ptr() as _,
-                    &mut buf_bytes,
-                );
-                let _ = RegCloseKey(hkey);
-                if q_res == 0 {
-                    let val = String::from_utf16_lossy(&buf);
-                    if val.contains(synced_clsid_str) {
-                        return true;
-                    }
+    let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers\\   TwinSynced\0"
+        .encode_utf16()
+        .collect();
+    let mut hkey: HKEY = std::ptr::null_mut();
+    unsafe {
+        if RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey.as_ptr(), 0, KEY_READ, &mut hkey) == 0 {
+            let mut buf = [0u16; 64];
+            let mut buf_bytes = (buf.len() * 2) as u32;
+            let mut reg_type = 0;
+            let q_res = RegQueryValueExW(
+                hkey,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                &mut reg_type,
+                buf.as_mut_ptr() as _,
+                &mut buf_bytes,
+            );
+            let _ = RegCloseKey(hkey);
+            if q_res == 0 {
+                let val = String::from_utf16_lossy(&buf);
+                if val.contains(synced_clsid_str) {
+                    return true;
                 }
             }
         }
@@ -459,9 +533,14 @@ pub fn is_overlay_registered() -> bool {
     false
 }
 
-/// Register `twin_overlay.dll` into Windows Registry
+/// Register `twin_overlay.dll` into Windows Registry (HKLM + HKCU)
 #[cfg(windows)]
 pub fn register_overlay_handler() -> Result<(), String> {
+    if is_overlay_registered() {
+        info!("Twin Explorer Overlay is already registered in HKLM.");
+        return Ok(());
+    }
+
     let dll_path = find_overlay_dll_path().ok_or_else(|| {
         "twin_overlay.dll not found. Please compile the overlay handler first.".to_string()
     })?;
@@ -470,29 +549,99 @@ pub fn register_overlay_handler() -> Result<(), String> {
     let synced_clsid_str = "{9B46E711-2051-417A-8D52-19253DE6C7D1}";
     let syncing_clsid_str = "{9B46E712-2051-417A-8D52-19253DE6C7D2}";
 
+    // Always register in HKCU so COM can find InprocServer32 in the interactive session
     unsafe {
-        for &root in &[HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
-            // 1. Synced CLSID
-            let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}");
-            set_reg_val(root, &clsid_key, None, "Twin Synced Icon Overlay");
-            set_reg_val(root, &format!("{clsid_key}\\InprocServer32"), None, &dll_str);
-            set_reg_val(root, &format!("{clsid_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
+        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}");
+        set_reg_val(HKEY_CURRENT_USER, &clsid_key, None, "Twin Synced Icon Overlay");
+        set_reg_val(HKEY_CURRENT_USER, &format!("{clsid_key}\\InprocServer32"), None, &dll_str);
+        set_reg_val(HKEY_CURRENT_USER, &format!("{clsid_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
 
-            // 2. Syncing CLSID
-            let syncing_key = format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}");
-            set_reg_val(root, &syncing_key, None, "Twin Syncing Icon Overlay");
-            set_reg_val(root, &format!("{syncing_key}\\InprocServer32"), None, &dll_str);
-            set_reg_val(root, &format!("{syncing_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
+        let syncing_key = format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}");
+        set_reg_val(HKEY_CURRENT_USER, &syncing_key, None, "Twin Syncing Icon Overlay");
+        set_reg_val(HKEY_CURRENT_USER, &format!("{syncing_key}\\InprocServer32"), None, &dll_str);
+        set_reg_val(HKEY_CURRENT_USER, &format!("{syncing_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
+    }
 
-            // 3. ShellIconOverlayIdentifiers with 3 leading spaces for sorting priority in Windows 15-overlay limit
-            let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
-            set_reg_val(root, &format!("{shell_overlays}\\   TwinSynced"), None, synced_clsid_str);
-            set_reg_val(root, &format!("{shell_overlays}\\   TwinSyncing"), None, syncing_clsid_str);
+    // Attempt direct write to HKLM (succeeds if running as Administrator)
+    let hklm_success = unsafe {
+        let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
+        let r1 = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{shell_overlays}\\   TwinSynced"), None, synced_clsid_str);
+        let r2 = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{shell_overlays}\\   TwinSyncing"), None, syncing_clsid_str);
+
+        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}");
+        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &clsid_key, None, "Twin Synced Icon Overlay");
+        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{clsid_key}\\InprocServer32"), None, &dll_str);
+        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{clsid_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
+
+        let syncing_key = format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}");
+        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &syncing_key, None, "Twin Syncing Icon Overlay");
+        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{syncing_key}\\InprocServer32"), None, &dll_str);
+        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{syncing_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
+
+        r1 && r2
+    };
+
+    if hklm_success {
+        info!("Registered Twin Explorer Overlay Shell Extension directly into HKLM with path {}", dll_str);
+        let _ = restart_explorer();
+        return Ok(());
+    }
+
+    // Direct write to HKLM was denied (standard user). Elevate with Windows UAC runas dialog.
+    elevate_and_register_overlay()
+}
+
+#[cfg(windows)]
+fn elevate_and_register_overlay() -> Result<(), String> {
+    let cmd_script = find_admin_script("register_overlay_admin.cmd").ok_or_else(|| {
+        "register_overlay_admin.cmd not found. Please ensure it exists in the Twin folder.".to_string()
+    })?;
+
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+    let file: Vec<u16> = "cmd.exe\0".encode_utf16().collect();
+    let param_str = format!("/c \"{}\"\0", cmd_script.display());
+    let params: Vec<u16> = param_str.encode_utf16().collect();
+
+    let mut exec_info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        hwnd: 0,
+        lpVerb: verb.as_ptr(),
+        lpFile: file.as_ptr(),
+        lpParameters: params.as_ptr(),
+        lpDirectory: std::ptr::null(),
+        nShow: SW_HIDE,
+        hInstApp: 0,
+        lpIDList: std::ptr::null_mut(),
+        lpClass: std::ptr::null(),
+        hkeyClass: std::ptr::null_mut(),
+        dwHotKey: 0,
+        hIconOrMonitor: std::ptr::null_mut(),
+        hProcess: std::ptr::null_mut(),
+    };
+
+    let ok = unsafe { ShellExecuteExW(&mut exec_info) };
+    if ok == 0 {
+        let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+        if err == 1223 {
+            return Err("Administrator elevation was cancelled by user.".to_string());
+        }
+        return Err(format!("Failed to prompt for Administrator elevation (error code {err}). Please right-click register_overlay_admin.cmd and choose 'Run as administrator'."));
+    }
+
+    if exec_info.hProcess != std::ptr::null_mut() && exec_info.hProcess != INVALID_HANDLE_VALUE {
+        unsafe {
+            WaitForSingleObject(exec_info.hProcess, 15000);
+            CloseHandle(exec_info.hProcess);
         }
     }
 
-    info!("Registered Twin Explorer Overlay Shell Extension with path {}", dll_str);
-    Ok(())
+    if is_overlay_registered() {
+        info!("Shell overlays successfully registered in HKLM via elevated script");
+        Ok(())
+    } else {
+        Err("Registration script executed, but HKLM keys were not found. Please right-click register_overlay_admin.cmd and choose 'Run as administrator'.".to_string())
+    }
 }
 
 #[cfg(not(windows))]
@@ -507,20 +656,79 @@ pub fn unregister_overlay_handler() -> Result<(), String> {
     let syncing_clsid_str = "{9B46E712-2051-417A-8D52-19253DE6C7D2}";
 
     unsafe {
-        for &root in &[HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
-            let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
-            del_reg_val(root, &format!("{shell_overlays}\\   TwinSynced"));
-            del_reg_val(root, &format!("{shell_overlays}\\   TwinSyncing"));
+        let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
+        del_reg_val(HKEY_CURRENT_USER, &format!("{shell_overlays}\\   TwinSynced"));
+        del_reg_val(HKEY_CURRENT_USER, &format!("{shell_overlays}\\   TwinSyncing"));
 
-            del_reg_val(root, &format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}\\InprocServer32"));
-            del_reg_val(root, &format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}"));
+        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}\\InprocServer32"));
+        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{synced_clsid_str}"));
 
-            del_reg_val(root, &format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}\\InprocServer32"));
-            del_reg_val(root, &format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}"));
+        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}\\InprocServer32"));
+        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{syncing_clsid_str}"));
+    }
+
+    // Try deleting HKLM directly
+    let hklm_del = unsafe {
+        let shell_overlays = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
+        let r1 = del_reg_val(HKEY_LOCAL_MACHINE, &format!("{shell_overlays}\\   TwinSynced"));
+        let r2 = del_reg_val(HKEY_LOCAL_MACHINE, &format!("{shell_overlays}\\   TwinSyncing"));
+        r1 || r2
+    };
+
+    if !hklm_del && is_overlay_registered() {
+        elevate_and_unregister_overlay()?;
+    }
+
+    let _ = restart_explorer();
+    info!("Unregistered Twin Explorer Overlay Shell Extension");
+    Ok(())
+}
+
+#[cfg(windows)]
+fn elevate_and_unregister_overlay() -> Result<(), String> {
+    let cmd_script = find_admin_script("unregister_overlay_admin.cmd").ok_or_else(|| {
+        "unregister_overlay_admin.cmd not found.".to_string()
+    })?;
+
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+    let file: Vec<u16> = "cmd.exe\0".encode_utf16().collect();
+    let param_str = format!("/c \"{}\"\0", cmd_script.display());
+    let params: Vec<u16> = param_str.encode_utf16().collect();
+
+    let mut exec_info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        hwnd: 0,
+        lpVerb: verb.as_ptr(),
+        lpFile: file.as_ptr(),
+        lpParameters: params.as_ptr(),
+        lpDirectory: std::ptr::null(),
+        nShow: SW_HIDE,
+        hInstApp: 0,
+        lpIDList: std::ptr::null_mut(),
+        lpClass: std::ptr::null(),
+        hkeyClass: std::ptr::null_mut(),
+        dwHotKey: 0,
+        hIconOrMonitor: std::ptr::null_mut(),
+        hProcess: std::ptr::null_mut(),
+    };
+
+    let ok = unsafe { ShellExecuteExW(&mut exec_info) };
+    if ok == 0 {
+        let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+        if err == 1223 {
+            return Err("Administrator elevation was cancelled by user.".to_string());
+        }
+        return Err(format!("Failed to prompt for Administrator elevation (error code {err})."));
+    }
+
+    if exec_info.hProcess != std::ptr::null_mut() && exec_info.hProcess != INVALID_HANDLE_VALUE {
+        unsafe {
+            WaitForSingleObject(exec_info.hProcess, 15000);
+            CloseHandle(exec_info.hProcess);
         }
     }
 
-    info!("Unregistered Twin Explorer Overlay Shell Extension");
     Ok(())
 }
 

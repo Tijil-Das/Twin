@@ -85,12 +85,12 @@ pub const IID_ICLASSFACTORY: GUID = GUID {
     data4: [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
 };
 
-// {0C6C4200-C589-11D0-999A-00C04A6E87C4}
+// {0C6C4200-C589-11D0-999A-00C04FD655E1}
 pub const IID_ISHELLICONOVERLAYIDENTIFIER: GUID = GUID {
     data1: 0x0C6C4200,
     data2: 0xC589,
     data3: 0x11D0,
-    data4: [0x99, 0x9A, 0x00, 0xC0, 0x4A, 0x6E, 0x87, 0xC4],
+    data4: [0x99, 0x9A, 0x00, 0xC0, 0x4F, 0xD6, 0x55, 0xE1],
 };
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -105,6 +105,7 @@ pub const SHMEM_MAGIC: u32 = 0x5457494E; // 'TWIN'
 pub const STATUS_NONE: u32 = 0;
 pub const STATUS_SYNCED: u32 = 1;
 pub const STATUS_SYNCING: u32 = 2;
+pub const STATUS_IS_ROOT: u32 = 4;
 
 #[repr(C)]
 pub struct ShmemHeader {
@@ -232,6 +233,13 @@ static OVERLAY_VTBL: IShellIconOverlayIdentifierVtbl = IShellIconOverlayIdentifi
     GetPriority: overlay_get_priority,
 };
 
+fn format_guid(g: &GUID) -> String {
+    format!(
+        "{{{:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}}}",
+        g.data1, g.data2, g.data3, g.data4[0], g.data4[1], g.data4[2], g.data4[3], g.data4[4], g.data4[5], g.data4[6], g.data4[7]
+    )
+}
+
 unsafe extern "system" fn overlay_query_interface(
     this: *mut c_void,
     riid: *const GUID,
@@ -241,11 +249,14 @@ unsafe extern "system" fn overlay_query_interface(
         return E_POINTER;
     }
     let guid = *riid;
+    let guid_str = format_guid(&guid);
     if guid == IID_IUNKNOWN || guid == IID_ISHELLICONOVERLAYIDENTIFIER {
+        log_debug(&format!("overlay_query_interface matched: {}", guid_str));
         *ppvObject = this;
         overlay_add_ref(this);
         S_OK
     } else {
+        log_debug(&format!("overlay_query_interface UNMATCHED: {}", guid_str));
         *ppvObject = std::ptr::null_mut();
         E_NOINTERFACE
     }
@@ -272,9 +283,15 @@ unsafe extern "system" fn overlay_release(this: *mut c_void) -> u32 {
 unsafe extern "system" fn overlay_is_member_of(
     this: *mut c_void,
     pwszPath: *const u16,
-    _dwAttrib: u32,
+    dwAttrib: u32,
 ) -> HRESULT {
     if pwszPath.is_null() {
+        return S_FALSE;
+    }
+
+    // Overlay is intended for folders: if attributes are known and object is explicitly a file, skip
+    const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x00000010;
+    if dwAttrib != 0 && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY) == 0 {
         return S_FALSE;
     }
 
@@ -284,7 +301,11 @@ unsafe extern "system" fn overlay_is_member_of(
     }
 
     let header = &*(ptr as *const ShmemHeader);
-    if header.magic != SHMEM_MAGIC || header.enabled == 0 {
+    if header.magic != SHMEM_MAGIC {
+        SHMEM_VIEW.store(std::ptr::null_mut(), Ordering::Release);
+        return S_FALSE;
+    }
+    if header.enabled == 0 {
         return S_FALSE;
     }
 
@@ -323,9 +344,11 @@ unsafe extern "system" fn overlay_is_member_of(
     let entries_ptr = (ptr as *const u8).add(std::mem::size_of::<ShmemHeader>()) as *const ShmemEntry;
     let obj = &*(this as *const ShellIconOverlayIdentifier);
 
+    // Only mark the pair parent folder: require exact path match
     for i in 0..count {
         let entry = &*entries_ptr.add(i);
         let entry_len = entry.path_len as usize;
+
         if entry_len == len {
             let mut matches = true;
             for j in 0..len {
@@ -335,14 +358,22 @@ unsafe extern "system" fn overlay_is_member_of(
                 }
             }
             if matches {
-                match obj.kind {
-                    OverlayKind::Synced => {
-                        return if entry.status == STATUS_SYNCED { S_OK } else { S_FALSE };
-                    }
+                return match obj.kind {
                     OverlayKind::Syncing => {
-                        return if entry.status == STATUS_SYNCING { S_OK } else { S_FALSE };
+                        if (entry.status & STATUS_SYNCING) != 0 {
+                            S_OK
+                        } else {
+                            S_FALSE
+                        }
                     }
-                }
+                    OverlayKind::Synced => {
+                        if (entry.status & STATUS_SYNCING) == 0 && (entry.status & STATUS_SYNCED) != 0 {
+                            S_OK
+                        } else {
+                            S_FALSE
+                        }
+                    }
+                };
             }
         }
     }
@@ -380,6 +411,7 @@ unsafe extern "system" fn overlay_get_overlay_info(
     } else {
         format!("{}\\{}", icon_dir, filename)
     };
+    log_debug(&format!("GetOverlayInfo for kind={:?}: full_path='{}'", prefix, full_path));
 
     let mut out_len = 0;
     for ch in full_path.encode_utf16() {
@@ -538,9 +570,8 @@ unsafe extern "system" fn factory_create_instance(
     }
     *ppvObject = std::ptr::null_mut();
 
-    if !pUnkOuter.is_null() {
-        return CLASS_E_NOAGGREGATION;
-    }
+    let riid_str = format_guid(&*riid);
+    log_debug(&format!("factory_create_instance called with riid={}", riid_str));
 
     let factory = &*(this as *const ClassFactory);
     let instance = Box::new(ShellIconOverlayIdentifier {
@@ -565,6 +596,9 @@ unsafe extern "system" fn factory_lock_server(_this: *mut c_void, fLock: BOOL) -
     S_OK
 }
 
+#[inline(always)]
+fn log_debug(_msg: &str) {}
+
 // ── Exported DLL Functions ────────────────────────────────────────────────────
 
 #[no_mangle]
@@ -578,7 +612,9 @@ pub unsafe extern "system" fn DllMain(
 
     if fdwReason == DLL_PROCESS_ATTACH {
         MODULE_HANDLE.store(hinstDLL as _, Ordering::Relaxed);
+        log_debug("DllMain DLL_PROCESS_ATTACH");
     } else if fdwReason == DLL_PROCESS_DETACH {
+        log_debug("DllMain DLL_PROCESS_DETACH");
         let ptr = SHMEM_VIEW.swap(std::ptr::null_mut(), Ordering::AcqRel);
         if !ptr.is_null() {
             let _ = UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS { Value: ptr });
@@ -593,6 +629,9 @@ pub unsafe extern "system" fn DllGetClassObject(
     riid: *const GUID,
     ppv: *mut *mut c_void,
 ) -> HRESULT {
+    let clsid_str = if !rclsid.is_null() { format_guid(&*rclsid) } else { "null".into() };
+    let riid_str = if !riid.is_null() { format_guid(&*riid) } else { "null".into() };
+    log_debug(&format!("DllGetClassObject clsid={} riid={}", clsid_str, riid_str));
     if rclsid.is_null() || riid.is_null() || ppv.is_null() {
         return E_POINTER;
     }
