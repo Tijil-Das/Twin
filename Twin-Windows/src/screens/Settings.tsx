@@ -42,7 +42,6 @@ import {
   Sparkles,
   ArrowDownCircle,
   CheckCircle2,
-  Save,
   Check,
   Cpu,
   Battery,
@@ -72,73 +71,73 @@ const OVERLAY_PLACEMENTS: {
   description: string;
 }[] = [
   {
+    id: "centered",
+    title: "Center",
+    description: "Badge sits squarely in the center of the corner area.",
+  },
+  {
     id: "top_right",
-    title: "Top-Right Shoulder",
-    description: "Mark sits on the top-right corner of the folder body.",
+    title: "Top-Right",
+    description: "Badge is shifted towards the upper-right shoulder.",
   },
   {
     id: "bottom_right",
-    title: "Bottom-Right Corner",
-    description: "Mark sits on the bottom-right corner of the folder body.",
-  },
-  {
-    id: "centered",
-    title: "Centered Overlay",
-    description: "Mark sits directly over the middle of the folder body.",
+    title: "Bottom-Right",
+    description: "Badge is shifted towards the bottom-right corner.",
   },
 ];
 
 /**
  * Authentic Windows 11 Explorer Folder with Overlay Badge.
- * Replicates real Windows File Explorer geometry and exact overlay placements.
+ * Replicates real Windows File Explorer geometry and native Shell overlay placement (bottom-left corner).
  */
 function WindowsFolderOverlayPreview({
-  placement,
   badge = "synced",
+  className,
+  placement = "centered",
 }: {
-  placement: OverlayPlacement;
   badge?: "synced" | "syncing";
+  className?: string;
+  placement?: OverlayPlacement;
 }) {
-  let cx = 56.5;
-  let cy = 14.0;
-  const r = 8.5;
+  let cx = 16.0;
+  let cy = 43.5;
+  const r = 6.2; // Perfectly proportioned, suitable size matching r=0.30
 
   if (placement === "top_right") {
-    // Rests directly on the top-right shoulder of the folder body
-    cx = 56.5;
-    cy = 14.0;
+    cx = 19.5;
+    cy = 40.0;
   } else if (placement === "bottom_right") {
-    // Sits at the bottom-right corner of the folder body
-    cx = 56.5;
-    cy = 40.5;
-  } else if (placement === "centered") {
-    // Sits dead center over the folder body
-    cx = 33.75;
-    cy = 31.25;
+    cx = 19.5;
+    cy = 46.5;
+  } else {
+    // centered
+    cx = 16.0;
+    cy = 43.5;
   }
 
-  const p1 = `${(cx - r * 0.54).toFixed(2)},${(cy + r * 0.08).toFixed(2)}`;
-  const p2 = `${(cx - r * 0.22).toFixed(2)},${(cy + r * 0.41).toFixed(2)}`;
-  const p3 = `${(cx + r * 0.54).toFixed(2)},${(cy - r * 0.35).toFixed(2)}`;
+  const p1 = `${(cx - r * 0.50).toFixed(2)},${(cy + r * 0.05).toFixed(2)}`;
+  const p2 = `${(cx - r * 0.16).toFixed(2)},${(cy + r * 0.38).toFixed(2)}`;
+  const p3 = `${(cx + r * 0.50).toFixed(2)},${(cy - r * 0.34).toFixed(2)}`;
 
   return (
     <svg
-      viewBox="0 0 68 54"
-      className="w-16 h-13 drop-shadow-sm shrink-0 select-none"
+      viewBox="0 0 70 57"
+      className={cn("w-14 h-11 drop-shadow-sm shrink-0 select-none", className)}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
-        <linearGradient id={`winFolderBack-${placement}-${badge}`} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`winFolderBack-${badge}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#f59e0b" />
           <stop offset="100%" stopColor="#d97706" />
         </linearGradient>
-        <linearGradient id={`winFolderFront-${placement}-${badge}`} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`winFolderFront-${badge}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#ffea79" />
           <stop offset="15%" stopColor="#ffd84d" />
           <stop offset="100%" stopColor="#f59e0b" />
         </linearGradient>
-        <filter id={`badgeShadow-${placement}-${badge}`} x="-20%" y="-20%" width="140%" height="140%">
+        <filter id={`badgeShadow-${badge}`} x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="1" stdDeviation="0.8" floodColor="#000" floodOpacity="0.4" />
         </filter>
       </defs>
@@ -146,13 +145,13 @@ function WindowsFolderOverlayPreview({
       {/* Back tab */}
       <path
         d="M 5 11 C 5 8 7 6 10 6 L 24 6 C 26.5 6 28.5 8 30 11.5 L 31.5 15 L 5 15 Z"
-        fill={`url(#winFolderBack-${placement}-${badge})`}
+        fill={`url(#winFolderBack-${badge})`}
       />
 
       {/* Front folder body with rounded bottom corners */}
       <path
         d="M 5 15 L 59 15 C 61 15 62.5 16.5 62.5 18.5 L 62.5 44 C 62.5 46.5 60.5 48.5 58 48.5 L 9.5 48.5 C 7 48.5 5 46.5 5 44 Z"
-        fill={`url(#winFolderFront-${placement}-${badge})`}
+        fill={`url(#winFolderFront-${badge})`}
         stroke="#ca8a04"
         strokeWidth="0.8"
       />
@@ -167,7 +166,7 @@ function WindowsFolderOverlayPreview({
       />
 
       {/* Status Overlay Badge */}
-      <g filter={`url(#badgeShadow-${placement}-${badge})`}>
+      <g filter={`url(#badgeShadow-${badge})`}>
         {badge === "synced" ? (
           <>
             <circle
@@ -229,10 +228,7 @@ export function SettingsScreen() {
   const [overlayRegistered, setOverlayRegistered] = useState<boolean>(true);
   const [restartingExplorer, setRestartingExplorer] = useState(false);
   const [registeringOverlay, setRegisteringOverlay] = useState(false);
-  const [pendingPlacement, setPendingPlacement] = useState<OverlayPlacement | null>(null);
   const [showRegisterConfirm, setShowRegisterConfirm] = useState(false);
-  const [applyingPlacement, setApplyingPlacement] = useState(false);
-  const [overlayPreviewBadge, setOverlayPreviewBadge] = useState<"synced" | "syncing">("synced");
 
   const loadOverlayStatus = useCallback(async () => {
     try {
@@ -276,34 +272,16 @@ export function SettingsScreen() {
     }
   }
 
-  function handlePlacementClick(placement: OverlayPlacement) {
-    if (placement === overlayPlacement) return;
-    setPendingPlacement(placement);
-  }
-
-  async function confirmPlacementChange() {
-    if (!pendingPlacement) return;
-    const target = pendingPlacement;
-    setPendingPlacement(null);
-    setApplyingPlacement(true);
+  async function handlePlacementChange(placement: OverlayPlacement) {
+    setOverlayPlacement(placement);
     try {
-      // 1. Save new placement in config and HKCU registry
-      await setOverlaySettings(overlayEnabled, target);
-      setOverlayPlacement(target);
+      await setOverlaySettings(overlayEnabled, placement);
       const updatedConfig = await getConfig();
       setConfig(updatedConfig);
       setLocal(updatedConfig);
-
-      // 2. Windows Explorer caches overlay .ico files at boot:
-      // Elevate via UAC to register and reload Explorer with the new placement geometry
-      await registerOverlayExtension();
-      await restartExplorerShell();
-      setOverlayRegistered(true);
-      toast.success(`Placement updated to ${target.replace("_", " ")}`);
+      toast.success(`Overlay placement set to ${placement.replace('_', ' ')}.`);
     } catch (err) {
       toast.error(`Placement update failed: ${String(err)}`);
-    } finally {
-      setApplyingPlacement(false);
     }
   }
 
@@ -604,33 +582,22 @@ export function SettingsScreen() {
     quota && quota.limit ? Math.min(100, Math.round((quota.usage / quota.limit) * 100)) : 0;
 
   return (
-    <div className="p-6 sm:p-8 w-full space-y-7 pb-28">
+    <div className="p-6 sm:p-8 w-full max-w-[880px] mx-auto space-y-7 pb-28">
       {/* Header */}
       <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
         <div>
-          <h1 className="text-lg font-bold tracking-tight text-white">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">
             Preferences
           </h1>
-          <p className="text-xs text-[var(--text-muted)] mt-1">
+          <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
             Manage Google account credentials, concurrency limits, and sync policies.
           </p>
         </div>
-
-        {hasChanges && (
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2"
-          >
-            <Save size={14} />
-            {saving ? "Saving…" : "Save Changes"}
-          </Button>
-        )}
       </div>
 
       {/* 1. Google Account Section */}
       <section className="space-y-2.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1 flex items-center gap-1.5">
+        <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1 flex items-center gap-1.5">
           <img
             src={gdLogo}
             alt="Google Drive"
@@ -758,7 +725,7 @@ export function SettingsScreen() {
 
       {/* 2. Concurrency & Performance */}
       <section className="space-y-2.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+        <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Sync Engine & Concurrency
         </h2>
 
@@ -860,7 +827,7 @@ export function SettingsScreen() {
 
       {/* 3. System Load & Battery Governor */}
       <section className="space-y-2.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+        <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Power & Governor Rules
         </h2>
 
@@ -975,7 +942,7 @@ export function SettingsScreen() {
 
       {/* 4. Conflict & Deletion Policies */}
       <section className="space-y-2.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+        <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Conflict & Deletion Policy
         </h2>
 
@@ -1032,7 +999,7 @@ export function SettingsScreen() {
 
       {/* 5. Exclude & Ignore Patterns */}
       <section className="space-y-2.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+        <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Sync Exclude Rules & Filters
         </h2>
 
@@ -1131,7 +1098,7 @@ export function SettingsScreen() {
 
       {/* 6. Windows File Explorer Folder Overlays */}
       <section className="space-y-2.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+        <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Windows File Explorer Shell Integration
         </h2>
 
@@ -1155,99 +1122,57 @@ export function SettingsScreen() {
 
           {overlayEnabled && (
             <div className="pt-4 border-t border-[var(--border-subtle)] space-y-4 animate-in fade-in duration-200">
-              {/* Registration Status Indicator */}
-              <div className="flex items-center justify-between bg-[#161b22] border border-[#30363d] rounded-lg p-3 text-xs">
-                <div className="flex items-center gap-2.5">
+              {/* Shell Registration Status & Quick Actions */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-[#0d1117] rounded-lg border border-[#30363d]/60 text-xs">
+                <div className="flex items-center gap-2">
                   <span
                     className={cn(
-                      "w-2.5 h-2.5 rounded-full shrink-0",
-                      overlayRegistered ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" : "bg-amber-400"
+                      "w-2 h-2 rounded-full",
+                      overlayRegistered ? "bg-emerald-400" : "bg-amber-400"
                     )}
                   />
-                  <div>
-                    <span className="font-semibold text-[#e6edf3]">
-                      {overlayRegistered ? "Shell Extension Active & Registered" : "Explorer Shell Registration Required"}
-                    </span>
-                    <p className="text-[11px] text-[#7d8590]">
-                      {overlayRegistered
-                        ? "Registered under HKLM ShellIconOverlayIdentifiers with priority sorting."
-                        : "Explorer requires registration in Windows HKLM with Administrator approval (UAC)."}
-                    </p>
-                  </div>
+                  <span className="text-[#c9d1d9]">
+                    {overlayRegistered ? "Shell Extension Registered" : "Registration Pending"}
+                  </span>
                 </div>
-
-                {overlayRegistered ? (
+                <div className="flex items-center gap-2">
+                  {!overlayRegistered && (
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      onClick={handleRegisterClick}
+                      className="text-xs bg-[#238636] hover:bg-[#2ea043] text-white"
+                    >
+                      Register Extension
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
                     onClick={handleRestartExplorer}
                     disabled={restartingExplorer}
-                    className="text-xs border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] shrink-0 flex items-center gap-1.5 cursor-pointer"
+                    className="text-xs bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] border border-[#30363d] flex items-center gap-1.5"
                   >
                     <RefreshCw size={12} className={cn(restartingExplorer && "animate-spin")} />
-                    {restartingExplorer ? "Restarting…" : "Restart Explorer"}
+                    {restartingExplorer ? "Restarting Explorer…" : "Restart Explorer"}
                   </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleRegisterClick}
-                    disabled={registeringOverlay}
-                    className="text-xs border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 shrink-0 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Shield size={12} className="text-amber-400" />
-                    {registeringOverlay ? "Prompting UAC…" : "Register (Admin UAC)"}
-                  </Button>
-                )}
+                </div>
               </div>
 
-              {/* Placement Dropdown & Preview */}
+              {/* Icon Placement Options */}
               <div>
-                <div className="flex items-center justify-between mb-2.5">
-                  <label className="block text-xs font-semibold text-white">
-                    Icon Placement
-                  </label>
-
-                  {/* Toggle Preview: Synced (Tick) vs Syncing (Yellow Dot) */}
-                  <div className="flex items-center gap-1 bg-[#0d1117] p-0.5 rounded-md border border-[#30363d]/70 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setOverlayPreviewBadge("synced")}
-                      className={cn(
-                        "px-2 py-0.5 rounded font-medium transition-colors cursor-pointer flex items-center gap-1",
-                        overlayPreviewBadge === "synced"
-                          ? "bg-[#238636] text-white shadow-sm"
-                          : "text-[#7d8590] hover:text-[#e6edf3]"
-                      )}
-                    >
-                      <Check size={11} strokeWidth={3} />
-                      <span>Synced (Tick)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOverlayPreviewBadge("syncing")}
-                      className={cn(
-                        "px-2 py-0.5 rounded font-medium transition-colors cursor-pointer flex items-center gap-1",
-                        overlayPreviewBadge === "syncing"
-                          ? "bg-[#d29922] text-black font-semibold shadow-sm"
-                          : "text-[#7d8590] hover:text-[#e6edf3]"
-                      )}
-                    >
-                      <span className="w-2 h-2 rounded-full bg-[#facc15] border border-amber-900 inline-block" />
-                      <span>Syncing (Yellow Dot)</span>
-                    </button>
-                  </div>
-                </div>
-
+                <label className="block text-xs font-semibold text-white mb-2">
+                  Icon Placement
+                </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {OVERLAY_PLACEMENTS.map((opt) => {
                     const isSelected = overlayPlacement === opt.id;
                     return (
                       <div
                         key={opt.id}
-                        onClick={() => handlePlacementClick(opt.id)}
+                        onClick={() => handlePlacementChange(opt.id)}
                         className={cn(
                           "relative rounded-lg p-3.5 border transition-all cursor-pointer flex flex-col justify-between",
                           isSelected
@@ -1255,12 +1180,9 @@ export function SettingsScreen() {
                             : "bg-[#161b22]/70 border-[#30363d] hover:bg-[#161b22] hover:border-[#484f58]"
                         )}
                       >
-                        {/* Windows Folder Icon with Real Overlay Placement Preview */}
-                        <div className="flex items-center justify-center py-4 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60 relative">
-                          <WindowsFolderOverlayPreview
-                            placement={opt.id}
-                            badge={overlayPreviewBadge}
-                          />
+                        {/* Interactive Folder Preview */}
+                        <div className="flex items-center justify-center py-2.5 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60">
+                          <WindowsFolderOverlayPreview badge="synced" placement={opt.id} className="w-12 h-9" />
                         </div>
 
                         <div>
@@ -1281,62 +1203,59 @@ export function SettingsScreen() {
                   })}
                 </div>
               </div>
+
+              {/* Explorer Folder Badge Preview */}
+              <div>
+                <div className="mb-2.5">
+                  <label className="block text-xs font-semibold text-white">
+                    Windows Explorer Folder Status Badges
+                  </label>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    Badges appear on the native Windows Shell corner of synced pair folders, matching OneDrive and Dropbox.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Done / Synced Card */}
+                  <div className="rounded-lg p-3.5 border bg-[#161b22]/70 border-[#30363d] flex flex-col justify-between">
+                    <div className="flex items-center justify-center py-3 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60">
+                      <WindowsFolderOverlayPreview badge="synced" placement={overlayPlacement} className="w-14 h-11" />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-[#7ee787]">
+                          Synced & Up to Date
+                        </span>
+                        <Check size={13} className="text-[#7ee787]" />
+                      </div>
+                      <p className="text-[11px] text-[#7d8590] leading-snug">
+                        Green checkmark indicates all files in this pair are completely backed up.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Active / Syncing Card */}
+                  <div className="rounded-lg p-3.5 border bg-[#161b22]/70 border-[#30363d] flex flex-col justify-between">
+                    <div className="flex items-center justify-center py-3 mb-2 bg-[#0d1117] rounded-md border border-[#30363d]/60">
+                      <WindowsFolderOverlayPreview badge="syncing" placement={overlayPlacement} className="w-14 h-11" />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-[#facc15]">
+                          Syncing Active
+                        </span>
+                        <RefreshCw size={12} className="text-[#facc15]" />
+                      </div>
+                      <p className="text-[11px] text-[#7d8590] leading-snug">
+                        Yellow badge indicates files are currently uploading or downloading.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
-
-        {/* Informational Dialog: Placement Change Confirmation before UAC */}
-        <Dialog.Root open={!!pendingPlacement} onOpenChange={(open) => { if (!open) setPendingPlacement(null); }}>
-          <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 animate-in fade-in duration-150" />
-            <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[460px] max-w-[92vw] bg-[#0d1117] border border-[#30363d] rounded-xl p-6 z-[60] shadow-2xl animate-in zoom-in-95 duration-150 text-[#e6edf3]">
-              <div className="flex items-start gap-3.5 mb-4">
-                <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
-                  <Shield size={20} className="text-amber-400" />
-                </div>
-                <div>
-                  <Dialog.Title className="text-base font-semibold text-[#e6edf3]">
-                    Administrator Approval & Explorer Reload
-                  </Dialog.Title>
-                  <Dialog.Description className="text-xs text-[#7d8590] mt-1.5 leading-relaxed">
-                    Changing folder overlay placement to <span className="text-white font-medium capitalize">{pendingPlacement?.replace("_", " ")}</span> requires Windows to reload overlay icon resources.
-                    <br /><br />
-                    A Windows Administrator approval (UAC) prompt will appear to apply this setting, and File Explorer will quickly reload.
-                  </Dialog.Description>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-[#30363d]">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setPendingPlacement(null)}
-                  className="text-xs text-[#7d8590] hover:text-[#e6edf3] hover:bg-[#21262d]"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={confirmPlacementChange}
-                  disabled={applyingPlacement}
-                  className="text-xs bg-[#238636] hover:bg-[#2ea043] text-white flex items-center gap-1.5"
-                >
-                  {applyingPlacement ? (
-                    <>
-                      <RefreshCw size={12} className="animate-spin" />
-                      Applying…
-                    </>
-                  ) : (
-                    "OK, Continue to UAC"
-                  )}
-                </Button>
-              </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
 
         {/* Informational Dialog: Registration Confirmation before UAC */}
         <Dialog.Root open={showRegisterConfirm} onOpenChange={(open) => { if (!open) setShowRegisterConfirm(false); }}>
@@ -1394,7 +1313,7 @@ export function SettingsScreen() {
 
       {/* 7. SQLite Database Storage & Maintenance */}
       <section className="space-y-2.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+        <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Database Storage & Maintenance
         </h2>
 
@@ -1454,7 +1373,7 @@ export function SettingsScreen() {
 
       {/* 8. Application Updates */}
       <section className="space-y-2.5">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
+        <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1">
           Software Updates
         </h2>
 
@@ -1535,14 +1454,21 @@ export function SettingsScreen() {
 
       {/* Floating Save Banner */}
       {hasChanges && (
-        <div className="fixed bottom-7 right-8 z-40 animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div
+          className="fixed bottom-7 right-8 z-40 animate-in fade-in duration-150"
+          style={{ transform: "none" }}
+        >
           <Button
             onClick={handleSave}
             disabled={saving}
-            className="shadow-elevation px-5 py-2.5 h-10 text-xs font-bold flex items-center gap-2"
+            className="shadow-lg shadow-black/50 px-5 py-2.5 h-10 text-[13px] font-semibold flex items-center gap-2 border border-blue-400/40 rounded-lg text-white bg-[#1d4ed8] hover:bg-[#1e40af] active:bg-[#1e3a8a]"
+            style={{
+              textRendering: "geometricPrecision",
+              transform: "none",
+            }}
           >
-            <Check size={16} strokeWidth={2.5} />
-            {saving ? "Saving…" : "Save Preferences"}
+            <Check size={16} strokeWidth={2.5} className="shrink-0 text-white" />
+            <span className="text-white tracking-wide">{saving ? "Saving…" : "Save Preferences"}</span>
           </Button>
         </div>
       )}

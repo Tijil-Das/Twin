@@ -101,12 +101,12 @@ export function ActivityScreen() {
   }
 
   return (
-    <div className="p-6 sm:p-8 w-full space-y-6 pb-20">
+    <div className="p-6 sm:p-8 w-full max-w-[980px] mx-auto space-y-6 pb-20">
       {/* Header */}
       <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-lg font-bold tracking-tight text-white">
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">
               Activity Ledger
             </h1>
             {failureCount > 0 && (
@@ -115,7 +115,7 @@ export function ActivityScreen() {
               </span>
             )}
           </div>
-          <p className="text-xs text-[var(--text-muted)] mt-1">
+          <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
             Audit log of background file synchronizations, deltas, and error states.
           </p>
         </div>

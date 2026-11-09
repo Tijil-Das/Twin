@@ -785,7 +785,7 @@ pub fn restart_explorer() -> Result<(), String> {
         use std::process::Command;
         info!("Restarting Windows Explorer process to reload shell icon overlays");
         let output = Command::new("cmd")
-            .args(["/C", "taskkill /f /im explorer.exe && start explorer.exe"])
+            .args(["/C", "taskkill /f /im explorer.exe & del /f /q \"%LocalAppData%\\Microsoft\\Windows\\Explorer\\iconcache_*.db\" 2>nul & del /f /q \"%LocalAppData%\\Microsoft\\Windows\\Explorer\\thumbcache_*.db\" 2>nul & ie4uinit.exe -show & start explorer.exe"])
             .output()
             .map_err(|e| format!("Failed to spawn restart command: {e}"))?;
 

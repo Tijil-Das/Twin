@@ -358,6 +358,8 @@ unsafe extern "system" fn overlay_is_member_of(
                 }
             }
             if matches {
+                let path_s = String::from_utf16_lossy(&norm[..len]);
+                log_debug(&format!("IsMemberOf MATCH: path='{}' entry.status={}", path_s, entry.status));
                 return match obj.kind {
                     OverlayKind::Syncing => {
                         if (entry.status & STATUS_SYNCING) != 0 {
@@ -406,10 +408,12 @@ unsafe extern "system" fn overlay_get_overlay_info(
     };
 
     let filename = format!("{}_{}.ico", prefix, placement);
-    let full_path = if icon_dir.ends_with('\\') || icon_dir.ends_with('/') {
-        format!("{}{}", icon_dir, filename)
+    let sep = if icon_dir.ends_with('\\') || icon_dir.ends_with('/') { "" } else { "\\" };
+    let candidate = format!("{}{}{}", icon_dir, sep, filename);
+    let full_path = if std::path::Path::new(&candidate).exists() {
+        candidate
     } else {
-        format!("{}\\{}", icon_dir, filename)
+        format!("{}{}{}.ico", icon_dir, sep, prefix)
     };
     log_debug(&format!("GetOverlayInfo for kind={:?}: full_path='{}'", prefix, full_path));
 
@@ -596,8 +600,10 @@ unsafe extern "system" fn factory_lock_server(_this: *mut c_void, fLock: BOOL) -
     S_OK
 }
 
-#[inline(always)]
-fn log_debug(_msg: &str) {}
+#[inline]
+fn log_debug(_msg: &str) {
+    // Debug logging disabled for production performance
+}
 
 // ── Exported DLL Functions ────────────────────────────────────────────────────
 

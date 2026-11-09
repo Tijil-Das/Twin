@@ -1,113 +1,103 @@
 """
 Generates multi-resolution Windows File Explorer overlay icons for Twin.
-Supports all 3 placement configurations:
-- top_right (rests on the top-right shoulder of Windows folder icon, matching user specs)
-- bottom_right (hangs on the bottom-right corner of the folder body)
-- centered (sits in the middle of the folder body)
 
-Each generated .ico file contains 7 native resolutions:
-16x16, 24x24, 32x32, 48x48, 64x64, 128x128, 256x256
-ensuring pin-sharp rendering at all Windows Explorer view modes (Details, List, Tiles, Medium, Large, Extra Large).
+Supported placements:
+- top_right: shifted towards upper-right of overlay area
+- bottom_right: shifted towards lower-right of overlay area
+- centered: centered in overlay area
+
+Badge radius r = 0.30 * sz provides a well-proportioned, suitable size matching
+standard Windows 11 icon overlay guidelines (e.g. OneDrive, Dropbox) without
+dominating the folder icon.
 """
 import os
 from PIL import Image, ImageDraw
 
-def render_frame(canvas_size: int, placement: str, kind: str) -> Image.Image:
-    # Scale up for high-precision anti-aliased geometry
+def render_badge(sz: int, placement: str, kind: str) -> Image.Image:
     scale = 4
-    s = canvas_size * scale
-    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+    s = sz * scale
 
-    # Adaptive diameter for icon size legibility
-    if canvas_size <= 16:
-        d = 0.35 * s
-    elif canvas_size <= 24:
-        d = 0.30 * s
-    elif canvas_size <= 32:
-        d = 0.28 * s
-    else:
-        d = 0.260 * s
-    r = d / 2.0
+    r = s * 0.30
 
     if placement == "top_right":
-        # Top-right shoulder of Windows folder body
-        cx = 0.846 * s
-        cy = 0.248 * s
+        cx = s * 0.58
+        cy = s * 0.42
     elif placement == "bottom_right":
-        # Bottom-right corner of Windows folder body
-        cx = 0.846 * s
-        cy = 0.740 * s
+        cx = s * 0.58
+        cy = s * 0.58
     elif placement == "centered":
-        # Center of Windows folder body
-        cx = 0.500 * s
-        cy = 0.525 * s
+        cx = s * 0.50
+        cy = s * 0.50
     else:
-        raise ValueError(f"Unknown placement: {placement}")
+        cx = s * 0.50
+        cy = s * 0.50
 
-    # Boundary safety clamp
-    cx = min(cx, s - r - 1)
-    cy = min(cy, s - r - 1)
-    cx = max(cx, r + 1)
-    cy = max(cy, r + 1)
-
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
     bbox = [cx - r, cy - r, cx + r, cy + r]
 
     if kind == "synced":
-        # Green tick badge
-        green_fill = (34, 163, 56, 255) # vibrant green matching user spec
-        green_outline = (16, 95, 30, 255) # dark green contrast outline
-        outline_w = max(1, int(round(1.2 * scale * (canvas_size / 256.0))))
-
+        green_fill = (34, 197, 94, 255)     # #22c55e (emerald green)
+        green_outline = (21, 128, 61, 255)  # #15803d (dark green border for contrast)
+        outline_w = max(1, int(round(0.10 * r)))
         draw.ellipse(bbox, fill=green_fill, outline=green_outline, width=outline_w)
 
-        # Crisp white checkmark
-        p1 = (cx - r * 0.42, cy - r * 0.04)
-        p2 = (cx - r * 0.10, cy + r * 0.32)
-        p3 = (cx + r * 0.46, cy - r * 0.35)
+        # Thick, crisp, high-contrast white checkmark
+        p1 = (cx - r * 0.50, cy + r * 0.05)
+        p2 = (cx - r * 0.16, cy + r * 0.38)
+        p3 = (cx + r * 0.50, cy - r * 0.34)
+        tick_w = max(1, int(round(0.26 * r)))
+        draw.line([p1, p2, p3], fill=(255, 255, 255, 255), width=tick_w, joint="curve")
 
-        if canvas_size <= 16:
-            stroke_w = max(1, int(round(1.5 * scale)))
-        elif canvas_size <= 24:
-            stroke_w = max(1, int(round(1.8 * scale)))
-        elif canvas_size <= 32:
-            stroke_w = max(2, int(round(2.2 * scale)))
-        else:
-            stroke_w = max(2, int(round(8.5 * scale * (canvas_size / 256.0))))
-
-        draw.line([p1, p2, p3], fill=(255, 255, 255, 255), width=stroke_w, joint="curve")
-
+        # Smooth rounded end caps
+        cap_r = tick_w / 2.0
+        for pt in [p1, p3]:
+            draw.ellipse(
+                [pt[0] - cap_r, pt[1] - cap_r, pt[0] + cap_r, pt[1] + cap_r],
+                fill=(255, 255, 255, 255),
+            )
     elif kind == "syncing":
-        # Yellow dot badge with deep dark-amber/bronze outline for high contrast against yellow folder
-        yellow_fill = (250, 204, 21, 255) # vibrant yellow/amber
-        yellow_outline = (75, 30, 4, 255) # deep dark bronze/amber rim for strong contrast
-        outline_w = max(1, int(round(2.6 * scale * (canvas_size / 256.0))))
-
+        yellow_fill = (250, 204, 21, 255)   # #facc15
+        yellow_outline = (113, 63, 18, 255) # #713f12
+        outline_w = max(1, int(round(0.12 * r)))
         draw.ellipse(bbox, fill=yellow_fill, outline=yellow_outline, width=outline_w)
 
-    return img.resize((canvas_size, canvas_size), Image.Resampling.LANCZOS)
+        # Circular arrows for sync symbol
+        arc_r = r * 0.54
+        arc_bbox = [cx - arc_r, cy - arc_r, cx + arc_r, cy + arc_r]
+        arc_w = max(1, int(round(0.22 * r)))
+        draw.arc(arc_bbox, start=30, end=150, fill=(30, 41, 59, 255), width=arc_w)
+        draw.arc(arc_bbox, start=210, end=330, fill=(30, 41, 59, 255), width=arc_w)
+
+    return img.resize((sz, sz), Image.Resampling.LANCZOS)
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     out_dir_tauri = os.path.normpath(os.path.join(script_dir, "..", "src-tauri", "icons", "overlay"))
     out_dir_iconpack = os.path.normpath(os.path.join(script_dir, "..", "..", "Icon-Pack"))
-    
+
     os.makedirs(out_dir_tauri, exist_ok=True)
     os.makedirs(out_dir_iconpack, exist_ok=True)
 
-    sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+    sizes = [16, 20, 24, 32, 40, 48, 60, 64, 72, 80, 96, 120, 128, 144, 192, 256]
+    size_tuples = [(sz, sz) for sz in sizes]
 
     for placement in ["top_right", "bottom_right", "centered"]:
         for kind in ["synced", "syncing"]:
-            frames = {sz: render_frame(sz[0], placement, kind) for sz in sizes}
-            largest = frames[(256, 256)]
-            others = [frames[sz] for sz in sizes if sz != (256, 256)]
+            frames = {sz: render_badge(sz, placement, kind) for sz in sizes}
+            largest = frames[256]
+            others = [frames[sz] for sz in sizes if sz != 256]
 
-            filename = f"{kind}_{placement}.ico"
-            for target_dir in [out_dir_tauri, out_dir_iconpack]:
-                filepath = os.path.join(target_dir, filename)
-                largest.save(filepath, format="ICO", append_images=others, sizes=sizes)
-            print(f"Generated {filename} (saved to src-tauri/icons/overlay and Icon-Pack)")
+            filenames = [f"{kind}_{placement}.ico"]
+            # Default un-suffixed filename gets centered
+            if placement == "centered":
+                filenames.append(f"{kind}.ico")
+
+            for fname in filenames:
+                for target_dir in [out_dir_tauri, out_dir_iconpack]:
+                    filepath = os.path.join(target_dir, fname)
+                    largest.save(filepath, format="ICO", append_images=others, sizes=size_tuples)
+                print(f"Generated {fname} ({len(sizes)} resolutions: {sizes[0]}px..{sizes[-1]}px)")
 
 if __name__ == "__main__":
     main()

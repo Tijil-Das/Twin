@@ -65,4 +65,4 @@ path = "config/sync-state.json"
 
 [overlay]
 enabled = true
-placement = "bottom_right"
+placement = "top_right"

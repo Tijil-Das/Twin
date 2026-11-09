@@ -407,7 +407,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
   }
 
   return (
-    <div className="p-6 sm:p-8 w-full space-y-6 pb-20">
+    <div className="p-6 sm:p-8 w-full max-w-[980px] mx-auto space-y-6 pb-20">
       {/* ── Top Navigation Bar & Breadcrumb ── */}
       <div className="flex items-center justify-between pb-3 border-b border-[#30363d]/70">
         <button

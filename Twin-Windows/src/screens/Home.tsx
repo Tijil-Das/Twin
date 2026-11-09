@@ -359,21 +359,47 @@ function FolderPairRow({
                   <span className="truncate">Transferring files with Google Drive…</span>
                 </div>
               ) : hasPending ? (
-                <div className="flex items-center gap-1.5 text-[#e3b341] whitespace-nowrap">
+                <div
+                  className="flex items-center gap-1.5 text-[#e3b341] whitespace-nowrap min-w-0"
+                  title={`Sync pending (${syncedFiles}/${totalFiles} synced, ${totalFiles - syncedFiles} remaining)`}
+                >
                   <span className="w-2 h-2 rounded-full bg-[#d29922] animate-ping shrink-0" />
-                  <span className="truncate">
+                  <span className="lg:hidden font-mono text-xs">
+                    Pending • {syncedFiles}/{totalFiles}
+                  </span>
+                  <span className="hidden lg:inline truncate">
                     Sync pending • {syncedFiles}/{totalFiles} synced ({totalFiles - syncedFiles} remaining)
                   </span>
                 </div>
               ) : isFullySynced ? (
-                <div className="flex items-center gap-1.5 text-[#3fb950] whitespace-nowrap">
+                <div
+                  className="flex items-center gap-1.5 text-[#3fb950] whitespace-nowrap min-w-0"
+                  title={totalFiles > 0 ? `Up to date with Google Drive (${syncedFiles}/${totalFiles} synced)` : "Up to date with Google Drive"}
+                >
                   <CheckCircle2 size={12} className="text-[#3fb950] shrink-0" />
-                  <span className="text-[#c9d1d9] whitespace-nowrap">Up to date with Google Drive</span>
-                  {totalFiles > 0 && (
+                  {totalFiles > 0 ? (
                     <>
-                      <span className="text-[#30363d]">•</span>
-                      <span className="text-[#8b949e] whitespace-nowrap">{syncedFiles}/{totalFiles} synced</span>
+                      {/* Compact when window width is constrained: just the tick and x/y count */}
+                      <span className="text-[#8b949e] font-mono lg:hidden whitespace-nowrap">
+                        {syncedFiles}/{totalFiles}
+                      </span>
+                      {/* Progressive disclosure on wider views */}
+                      <span className="text-[#c9d1d9] whitespace-nowrap hidden lg:inline xl:hidden">
+                        Up to date • {syncedFiles}/{totalFiles}
+                      </span>
+                      <span className="text-[#c9d1d9] whitespace-nowrap hidden xl:inline">
+                        Up to date with Google Drive
+                      </span>
+                      <span className="text-[#30363d] hidden xl:inline">•</span>
+                      <span className="text-[#8b949e] whitespace-nowrap hidden xl:inline">
+                        {syncedFiles}/{totalFiles} synced
+                      </span>
                     </>
+                  ) : (
+                    <span className="text-[#c9d1d9] whitespace-nowrap">
+                      <span className="lg:hidden">Up to date</span>
+                      <span className="hidden lg:inline">Up to date with Google Drive</span>
+                    </span>
                   )}
                 </div>
               ) : (
@@ -656,7 +682,7 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
   const enabledPairsCount = pairs.filter((p) => p.enabled).length;
 
   return (
-    <div className="p-6 sm:p-8 w-full space-y-6 pb-20">
+    <div className="p-6 sm:p-8 w-full max-w-[980px] mx-auto space-y-6 pb-20">
       {/* ── Status Canvas & Control Bar ── */}
       <div className="desktop-card p-5 sm:p-6 bg-[#0d1117] border border-[#30363d] rounded-lg shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">

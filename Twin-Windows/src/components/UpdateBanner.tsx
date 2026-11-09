@@ -52,7 +52,7 @@ export function UpdateBanner({ currentScreen }: { currentScreen?: string }) {
 
   return (
     <div
-      className="fixed bottom-5 right-5 z-[100] flex items-center gap-3 rounded-lg border border-blue-500/30 bg-[var(--surface)]/95 px-4 py-3 shadow-elevation backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-200"
+      className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 rounded-lg border border-blue-400/40 bg-gradient-to-r from-[#101c30]/95 to-[#162032]/95 px-4 py-3 shadow-[0_20px_48px_-8px_rgba(0,0,0,0.9),0_0_24px_-4px_rgba(59,130,246,0.3),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-xl animate-in fade-in slide-in-from-bottom-3 duration-200"
       role="status"
       aria-live="polite"
     >

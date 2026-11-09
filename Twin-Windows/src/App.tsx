@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster } from "sonner";
-import { WifiOff } from "lucide-react";
+import { WifiOff, Info, CheckCircle2, AlertCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { useStore, type ProgressEvent } from "@/store";
 import { getConfig, authStatus, govState, queueStatus, getPairStatuses } from "@/lib/tauri";
 import type { GovStatePayload } from "@/lib/tauri";
@@ -247,16 +247,17 @@ export default function App() {
 
       {/* Toast notifications */}
       <Toaster
+        theme="dark"
         position="bottom-center"
+        offset={36}
+        icons={{
+          info: <Info size={16} className="text-sky-400 shrink-0" />,
+          success: <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />,
+          warning: <AlertTriangle size={16} className="text-amber-400 shrink-0" />,
+          error: <AlertCircle size={16} className="text-red-400 shrink-0" />,
+          loading: <Loader2 size={16} className="text-blue-400 shrink-0 animate-spin" />,
+        }}
         toastOptions={{
-          style: {
-            background: "var(--surface)",
-            color: "var(--text)",
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            fontSize: 12,
-            boxShadow: "0 12px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)",
-          },
           duration: 3500,
         }}
       />

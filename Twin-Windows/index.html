@@ -29,6 +29,10 @@
         }
         div.textContent = 'Unhandled Rejection: ' + (e.reason ? (e.reason.stack || e.reason.message || e.reason) : e.reason);
       });
+      // Disable default browser right-click context menu
+      window.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+      });
     </script>
   </head>
   <body>
