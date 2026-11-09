@@ -610,7 +610,8 @@ unsafe extern "system" fn handler_query_interface_extract(
         handler_add_ref(this);
         S_OK
     } else if guid == IID_IPERSISTFILE || guid == IID_IPERSIST {
-        // IPersistFile vtbl is at &handler.persist_vtbl
+        // IPersistFile vtbl is at &handler.persist_vtbl (offset +8 from struct start)
+        // handler_from_persist() does sub(8) to recover the base pointer
         let handler = handler_from_extract(this);
         let persist_ptr = &mut (*handler).persist_vtbl as *mut _ as *mut c_void;
         *ppvObject = persist_ptr;

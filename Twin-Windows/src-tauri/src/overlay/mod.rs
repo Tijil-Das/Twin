@@ -459,8 +459,9 @@ pub fn find_overlay_icons_dir() -> Option<PathBuf> {
     None
 }
 
-/// Find `twin_overlay.dll` binary
+/// Find `twin_overlay.dll` binary — always prefer the deployed copy in icons/overlay/
 pub fn find_overlay_dll_path() -> Option<PathBuf> {
+    // 1. Preferred: icons/overlay/ next to exe (production install)
     if let Some(dir) = find_overlay_icons_dir() {
         let dll = dir.join("twin_overlay.dll");
         if dll.exists() {
@@ -468,9 +469,15 @@ pub fn find_overlay_dll_path() -> Option<PathBuf> {
         }
     }
 
-    let rel_dll = PathBuf::from(r"T:\Coding\Twin\Twin-Windows\overlay-handler\target\release\twin_overlay.dll");
+    // 2. Dev fallback: build output
+    let rel_dll = PathBuf::from(r"T:\Coding\Twin\Twin-Windows\src-tauri\icons\overlay\twin_overlay.dll");
     if rel_dll.exists() {
         return Some(rel_dll);
+    }
+
+    let build_dll = PathBuf::from(r"T:\Coding\Twin\Twin-Windows\overlay-handler\target\release\twin_overlay.dll");
+    if build_dll.exists() {
+        return Some(build_dll);
     }
 
     None
@@ -625,19 +632,42 @@ pub fn register_overlay_handler() -> Result<(), String> {
         return Ok(());
     }
 
-    // Direct HKLM write denied — elevate
-    elevate_and_register_overlay()
+    // Direct HKLM write denied — use elevated PowerShell to write HKLM keys
+    elevate_and_register_overlay(&dll_str)
 }
 
 #[cfg(windows)]
-fn elevate_and_register_overlay() -> Result<(), String> {
-    let cmd_script = find_admin_script("register_overlay_admin.cmd").ok_or_else(|| {
-        "register_overlay_admin.cmd not found. Please ensure it exists in the Twin folder.".to_string()
-    })?;
+fn elevate_and_register_overlay(dll_str: &str) -> Result<(), String> {
+    let icon_handler_clsid = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
 
+    // Build a self-contained PowerShell script that writes all required HKLM keys
+    let ps_script = format!(
+        r#"$clsid = '{clsid}'
+$dll  = '{dll}'
+function Set-RegVal($root,$path,$name,$val) {{
+    if (!(Test-Path "${{root}}:\${{path}}")) {{ New-Item -Path "${{root}}:\${{path}}" -Force | Out-Null }}
+    Set-ItemProperty -Path "${{root}}:\${{path}}" -Name $name -Value $val
+}}
+Set-RegVal HKLM "SOFTWARE\Classes\CLSID\$clsid"                   '(default)'     'Twin Folder Icon Handler'
+Set-RegVal HKLM "SOFTWARE\Classes\CLSID\$clsid\InprocServer32"    '(default)'     $dll
+Set-RegVal HKLM "SOFTWARE\Classes\CLSID\$clsid\InprocServer32"    'ThreadingModel' 'Apartment'
+Set-RegVal HKLM "SOFTWARE\Classes\Directory\shellex\IconHandler"   '(default)'     $clsid
+Set-RegVal HKLM "SOFTWARE\Classes\Folder\shellex\IconHandler"      '(default)'     $clsid
+"#,
+        clsid = icon_handler_clsid,
+        dll   = dll_str.replace('\'', "''"),
+    );
+
+    // Encode as Base64 UTF-16LE for -EncodedCommand (avoids quoting hell)
+    let encoded: Vec<u16> = ps_script.encode_utf16().collect();
+    let bytes: Vec<u8> = encoded.iter().flat_map(|w| w.to_le_bytes()).collect();
+    use std::io::Write;
+    // base64 encode manually using alphabet
+    let b64 = base64_encode(&bytes);
+
+    let param_str = format!("-NoProfile -NonInteractive -EncodedCommand {b64}\0");
     let verb: Vec<u16> = "runas\0".encode_utf16().collect();
-    let file: Vec<u16> = "cmd.exe\0".encode_utf16().collect();
-    let param_str = format!("/c \"{}\"\0", cmd_script.display());
+    let file: Vec<u16> = "powershell.exe\0".encode_utf16().collect();
     let params: Vec<u16> = param_str.encode_utf16().collect();
 
     let mut exec_info = SHELLEXECUTEINFOW {
@@ -664,7 +694,7 @@ fn elevate_and_register_overlay() -> Result<(), String> {
         if err == 1223 {
             return Err("Administrator elevation was cancelled by user.".to_string());
         }
-        return Err(format!("Failed to prompt for Administrator elevation (error code {err}). Please right-click register_overlay_admin.cmd and choose 'Run as administrator'."));
+        return Err(format!("Failed to prompt for Administrator elevation (error code {err})."));
     }
 
     if exec_info.hProcess != std::ptr::null_mut() && exec_info.hProcess != INVALID_HANDLE_VALUE {
@@ -675,11 +705,11 @@ fn elevate_and_register_overlay() -> Result<(), String> {
     }
 
     if is_overlay_registered() {
-        info!("Shell overlays successfully registered in HKLM via elevated script");
+        info!("Shell extension registered in HKLM via elevated PowerShell");
         let _ = restart_explorer();
         Ok(())
     } else {
-        Err("Registration script executed, but HKLM keys were not found. Please right-click register_overlay_admin.cmd and choose 'Run as administrator'.".to_string())
+        Err("HKLM registration failed even after elevation. Please run Twin as Administrator once.".to_string())
     }
 }
 
@@ -821,6 +851,23 @@ unsafe fn set_reg_val(root: HKEY, subkey: &str, value_name: Option<&str>, data: 
 unsafe fn del_reg_val(root: HKEY, subkey: &str) -> bool {
     let subkey_w: Vec<u16> = format!("{subkey}\0").encode_utf16().collect();
     RegDeleteKeyW(root, subkey_w.as_ptr()) == 0
+}
+
+/// Simple base64 encoder (standard alphabet) — avoids adding a crate dependency.
+fn base64_encode(input: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let combined = (b0 << 16) | (b1 << 8) | b2;
+        out.push(ALPHABET[(combined >> 18) as usize & 63] as char);
+        out.push(ALPHABET[(combined >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 { ALPHABET[(combined >> 6) as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { ALPHABET[(combined) as usize & 63] as char } else { '=' });
+    }
+    out
 }
 
 /// Kill Windows Explorer process (without restarting — used before DLL swap)
