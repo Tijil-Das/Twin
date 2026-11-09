@@ -500,37 +500,34 @@ pub fn find_admin_script(script_name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Check if the Twin folder icon handler is registered.
-/// Checks for the IconHandler CLSID in HKLM or HKCU Classes.
+/// Check if the Twin shell icon overlay is registered.
+/// Checks for TwinSynced CLSID (D1) in ShellIconOverlayIdentifiers in HKLM.
 #[cfg(windows)]
 pub fn is_overlay_registered() -> bool {
-    let icon_handler_clsid = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
-
-    // Check HKLM\SOFTWARE\Classes\Directory\shellex\IconHandler
-    let subkey: Vec<u16> = "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler\0"
-        .encode_utf16()
-        .collect();
+    let clsid_d1 = "{9B46E711-2051-417A-8D52-19253DE6C7D1}";
+    let subkey: Vec<u16> =
+        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers\\   TwinSynced\0"
+            .encode_utf16()
+            .collect();
     let mut hkey: HKEY = std::ptr::null_mut();
     unsafe {
-        for &root in &[HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
-            if RegOpenKeyExW(root, subkey.as_ptr(), 0, KEY_READ, &mut hkey) == 0 {
-                let mut buf = [0u16; 64];
-                let mut buf_bytes = (buf.len() * 2) as u32;
-                let mut reg_type = 0;
-                let q_res = RegQueryValueExW(
-                    hkey,
-                    std::ptr::null(),
-                    std::ptr::null_mut(),
-                    &mut reg_type,
-                    buf.as_mut_ptr() as _,
-                    &mut buf_bytes,
-                );
-                let _ = RegCloseKey(hkey);
-                if q_res == 0 {
-                    let val = String::from_utf16_lossy(&buf);
-                    if val.contains(icon_handler_clsid) {
-                        return true;
-                    }
+        if RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey.as_ptr(), 0, KEY_READ, &mut hkey) == 0 {
+            let mut buf = [0u16; 64];
+            let mut buf_bytes = (buf.len() * 2) as u32;
+            let mut reg_type = 0u32;
+            let q_res = RegQueryValueExW(
+                hkey,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                &mut reg_type,
+                buf.as_mut_ptr() as _,
+                &mut buf_bytes,
+            );
+            let _ = RegCloseKey(hkey);
+            if q_res == 0 {
+                let val = String::from_utf16_lossy(&buf);
+                if val.contains(clsid_d1) {
+                    return true;
                 }
             }
         }
@@ -543,12 +540,11 @@ pub fn is_overlay_registered() -> bool {
     false
 }
 
-/// Register `twin_overlay.dll` into Windows Registry (HKLM + HKCU)
-/// Uses the new IExtractIcon IconHandler approach (CLSID_TWIN_ICON_HANDLER).
+/// Register twin_overlay.dll as an IShellIconOverlayIdentifier shell extension.
 /// Automatically:
 ///   1. Kills Explorer (so the DLL is not locked)
-///   2. Copies twin_overlay_new.dll → twin_overlay.dll if a pending update exists
-///   3. Writes registry keys (HKCU always; HKLM if elevated or via UAC prompt)
+///   2. Copies twin_overlay_new.dll -> twin_overlay.dll if a pending update exists
+///   3. Writes HKLM registry keys via UAC-elevated PowerShell if needed
 ///   4. Restarts Explorer
 #[cfg(windows)]
 pub fn register_overlay_handler() -> Result<(), String> {
@@ -560,7 +556,6 @@ pub fn register_overlay_handler() -> Result<(), String> {
         let new_dll = icons_dir.join("twin_overlay_new.dll");
         let cur_dll = icons_dir.join("twin_overlay.dll");
         if new_dll.exists() {
-            // Backup old DLL
             if cur_dll.exists() {
                 let backup = icons_dir.join("twin_overlay.dll.old");
                 let _ = std::fs::copy(&cur_dll, &backup);
@@ -578,91 +573,136 @@ pub fn register_overlay_handler() -> Result<(), String> {
         }
     }
 
-    if is_overlay_registered() {
-        info!("Twin Explorer Overlay is already registered — restarting Explorer.");
-        let _ = restart_explorer();
-        return Ok(());
-    }
-
     let dll_path = find_overlay_dll_path().ok_or_else(|| {
         "twin_overlay.dll not found. Please compile the overlay handler first.".to_string()
     })?;
-
     let dll_str = dll_path.to_string_lossy().to_string();
-    let icon_handler_clsid = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
 
-    // Register CLSID in HKCU (always works without elevation)
-    unsafe {
-        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}");
-        set_reg_val(HKEY_CURRENT_USER, &clsid_key, None, "Twin Folder Icon Handler");
-        set_reg_val(HKEY_CURRENT_USER, &format!("{clsid_key}\\InprocServer32"), None, &dll_str);
-        set_reg_val(HKEY_CURRENT_USER, &format!("{clsid_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
-
-        // IconHandler keys in HKCU Classes (works for current user without elevation)
-        for subkey in &[
-            "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler",
-            "SOFTWARE\\Classes\\Folder\\shellex\\IconHandler",
-        ] {
-            set_reg_val(HKEY_CURRENT_USER, subkey, None, icon_handler_clsid);
-        }
-    }
-
-    // Try HKLM (needs elevation — succeeds if running as Administrator)
-    let hklm_success = unsafe {
-        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}");
-        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &clsid_key, None, "Twin Folder Icon Handler");
-        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{clsid_key}\\InprocServer32"), None, &dll_str);
-        let _ = set_reg_val(HKEY_LOCAL_MACHINE, &format!("{clsid_key}\\InprocServer32"), Some("ThreadingModel"), "Apartment");
-
-        let mut ok = true;
-        for subkey in &[
-            "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler",
-            "SOFTWARE\\Classes\\Folder\\shellex\\IconHandler",
-        ] {
-            if !set_reg_val(HKEY_LOCAL_MACHINE, subkey, None, icon_handler_clsid) {
-                ok = false;
-            }
-        }
-        ok
-    };
-
-    if hklm_success {
-        info!("Registered Twin Folder Icon Handler into HKLM with path {}", dll_str);
+    if is_overlay_registered() {
+        info!("Twin Explorer Overlay already registered — restarting Explorer.");
         let _ = restart_explorer();
         return Ok(());
     }
 
-    // Direct HKLM write denied — use elevated PowerShell to write HKLM keys
+    // Try direct HKLM write (succeeds if already elevated / running as Administrator)
+    let hklm_ok = unsafe { write_overlay_hklm_keys(&dll_str) };
+    if hklm_ok {
+        info!("Registered Twin Shell Overlay into HKLM with path {}", dll_str);
+        let _ = restart_explorer();
+        return Ok(());
+    }
+
+    // Need elevation — launch elevated PowerShell
     elevate_and_register_overlay(&dll_str)
 }
 
 #[cfg(windows)]
-fn elevate_and_register_overlay(dll_str: &str) -> Result<(), String> {
-    let icon_handler_clsid = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
+unsafe fn write_overlay_hklm_keys(dll_str: &str) -> bool {
+    let pairs = [
+        (
+            "   TwinSynced",
+            "{9B46E711-2051-417A-8D52-19253DE6C7D1}",
+            "Twin Synced Folder Overlay",
+        ),
+        (
+            "   TwinSyncing",
+            "{9B46E712-2051-417A-8D52-19253DE6C7D2}",
+            "Twin Syncing Folder Overlay",
+        ),
+    ];
+    let ol_base =
+        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers";
+    let approved =
+        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
 
-    // Build a self-contained PowerShell script that writes all required HKLM keys
-    let ps_script = format!(
-        r#"$clsid = '{clsid}'
-$dll  = '{dll}'
-function Set-RegVal($root,$path,$name,$val) {{
-    if (!(Test-Path "${{root}}:\${{path}}")) {{ New-Item -Path "${{root}}:\${{path}}" -Force | Out-Null }}
-    Set-ItemProperty -Path "${{root}}:\${{path}}" -Name $name -Value $val
-}}
-Set-RegVal HKLM "SOFTWARE\Classes\CLSID\$clsid"                   '(default)'     'Twin Folder Icon Handler'
-Set-RegVal HKLM "SOFTWARE\Classes\CLSID\$clsid\InprocServer32"    '(default)'     $dll
-Set-RegVal HKLM "SOFTWARE\Classes\CLSID\$clsid\InprocServer32"    'ThreadingModel' 'Apartment'
-Set-RegVal HKLM "SOFTWARE\Classes\Directory\shellex\IconHandler"   '(default)'     $clsid
-Set-RegVal HKLM "SOFTWARE\Classes\Folder\shellex\IconHandler"      '(default)'     $clsid
-"#,
-        clsid = icon_handler_clsid,
-        dll   = dll_str.replace('\'', "''"),
+    for (name_suffix, clsid_str, desc) in &pairs {
+        let ol_key = format!("{ol_base}\\{name_suffix}");
+        if !set_reg_val(HKEY_LOCAL_MACHINE, &ol_key, None, clsid_str) {
+            return false;
+        }
+        let clsid_key = format!("SOFTWARE\\Classes\\CLSID\\{clsid_str}");
+        if !set_reg_val(HKEY_LOCAL_MACHINE, &clsid_key, None, desc) {
+            return false;
+        }
+        if !set_reg_val(
+            HKEY_LOCAL_MACHINE,
+            &format!("{clsid_key}\\InprocServer32"),
+            None,
+            dll_str,
+        ) {
+            return false;
+        }
+        if !set_reg_val(
+            HKEY_LOCAL_MACHINE,
+            &format!("{clsid_key}\\InprocServer32"),
+            Some("ThreadingModel"),
+            "Apartment",
+        ) {
+            return false;
+        }
+        // Approved list
+        if !set_reg_val(HKEY_LOCAL_MACHINE, approved, Some(clsid_str), desc) {
+            return false;
+        }
+    }
+
+    // Clean up old IExtractIcon D3 keys if present
+    let _ = del_reg_val(
+        HKEY_LOCAL_MACHINE,
+        "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler",
+    );
+    let _ = del_reg_val(
+        HKEY_LOCAL_MACHINE,
+        "SOFTWARE\\Classes\\Folder\\shellex\\IconHandler",
+    );
+    let _ = del_reg_val(
+        HKEY_LOCAL_MACHINE,
+        "SOFTWARE\\Classes\\CLSID\\{9B46E713-2051-417A-8D52-19253DE6C7D3}\\InprocServer32",
+    );
+    let _ = del_reg_val(
+        HKEY_LOCAL_MACHINE,
+        "SOFTWARE\\Classes\\CLSID\\{9B46E713-2051-417A-8D52-19253DE6C7D3}",
     );
 
-    // Encode as Base64 UTF-16LE for -EncodedCommand (avoids quoting hell)
+    true
+}
+
+#[cfg(windows)]
+fn elevate_and_register_overlay(dll_str: &str) -> Result<(), String> {
+    // Build PowerShell script to register IShellIconOverlayIdentifier CLSIDs in HKLM
+    let ps_lines = vec![
+        format!("$dll = '{}'", dll_str.replace('\'', "''")),
+        "$pairs = @(".to_string(),
+        "  @{name='   TwinSynced';  clsid='{9B46E711-2051-417A-8D52-19253DE6C7D1}'; desc='Twin Synced Folder Overlay'},".to_string(),
+        "  @{name='   TwinSyncing'; clsid='{9B46E712-2051-417A-8D52-19253DE6C7D2}'; desc='Twin Syncing Folder Overlay'}".to_string(),
+        ")".to_string(),
+        "$ol = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers'".to_string(),
+        "$ap = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved'".to_string(),
+        "foreach ($p in $pairs) {".to_string(),
+        "  $k = \"$ol\\$($p.name)\"".to_string(),
+        "  if (!(Test-Path $k)) { New-Item -Path $k -Force | Out-Null }".to_string(),
+        "  Set-ItemProperty -Path $k -Name '(default)' -Value $p.clsid".to_string(),
+        "  $ck = \"HKLM:\\SOFTWARE\\Classes\\CLSID\\$($p.clsid)\"".to_string(),
+        "  if (!(Test-Path $ck)) { New-Item -Path $ck -Force | Out-Null }".to_string(),
+        "  Set-ItemProperty -Path $ck -Name '(default)' -Value $p.desc".to_string(),
+        "  $is = \"$ck\\InprocServer32\"".to_string(),
+        "  if (!(Test-Path $is)) { New-Item -Path $is -Force | Out-Null }".to_string(),
+        "  Set-ItemProperty -Path $is -Name '(default)' -Value $dll".to_string(),
+        "  Set-ItemProperty -Path $is -Name 'ThreadingModel' -Value 'Apartment'".to_string(),
+        "  if (!(Test-Path $ap)) { New-Item -Path $ap -Force | Out-Null }".to_string(),
+        "  Set-ItemProperty -Path $ap -Name $p.clsid -Value $p.desc".to_string(),
+        "}".to_string(),
+        "$d3 = '{9B46E713-2051-417A-8D52-19253DE6C7D3}'".to_string(),
+        "Remove-Item 'HKLM:\\SOFTWARE\\Classes\\Directory\\shellex\\IconHandler' -Force -EA SilentlyContinue".to_string(),
+        "Remove-Item 'HKLM:\\SOFTWARE\\Classes\\Folder\\shellex\\IconHandler' -Force -EA SilentlyContinue".to_string(),
+        "Remove-Item \"HKLM:\\SOFTWARE\\Classes\\CLSID\\$d3\\InprocServer32\" -Force -EA SilentlyContinue".to_string(),
+        "Remove-Item \"HKLM:\\SOFTWARE\\Classes\\CLSID\\$d3\" -Force -EA SilentlyContinue".to_string(),
+    ];
+    let ps_script = ps_lines.join("\r\n");
+
+    // Encode as Base64 UTF-16LE for -EncodedCommand
     let encoded: Vec<u16> = ps_script.encode_utf16().collect();
     let bytes: Vec<u8> = encoded.iter().flat_map(|w| w.to_le_bytes()).collect();
-    use std::io::Write;
-    // base64 encode manually using alphabet
     let b64 = base64_encode(&bytes);
 
     let param_str = format!("-NoProfile -NonInteractive -EncodedCommand {b64}\0");
@@ -694,10 +734,14 @@ Set-RegVal HKLM "SOFTWARE\Classes\Folder\shellex\IconHandler"      '(default)'  
         if err == 1223 {
             return Err("Administrator elevation was cancelled by user.".to_string());
         }
-        return Err(format!("Failed to prompt for Administrator elevation (error code {err})."));
+        return Err(format!(
+            "Failed to prompt for Administrator elevation (error code {err})."
+        ));
     }
 
-    if exec_info.hProcess != std::ptr::null_mut() && exec_info.hProcess != INVALID_HANDLE_VALUE {
+    if exec_info.hProcess != std::ptr::null_mut()
+        && exec_info.hProcess != INVALID_HANDLE_VALUE
+    {
         unsafe {
             WaitForSingleObject(exec_info.hProcess, 15000);
             CloseHandle(exec_info.hProcess);
@@ -709,7 +753,10 @@ Set-RegVal HKLM "SOFTWARE\Classes\Folder\shellex\IconHandler"      '(default)'  
         let _ = restart_explorer();
         Ok(())
     } else {
-        Err("HKLM registration failed even after elevation. Please run Twin as Administrator once.".to_string())
+        Err(
+            "HKLM registration failed even after elevation. Please run Twin as Administrator once."
+                .to_string(),
+        )
     }
 }
 
@@ -718,92 +765,36 @@ pub fn register_overlay_handler() -> Result<(), String> {
     Ok(())
 }
 
-/// Unregister `twin_overlay.dll` from Windows Registry
+/// Unregister twin_overlay.dll IShellIconOverlayIdentifier from Windows Registry
 #[cfg(windows)]
 pub fn unregister_overlay_handler() -> Result<(), String> {
-    let icon_handler_clsid = "{9B46E713-2051-417A-8D52-19253DE6C7D3}";
+    let pairs = [
+        ("   TwinSynced",  "{9B46E711-2051-417A-8D52-19253DE6C7D1}"),
+        ("   TwinSyncing", "{9B46E712-2051-417A-8D52-19253DE6C7D2}"),
+    ];
+    let ol_base =
+        "SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers";
+    let approved =
+        "SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved";
 
+    // Try direct HKLM delete (succeeds if elevated)
     unsafe {
-        // Remove HKCU CLSID entries
-        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}\\InprocServer32"));
-        del_reg_val(HKEY_CURRENT_USER, &format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}"));
-
-        // Remove HKCU IconHandler keys
-        for subkey in &[
-            "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler",
-            "SOFTWARE\\Classes\\Folder\\shellex\\IconHandler",
-        ] {
-            del_reg_val(HKEY_CURRENT_USER, subkey);
+        for (name_suffix, clsid_str) in &pairs {
+            del_reg_val(HKEY_LOCAL_MACHINE, &format!("{ol_base}\{name_suffix}"));
+            del_reg_val(
+                HKEY_LOCAL_MACHINE,
+                &format!("SOFTWARE\Classes\CLSID\{clsid_str}\InprocServer32"),
+            );
+            del_reg_val(
+                HKEY_LOCAL_MACHINE,
+                &format!("SOFTWARE\Classes\CLSID\{clsid_str}"),
+            );
+            del_reg_val(HKEY_LOCAL_MACHINE, approved);
         }
-    }
-
-    // Try HKLM directly
-    let hklm_del = unsafe {
-        let r1 = del_reg_val(HKEY_LOCAL_MACHINE, &format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}\\InprocServer32"));
-        let r2 = del_reg_val(HKEY_LOCAL_MACHINE, &format!("SOFTWARE\\Classes\\CLSID\\{icon_handler_clsid}"));
-        for subkey in &[
-            "SOFTWARE\\Classes\\Directory\\shellex\\IconHandler",
-            "SOFTWARE\\Classes\\Folder\\shellex\\IconHandler",
-        ] {
-            del_reg_val(HKEY_LOCAL_MACHINE, subkey);
-        }
-        r1 || r2
-    };
-
-    if !hklm_del && is_overlay_registered() {
-        elevate_and_unregister_overlay()?;
     }
 
     let _ = restart_explorer();
-    info!("Unregistered Twin Folder Icon Handler");
-    Ok(())
-}
-
-#[cfg(windows)]
-fn elevate_and_unregister_overlay() -> Result<(), String> {
-    let cmd_script = find_admin_script("unregister_overlay_admin.cmd").ok_or_else(|| {
-        "unregister_overlay_admin.cmd not found.".to_string()
-    })?;
-
-    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
-    let file: Vec<u16> = "cmd.exe\0".encode_utf16().collect();
-    let param_str = format!("/c \"{}\"\0", cmd_script.display());
-    let params: Vec<u16> = param_str.encode_utf16().collect();
-
-    let mut exec_info = SHELLEXECUTEINFOW {
-        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-        fMask: SEE_MASK_NOCLOSEPROCESS,
-        hwnd: 0,
-        lpVerb: verb.as_ptr(),
-        lpFile: file.as_ptr(),
-        lpParameters: params.as_ptr(),
-        lpDirectory: std::ptr::null(),
-        nShow: SW_HIDE,
-        hInstApp: 0,
-        lpIDList: std::ptr::null_mut(),
-        lpClass: std::ptr::null(),
-        hkeyClass: std::ptr::null_mut(),
-        dwHotKey: 0,
-        hIconOrMonitor: std::ptr::null_mut(),
-        hProcess: std::ptr::null_mut(),
-    };
-
-    let ok = unsafe { ShellExecuteExW(&mut exec_info) };
-    if ok == 0 {
-        let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-        if err == 1223 {
-            return Err("Administrator elevation was cancelled by user.".to_string());
-        }
-        return Err(format!("Failed to prompt for Administrator elevation (error code {err})."));
-    }
-
-    if exec_info.hProcess != std::ptr::null_mut() && exec_info.hProcess != INVALID_HANDLE_VALUE {
-        unsafe {
-            WaitForSingleObject(exec_info.hProcess, 15000);
-            CloseHandle(exec_info.hProcess);
-        }
-    }
-
+    info!("Unregistered Twin Shell Overlay");
     Ok(())
 }
 
