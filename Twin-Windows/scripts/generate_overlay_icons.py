@@ -56,16 +56,9 @@ def render_badge(sz: int, placement: str, kind: str) -> Image.Image:
             )
     elif kind == "syncing":
         yellow_fill = (250, 204, 21, 255)   # #facc15
-        yellow_outline = (113, 63, 18, 255) # #713f12
-        outline_w = max(1, int(round(0.12 * r)))
+        yellow_outline = (92, 38, 5, 255)   # #5c2605
+        outline_w = max(1, int(round(0.16 * r)))
         draw.ellipse(bbox, fill=yellow_fill, outline=yellow_outline, width=outline_w)
-
-        # Circular arrows for sync symbol
-        arc_r = r * 0.54
-        arc_bbox = [cx - arc_r, cy - arc_r, cx + arc_r, cy + arc_r]
-        arc_w = max(1, int(round(0.22 * r)))
-        draw.arc(arc_bbox, start=30, end=150, fill=(30, 41, 59, 255), width=arc_w)
-        draw.arc(arc_bbox, start=210, end=330, fill=(30, 41, 59, 255), width=arc_w)
 
     return img.resize((sz, sz), Image.Resampling.LANCZOS)
 

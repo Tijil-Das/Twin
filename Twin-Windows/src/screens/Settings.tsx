@@ -104,22 +104,22 @@ function WindowsFolderOverlayPreview({
   className?: string;
   placement?: OverlayPlacement;
 }) {
-  let cx = 33.5;
-  let cy = 31.7;
-  const r = 8.6; // Matches 30% diameter of reference images
+  let cx = 34.0;
+  let cy = 30.0;
+  const r = 8.5; // Matches exact reference geometry (30% diameter of folder body)
 
   if (placement === "top_right") {
     // Top-right shoulder of folder body (matches Image 1)
-    cx = 53.5;
-    cy = 16.5;
+    cx = 56.8;
+    cy = 13.2;
   } else if (placement === "bottom_right") {
     // Bottom-right corner hanging (matches Image 2)
-    cx = 53.5;
-    cy = 46.0;
+    cx = 56.3;
+    cy = 46.4;
   } else {
     // Center of folder body (matches Image 3)
-    cx = 33.5;
-    cy = 31.7;
+    cx = 34.0;
+    cy = 30.0;
   }
 
   const p1 = `${(cx - r * 0.50).toFixed(2)},${(cy + r * 0.05).toFixed(2)}`;
