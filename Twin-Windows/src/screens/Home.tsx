@@ -39,7 +39,7 @@ import {
   retryAllFailed,
   type PairEntry,
 } from "@/lib/tauri";
-import { progressLabel, formatBytes, formatSpeed, formatEta } from "@/lib/format";
+import { progressLabel, formatBytes, formatSpeed, formatSmartEta } from "@/lib/format";
 import { AddPairDialog } from "@/components/AddPairDialog";
 import { GithubFolderIcon } from "@/components/ui/GithubFolderIcon";
 import { toast } from "sonner";
@@ -164,6 +164,14 @@ function FolderPairRow({
 
   const isCurrentlySyncing = syncing || activeTransfers.length > 0 || (pairStatus?.running ?? 0) > 0;
   const primaryTransfer = activeTransfers[0];
+  const primaryEta = primaryTransfer
+    ? formatSmartEta(
+        primaryTransfer.etaSecs,
+        primaryTransfer.bytesTotal,
+        primaryTransfer.bytesDone,
+        primaryTransfer.speedBps
+      )
+    : null;
   const moreTransfersCount = Math.max(0, activeTransfers.length - 1);
 
   const totalFiles = pairStatus?.total ?? 0;
@@ -324,6 +332,11 @@ function FolderPairRow({
                       • {formatSpeed(primaryTransfer.speedBps)}
                     </span>
                   ) : null}
+                  {primaryEta ? (
+                    <span className="text-[#c9d1d9] font-mono shrink-0 hidden md:inline">
+                      • {primaryEta}
+                    </span>
+                  ) : null}
                   {moreTransfersCount > 0 && (
                     <span className="text-[#7d8590] shrink-0 font-sans text-[11px]">
                       (+{moreTransfersCount} more)
@@ -431,78 +444,104 @@ function FolderPairRow({
         </div>
       </div>
 
-      {/* Real-time File Transfers Strip (Upload / Download over Internet) */}
+      {/* Real-time File Transfers Child Panel (Hierarchically nested under this folder pair) */}
       {activeTransfers.length > 0 && (
-        <div className="px-4 pb-3 pt-1 border-t border-[#21262d] divide-y divide-[#21262d]/60 bg-[#161b22]/50">
-          {activeTransfers.map((t) => {
-            const isDownload = t.kind.toLowerCase().includes("download");
-            const speed = t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
-            const eta = t.etaSecs && t.etaSecs > 0 ? `${formatEta(t.etaSecs)} left` : "";
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="pb-3.5 pt-0.5 px-4 sm:pl-11 sm:pr-4 cursor-default select-none"
+        >
+          <div className="relative rounded-lg bg-[#080c12] border border-[#30363d]/80 p-3 shadow-inner space-y-2.5">
+            {/* Visual tree branch connecting parent folder to child transfers */}
+            <div
+              className="hidden sm:block absolute -left-4 top-3.5 w-3 h-3 border-l-2 border-b-2 border-[#30363d] rounded-bl-md pointer-events-none"
+              aria-hidden="true"
+            />
 
-            return (
-              <div key={t.jobId} className="py-2.5 space-y-2">
-                <div className="flex items-center justify-between text-xs gap-3">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    {isDownload ? (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40 shrink-0">
-                        <ArrowDown size={12} className="animate-bounce" />
-                        Downloading from Drive
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-[#238636]/20 text-[#3fb950] border border-[#238636]/40 shrink-0">
-                        <ArrowUp size={12} className="animate-bounce" />
-                        Uploading to Drive
-                      </span>
-                    )}
+            {/* Child Panel Sub-Header */}
+            <div className="flex items-center justify-between text-[11px] font-medium text-[#7d8590] pb-1.5 border-b border-[#21262d]">
+              <span className="flex items-center gap-1.5 text-[#58a6ff] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />
+                Active Transfers in "{folderName}" ({activeTransfers.length})
+              </span>
+              <span className="font-mono text-[10px] text-[#7d8590] hidden sm:inline">
+                Live Drive sync
+              </span>
+            </div>
 
-                    <span
-                      className="font-mono text-xs text-[#e6edf3] truncate font-medium"
-                      title={t.relPath}
-                    >
-                      {t.fileName}
-                    </span>
-                    {t.relPath !== t.fileName && (
-                      <span
-                        className="text-[#7d8590] text-xs font-mono truncate hidden sm:inline"
-                        title={t.relPath}
-                      >
-                        ({t.relPath})
+            {/* Active Transfer Child Items */}
+            <div className="divide-y divide-[#21262d]/60 space-y-2.5">
+              {activeTransfers.map((t, idx) => {
+                const isDownload = t.kind.toLowerCase().includes("download");
+                const speed = t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
+                const eta = formatSmartEta(t.etaSecs, t.bytesTotal, t.bytesDone, t.speedBps);
+
+                return (
+                  <div key={t.jobId} className={cn("space-y-1.5", idx > 0 && "pt-2.5")}>
+                    <div className="flex items-center justify-between text-xs gap-3">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {isDownload ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40 shrink-0">
+                            <ArrowDown size={11} className="animate-bounce" />
+                            Downloading
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#238636]/20 text-[#3fb950] border border-[#238636]/40 shrink-0">
+                            <ArrowUp size={11} className="animate-bounce" />
+                            Uploading
+                          </span>
+                        )}
+
+                        <span
+                          className="font-mono text-xs text-[#e6edf3] truncate font-medium"
+                          title={t.relPath}
+                        >
+                          {t.fileName}
+                        </span>
+                        {t.relPath !== t.fileName && (
+                          <span
+                            className="text-[#7d8590] text-[11px] font-mono truncate hidden md:inline"
+                            title={t.relPath}
+                          >
+                            ({t.relPath})
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 font-mono text-xs text-[#7d8590] shrink-0">
+                        {speed && <span className="text-[#58a6ff] font-medium">{speed}</span>}
+                        {speed && eta && <span>•</span>}
+                        {eta && <span className="text-[#c9d1d9]">{eta}</span>}
+                        {t.bytesTotal > 0 ? (
+                          <span className="text-[#e6edf3] font-bold ml-1">{t.pct}%</span>
+                        ) : (
+                          <span className="text-[#58a6ff] font-medium ml-1">Transferring</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <Progress
+                      value={t.bytesTotal > 0 ? t.pct : 100}
+                      aria-label={`Transfer progress for ${t.fileName}`}
+                      className={cn("h-1.5 bg-[#161b22]", t.bytesTotal === 0 && "animate-pulse")}
+                    />
+
+                    <div className="flex items-center justify-between text-[11px] font-mono text-[#7d8590]">
+                      <span>
+                        {t.bytesTotal > 0
+                          ? `${formatBytes(t.bytesDone)} of ${formatBytes(t.bytesTotal)}`
+                          : "Connecting & transferring…"}
                       </span>
-                    )}
+                      {t.bytesTotal > 0 && t.pct > 0 && (
+                        <span className="text-[10px] text-[#7d8590]">
+                          {formatBytes(Math.max(0, t.bytesTotal - t.bytesDone))} remaining
+                        </span>
+                      )}
+                    </div>
                   </div>
-
-                  <div className="flex items-center gap-2 font-mono text-xs text-[#7d8590] shrink-0">
-                    {speed && <span className="text-[#58a6ff]">{speed}</span>}
-                    {speed && eta && <span>•</span>}
-                    {eta && <span>{eta}</span>}
-                    {t.bytesTotal > 0 ? (
-                      <span className="text-[#e6edf3] font-bold ml-1">{t.pct}%</span>
-                    ) : (
-                      <span className="text-[#58a6ff] font-medium ml-1">Transferring</span>
-                    )}
-                  </div>
-                </div>
-
-                <Progress
-                  value={t.bytesTotal > 0 ? t.pct : 100}
-                  aria-label={`Transfer progress for ${t.fileName}`}
-                  className={cn("h-1.5 bg-[#21262d]", t.bytesTotal === 0 && "animate-pulse")}
-                />
-
-                <div className="flex items-center justify-between text-xs font-mono text-[#7d8590]">
-                  <span>
-                    {t.bytesTotal > 0
-                      ? `${formatBytes(t.bytesDone)} of ${formatBytes(t.bytesTotal)}`
-                      : "Connecting & transferring…"}
-                  </span>
-                  <span className="text-[#58a6ff] flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#58a6ff] animate-pulse" />
-                    Live Google Drive transfer
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -576,6 +615,11 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
   const inFlightPct = activeTotal > 0 ? (activeDone / activeTotal) * 100 : 0;
   const displayPct = totalJobs > 0 ? batchPct : inFlightPct;
   const startMs = activeEvents.length > 0 ? Math.min(...activeEvents.map((e) => e.start_ms)) : Date.now();
+  const totalBatchSpeed = activeEvents.reduce((a, e) => a + (e.speed_bps || 0), 0);
+  const batchRemainingBytes = Math.max(0, activeTotal - activeDone);
+  const batchEtaSecs =
+    totalBatchSpeed > 0 && batchRemainingBytes > 0 ? batchRemainingBytes / totalBatchSpeed : null;
+  const batchEta = formatSmartEta(batchEtaSecs, batchRemainingBytes, activeDone, totalBatchSpeed);
 
   async function handlePauseResume() {
     try {
@@ -612,7 +656,7 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
   const enabledPairsCount = pairs.filter((p) => p.enabled).length;
 
   return (
-    <div className="p-6 sm:p-8 w-full space-y-6">
+    <div className="p-6 sm:p-8 w-full space-y-6 pb-20">
       {/* ── Status Canvas & Control Bar ── */}
       <div className="desktop-card p-5 sm:p-6 bg-[#0d1117] border border-[#30363d] rounded-lg shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
@@ -722,12 +766,26 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
             </div>
             <Progress value={displayPct} aria-label="Batch progress" className="h-2" />
             <div className="flex items-center justify-between text-xs font-mono text-[#7d8590]">
-              <span>
-                {totalJobs > 0
-                  ? `${queueStatus.done ?? 0} of ${totalJobs} completed`
-                  : progressLabel(activeDone, activeTotal, startMs)}
-              </span>
-              <span>
+              <div className="flex items-center gap-1.5 min-w-0 truncate">
+                <span>
+                  {totalJobs > 0
+                    ? `${queueStatus.done ?? 0} of ${totalJobs} completed`
+                    : progressLabel(activeDone, activeTotal, startMs)}
+                </span>
+                {totalBatchSpeed > 0 && (
+                  <>
+                    <span>•</span>
+                    <span className="text-[#58a6ff] font-semibold">{formatSpeed(totalBatchSpeed)}</span>
+                  </>
+                )}
+                {batchEta && (
+                  <>
+                    <span>•</span>
+                    <span className="text-[#c9d1d9]">{batchEta}</span>
+                  </>
+                )}
+              </div>
+              <span className="shrink-0 ml-2">
                 {queueStatus.running} active transfer{queueStatus.running === 1 ? "" : "s"}
                 {queueStatus.queued > 0 && ` • ${queueStatus.queued} queued`}
               </span>

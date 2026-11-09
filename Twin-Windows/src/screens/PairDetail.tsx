@@ -47,7 +47,7 @@ import {
   type SubfolderItem,
   type IntegrityReport,
 } from "@/lib/tauri";
-import { formatBytes, formatSpeed, formatEta, formatRelTime } from "@/lib/format";
+import { formatBytes, formatSpeed, formatSmartEta, formatRelTime } from "@/lib/format";
 import { toast } from "sonner";
 import gdLogo from "@/assets/gd-icon.png";
 import { GithubFolderIcon } from "@/components/ui/GithubFolderIcon";
@@ -407,7 +407,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
   }
 
   return (
-    <div className="p-6 sm:p-8 w-full space-y-6">
+    <div className="p-6 sm:p-8 w-full space-y-6 pb-20">
       {/* ── Top Navigation Bar & Breadcrumb ── */}
       <div className="flex items-center justify-between pb-3 border-b border-[#30363d]/70">
         <button
@@ -960,7 +960,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
             {activeTransfers.map((t) => {
               const isDownload = t.kind.toLowerCase().includes("download");
               const speed = t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
-              const eta = t.etaSecs && t.etaSecs > 0 ? `${formatEta(t.etaSecs)} left` : "";
+              const eta = formatSmartEta(t.etaSecs, t.bytesTotal, t.bytesDone, t.speedBps);
 
               return (
                 <div key={t.jobId} className="py-3 space-y-2">

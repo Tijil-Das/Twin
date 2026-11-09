@@ -25,6 +25,70 @@ export function formatEta(secs: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/**
+ * Pro-software ETA formatting and gating heuristics.
+ * Researched from tools like curl, rsync, Google Drive, and Steam:
+ * - Does not force ETA on tiny files (< 512 KB) or fleeting transfers (< 3s).
+ * - Filters out early warm-up phase and detects stalled speed.
+ * - Caps extreme estimates (> 24h).
+ * - Formats with clean human units (~45s left, ~2m 10s left, ~1h 15m left).
+ */
+export function formatSmartEta(
+  secs?: number | null,
+  bytesTotal?: number,
+  bytesDone?: number,
+  speedBps?: number
+): string | null {
+  if (secs === null || secs === undefined || !isFinite(secs) || secs <= 0) {
+    return null;
+  }
+
+  // Heuristic 1: If file size is tiny (< 512 KB), transfer finishes in milliseconds;
+  // forcing an ETA causes jittery visual clutter.
+  if (bytesTotal && bytesTotal > 0 && bytesTotal < 512 * 1024) {
+    return null;
+  }
+
+  // Heuristic 2: If remaining time is under 3 seconds, don't show fleeting countdown.
+  if (secs < 3) {
+    return null;
+  }
+
+  // Heuristic 3: If transfer just began (< 1% complete on large files), let speed stabilize
+  if (bytesTotal && bytesDone !== undefined && bytesTotal > 10 * 1024 * 1024) {
+    const pct = (bytesDone / bytesTotal) * 100;
+    if (pct < 1.0) {
+      return "Estimating…";
+    }
+  }
+
+  // Heuristic 4: If speed is essentially zero, indicate stalled rather than infinite.
+  if (speedBps !== undefined && speedBps > 0 && speedBps < 50) {
+    return "Stalled";
+  }
+
+  // Heuristic 5: Cap runaway estimates over 24 hours.
+  if (secs > 86400) {
+    return "> 1 day left";
+  }
+
+  const s = Math.round(secs);
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const remainingSeconds = s % 60;
+
+  if (hours > 0) {
+    return minutes > 0 ? `~${hours}h ${minutes}m left` : `~${hours}h left`;
+  }
+  if (minutes > 0) {
+    if (minutes >= 5) {
+      return `~${minutes}m left`;
+    }
+    return remainingSeconds > 0 ? `~${minutes}m ${remainingSeconds}s left` : `~${minutes}m left`;
+  }
+  return `~${remainingSeconds}s left`;
+}
+
 /** Format ms timestamp to a relative string like "2 min ago" or absolute "14:32" */
 export function formatRelTime(ms: number): string {
   const diff = Date.now() - ms;

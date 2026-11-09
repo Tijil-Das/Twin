@@ -247,7 +247,7 @@ export default function App() {
 
       {/* Toast notifications */}
       <Toaster
-        position="bottom-right"
+        position="top-right"
         toastOptions={{
           style: {
             background: "var(--surface)",

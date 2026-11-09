@@ -147,15 +147,11 @@ export function SettingsScreen() {
 
   async function handleToggleOverlay(enabled: boolean) {
     setOverlayEnabled(enabled);
-    patchLocal((c) => ({
-      ...c,
-      overlay: {
-        enabled,
-        placement: overlayPlacement,
-      },
-    }));
     try {
       await setOverlaySettings(enabled, overlayPlacement);
+      const updatedConfig = await getConfig();
+      setConfig(updatedConfig);
+      setLocal(updatedConfig);
       toast.success(
         enabled
           ? "Explorer folder status icon overlays enabled"
@@ -168,17 +164,12 @@ export function SettingsScreen() {
 
   async function handlePlacementChange(placement: OverlayPlacement) {
     setOverlayPlacement(placement);
-    patchLocal((c) => ({
-      ...c,
-      overlay: {
-        enabled: overlayEnabled,
-        placement,
-      },
-    }));
     setNeedsExplorerRestart(true);
     try {
       await setOverlaySettings(overlayEnabled, placement);
-      toast.info("Placement updated. Restart Windows Explorer to reload icons.");
+      const updatedConfig = await getConfig();
+      setConfig(updatedConfig);
+      setLocal(updatedConfig);
     } catch (err) {
       toast.error(`Placement update failed: ${String(err)}`);
     }
@@ -1038,12 +1029,12 @@ export function SettingsScreen() {
                   />
                   <div>
                     <span className="font-semibold text-[#e6edf3]">
-                      {overlayRegistered ? "Shell Extension Active & Registered" : "Shell Extension Registration Pending"}
+                      {overlayRegistered ? "Shell Extension Active & Registered" : "Explorer Shell Registration Required"}
                     </span>
                     <p className="text-[11px] text-[#7d8590]">
                       {overlayRegistered
-                        ? "Registered under ShellIconOverlayIdentifiers with priority sorting."
-                        : "Click register to enable overlay icons in Windows File Explorer."}
+                        ? "Registered under HKLM ShellIconOverlayIdentifiers with priority sorting."
+                        : "Explorer requires registration in Windows HKLM with Administrator approval (UAC)."}
                     </p>
                   </div>
                 </div>
@@ -1055,9 +1046,10 @@ export function SettingsScreen() {
                     size="sm"
                     onClick={handleRegisterOverlay}
                     disabled={registeringOverlay}
-                    className="text-xs border border-[#30363d] shrink-0"
+                    className="text-xs border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 shrink-0 flex items-center gap-1.5"
                   >
-                    {registeringOverlay ? "Registering…" : "Register Extension"}
+                    <Shield size={12} className="text-amber-400" />
+                    {registeringOverlay ? "Prompting UAC…" : "Register (Admin UAC)"}
                   </Button>
                 )}
               </div>
@@ -1287,7 +1279,7 @@ export function SettingsScreen() {
 
       {/* Floating Save Banner */}
       {hasChanges && (
-        <div className="fixed bottom-7 right-8 z-30 animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div className="fixed bottom-7 right-8 z-40 animate-in fade-in slide-in-from-bottom-2 duration-150">
           <Button
             onClick={handleSave}
             disabled={saving}
