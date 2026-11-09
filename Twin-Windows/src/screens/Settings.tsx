@@ -71,25 +71,29 @@ const OVERLAY_PLACEMENTS: {
   description: string;
 }[] = [
   {
-    id: "centered",
-    title: "Center",
-    description: "Badge sits squarely in the center of the corner area.",
-  },
-  {
     id: "top_right",
     title: "Top-Right",
-    description: "Badge is shifted towards the upper-right shoulder.",
+    description: "Mark sits on the upper-right shoulder of the folder.",
   },
   {
     id: "bottom_right",
     title: "Bottom-Right",
-    description: "Badge is shifted towards the bottom-right corner.",
+    description: "Mark sits on the bottom-right corner hanging slightly off the edge.",
+  },
+  {
+    id: "centered",
+    title: "Center",
+    description: "Mark sits directly over the middle of the folder body.",
   },
 ];
 
 /**
  * Authentic Windows 11 Explorer Folder with Overlay Badge.
- * Replicates real Windows File Explorer geometry and native Shell overlay placement (bottom-left corner).
+ * Replicates folder geometry with the 3 exact badge placements from reference images:
+ * - Top-Right (cx=53.5, cy=16.5)
+ * - Bottom-Right (cx=53.5, cy=46.0)
+ * - Center (cx=33.5, cy=31.7)
+ * Radius r=8.6 gives exactly 30% diameter relative to folder width.
  */
 function WindowsFolderOverlayPreview({
   badge = "synced",
@@ -100,20 +104,22 @@ function WindowsFolderOverlayPreview({
   className?: string;
   placement?: OverlayPlacement;
 }) {
-  let cx = 16.0;
-  let cy = 43.5;
-  const r = 6.2; // Perfectly proportioned, suitable size matching r=0.30
+  let cx = 33.5;
+  let cy = 31.7;
+  const r = 8.6; // Matches 30% diameter of reference images
 
   if (placement === "top_right") {
-    cx = 19.5;
-    cy = 40.0;
+    // Top-right shoulder of folder body (matches Image 1)
+    cx = 53.5;
+    cy = 16.5;
   } else if (placement === "bottom_right") {
-    cx = 19.5;
-    cy = 46.5;
+    // Bottom-right corner hanging (matches Image 2)
+    cx = 53.5;
+    cy = 46.0;
   } else {
-    // centered
-    cx = 16.0;
-    cy = 43.5;
+    // Center of folder body (matches Image 3)
+    cx = 33.5;
+    cy = 31.7;
   }
 
   const p1 = `${(cx - r * 0.50).toFixed(2)},${(cy + r * 0.05).toFixed(2)}`;

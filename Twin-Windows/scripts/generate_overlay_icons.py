@@ -1,14 +1,13 @@
 """
 Generates multi-resolution Windows File Explorer overlay icons for Twin.
 
-Supported placements:
-- top_right: shifted towards upper-right of overlay area
-- bottom_right: shifted towards lower-right of overlay area
-- centered: centered in overlay area
+Supported placements matching user reference specifications:
+- top_right: shifted towards upper-right (Image 1)
+- bottom_right: shifted towards bottom-right (Image 2)
+- centered: centered on the badge canvas (Image 3)
 
-Badge radius r = 0.30 * sz provides a well-proportioned, suitable size matching
-standard Windows 11 icon overlay guidelines (e.g. OneDrive, Dropbox) without
-dominating the folder icon.
+Badge radius r = 0.27 * sz produces a 30% diameter badge relative to the folder icon,
+accurately matching the reference proportions.
 """
 import os
 from PIL import Image, ImageDraw
@@ -16,15 +15,14 @@ from PIL import Image, ImageDraw
 def render_badge(sz: int, placement: str, kind: str) -> Image.Image:
     scale = 4
     s = sz * scale
-
-    r = s * 0.30
+    r = s * 0.27
 
     if placement == "top_right":
-        cx = s * 0.58
-        cy = s * 0.42
+        cx = s * 0.62
+        cy = s * 0.38
     elif placement == "bottom_right":
-        cx = s * 0.58
-        cy = s * 0.58
+        cx = s * 0.62
+        cy = s * 0.62
     elif placement == "centered":
         cx = s * 0.50
         cy = s * 0.50
@@ -42,7 +40,7 @@ def render_badge(sz: int, placement: str, kind: str) -> Image.Image:
         outline_w = max(1, int(round(0.10 * r)))
         draw.ellipse(bbox, fill=green_fill, outline=green_outline, width=outline_w)
 
-        # Thick, crisp, high-contrast white checkmark
+        # Crisp, high-contrast white checkmark
         p1 = (cx - r * 0.50, cy + r * 0.05)
         p2 = (cx - r * 0.16, cy + r * 0.38)
         p3 = (cx + r * 0.50, cy - r * 0.34)
