@@ -333,6 +333,16 @@ async fn resumable_upload(
 
     let mut offset = start_offset;
 
+    // Emit initial progress so frontend displays this file immediately
+    let _ = progress.send(ProgressUpdate {
+        job_id: job.id,
+        pair_id: job.pair_id.clone(),
+        rel_path: job.rel_path.clone(),
+        bytes_done: start_offset,
+        bytes_total: total_size,
+        kind: "upload".into(),
+    });
+
     while offset < total_size {
         gov.checkpoint().await;
 

@@ -109,18 +109,76 @@ function FolderPairRow({
   const modeInfo = SYNC_MODES[mode as keyof typeof SYNC_MODES] ?? SYNC_MODES.two_way;
   const ModeIcon = modeInfo.Icon;
 
-  // Active in-flight transfer events for this pair
+  // Active in-flight transfer events for this pair from progress store
   const pairEvents = Object.values(progress).filter(
-    (e): e is ProgressEvent =>
-      Boolean(
-        e &&
-          (e as ProgressEvent).pair_id === id &&
-          (e as ProgressEvent).bytes_total > 0 &&
-          (e as ProgressEvent).bytes_done <= (e as ProgressEvent).bytes_total
-      )
+    (e): e is ProgressEvent => Boolean(e && (e as ProgressEvent).pair_id === id)
   );
 
-  const isCurrentlySyncing = syncing || pairEvents.length > 0;
+  // Active jobs from SQLite pairStatus
+  const runningJobs = pairStatus?.active_jobs?.filter((j) => j.status === "running") ?? [];
+
+  // Unified list of active transfers currently working on this pair
+  interface ActiveTransferView {
+    jobId: number | string;
+    relPath: string;
+    fileName: string;
+    kind: string;
+    bytesDone: number;
+    bytesTotal: number;
+    pct: number;
+    speedBps?: number;
+    etaSecs?: number | null;
+    isLiveByteStream: boolean;
+  }
+
+  const activeTransfers: ActiveTransferView[] = (() => {
+    const list: ActiveTransferView[] = [];
+    const seenPaths = new Set<string>();
+
+    for (const ev of pairEvents) {
+      const fileName = ev.rel_path.split(/[/\\]/).pop() || ev.rel_path;
+      const pct =
+        ev.bytes_total > 0
+          ? Math.min(100, Math.round((ev.bytes_done / ev.bytes_total) * 100))
+          : 0;
+      seenPaths.add(ev.rel_path);
+      list.push({
+        jobId: ev.job_id,
+        relPath: ev.rel_path,
+        fileName,
+        kind: ev.kind || "upload",
+        bytesDone: ev.bytes_done,
+        bytesTotal: ev.bytes_total,
+        pct,
+        speedBps: ev.speed_bps,
+        etaSecs: ev.eta_secs,
+        isLiveByteStream: true,
+      });
+    }
+
+    for (const j of runningJobs) {
+      if (!seenPaths.has(j.rel_path)) {
+        const fileName = j.rel_path.split(/[/\\]/).pop() || j.rel_path;
+        seenPaths.add(j.rel_path);
+        list.push({
+          jobId: j.id,
+          relPath: j.rel_path,
+          fileName,
+          kind: j.kind || "upload",
+          bytesDone: 0,
+          bytesTotal: 0,
+          pct: 0,
+          isLiveByteStream: false,
+        });
+      }
+    }
+
+    return list;
+  })();
+
+  const isCurrentlySyncing = syncing || activeTransfers.length > 0 || (pairStatus?.running ?? 0) > 0;
+  const primaryTransfer = activeTransfers[0];
+  const moreTransfersCount = Math.max(0, activeTransfers.length - 1);
 
   const totalFiles = pairStatus?.total ?? 0;
   const syncedFiles = pairStatus?.synced ?? 0;
@@ -251,7 +309,42 @@ function FolderPairRow({
 
             {/* Line 2: Status Line belonging directly to this pair */}
             <div className="flex items-center gap-2 text-xs font-mono min-w-0 whitespace-nowrap overflow-hidden">
-              {syncing || isCurrentlySyncing ? (
+              {primaryTransfer ? (
+                <div className="flex items-center gap-1.5 min-w-0 text-xs">
+                  {primaryTransfer.kind.toLowerCase().includes("download") ? (
+                    <span className="flex items-center gap-1 text-[#58a6ff] shrink-0 font-semibold">
+                      <ArrowDown size={12} className="animate-bounce text-[#58a6ff] shrink-0" />
+                      Downloading:
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[#3fb950] shrink-0 font-semibold">
+                      <ArrowUp size={12} className="animate-bounce text-[#3fb950] shrink-0" />
+                      Uploading:
+                    </span>
+                  )}
+                  <span
+                    className="text-[#e6edf3] font-mono font-medium truncate max-w-[240px] sm:max-w-[340px]"
+                    title={primaryTransfer.relPath}
+                  >
+                    "{primaryTransfer.fileName}"
+                  </span>
+                  {primaryTransfer.pct > 0 && (
+                    <span className="text-[#58a6ff] font-mono font-bold shrink-0">
+                      ({primaryTransfer.pct}%)
+                    </span>
+                  )}
+                  {primaryTransfer.speedBps && primaryTransfer.speedBps > 0 ? (
+                    <span className="text-[#7d8590] font-mono shrink-0 hidden sm:inline">
+                      • {formatSpeed(primaryTransfer.speedBps)}
+                    </span>
+                  ) : null}
+                  {moreTransfersCount > 0 && (
+                    <span className="text-[#7d8590] shrink-0 font-sans text-[11px]">
+                      (+{moreTransfersCount} more)
+                    </span>
+                  )}
+                </div>
+              ) : syncing ? (
                 <div className="flex items-center gap-1.5 text-[#58a6ff] whitespace-nowrap">
                   <RefreshCw size={12} className="animate-spin text-[#58a6ff] shrink-0" />
                   <span className="truncate">Scanning Google Drive & syncing changes…</span>
@@ -353,25 +446,15 @@ function FolderPairRow({
       </div>
 
       {/* Real-time File Transfers Strip (Upload / Download over Internet) */}
-      {pairEvents.length > 0 && (
+      {activeTransfers.length > 0 && (
         <div className="px-4 pb-3 pt-1 border-t border-[#21262d] divide-y divide-[#21262d]/60 bg-[#161b22]/50">
-          {pairEvents.map((ev) => {
-            const isDownload = ev.kind === "download";
-            const fileName = ev.rel_path.split(/[/\\]/).pop() || ev.rel_path;
-            const evPct =
-              ev.bytes_total > 0
-                ? Math.min(100, Math.round((ev.bytes_done / ev.bytes_total) * 100))
-                : 0;
-            const speed =
-              ev.speed_bps && ev.speed_bps > 0
-                ? formatSpeed(ev.speed_bps)
-                : ev.start_ms && Date.now() - ev.start_ms > 300
-                ? formatSpeed(ev.bytes_done / Math.max(0.1, (Date.now() - ev.start_ms) / 1000))
-                : "";
-            const eta = ev.eta_secs && ev.eta_secs > 0 ? `${formatEta(ev.eta_secs)} left` : "";
+          {activeTransfers.map((t) => {
+            const isDownload = t.kind.toLowerCase().includes("download");
+            const speed = t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
+            const eta = t.etaSecs && t.etaSecs > 0 ? `${formatEta(t.etaSecs)} left` : "";
 
             return (
-              <div key={ev.job_id} className="py-2.5 space-y-2">
+              <div key={t.jobId} className="py-2.5 space-y-2">
                 <div className="flex items-center justify-between text-xs gap-3">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     {isDownload ? (
@@ -388,16 +471,16 @@ function FolderPairRow({
 
                     <span
                       className="font-mono text-xs text-[#e6edf3] truncate font-medium"
-                      title={ev.rel_path}
+                      title={t.relPath}
                     >
-                      {fileName}
+                      {t.fileName}
                     </span>
-                    {ev.rel_path !== fileName && (
+                    {t.relPath !== t.fileName && (
                       <span
                         className="text-[#7d8590] text-xs font-mono truncate hidden sm:inline"
-                        title={ev.rel_path}
+                        title={t.relPath}
                       >
-                        ({ev.rel_path})
+                        ({t.relPath})
                       </span>
                     )}
                   </div>
@@ -406,19 +489,25 @@ function FolderPairRow({
                     {speed && <span className="text-[#58a6ff]">{speed}</span>}
                     {speed && eta && <span>•</span>}
                     {eta && <span>{eta}</span>}
-                    <span className="text-[#e6edf3] font-bold ml-1">{evPct}%</span>
+                    {t.bytesTotal > 0 ? (
+                      <span className="text-[#e6edf3] font-bold ml-1">{t.pct}%</span>
+                    ) : (
+                      <span className="text-[#58a6ff] font-medium ml-1">Transferring</span>
+                    )}
                   </div>
                 </div>
 
                 <Progress
-                  value={evPct}
-                  aria-label={`Transfer progress for ${fileName}`}
-                  className="h-1.5 bg-[#21262d]"
+                  value={t.bytesTotal > 0 ? t.pct : 100}
+                  aria-label={`Transfer progress for ${t.fileName}`}
+                  className={cn("h-1.5 bg-[#21262d]", t.bytesTotal === 0 && "animate-pulse")}
                 />
 
                 <div className="flex items-center justify-between text-xs font-mono text-[#7d8590]">
                   <span>
-                    {formatBytes(ev.bytes_done)} of {formatBytes(ev.bytes_total)}
+                    {t.bytesTotal > 0
+                      ? `${formatBytes(t.bytesDone)} of ${formatBytes(t.bytesTotal)}`
+                      : "Connecting & transferring…"}
                   </span>
                   <span className="text-[#58a6ff] flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-[#58a6ff] animate-pulse" />

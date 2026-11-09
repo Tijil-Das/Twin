@@ -195,6 +195,16 @@ pub(crate) async fn run_download(
 
     gov.checkpoint().await;
 
+    // Emit initial progress so frontend displays this file immediately
+    let _ = progress.send(ProgressUpdate {
+        job_id: job.id,
+        pair_id: job.pair_id.clone(),
+        rel_path: job.rel_path.clone(),
+        bytes_done: 0,
+        bytes_total: size,
+        kind: "download".into(),
+    });
+
     if size > PARALLEL_THRESHOLD {
         download_parallel(
             &job, &drive, &drive_id, size, &part_path, &sidecar,

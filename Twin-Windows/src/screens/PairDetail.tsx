@@ -99,16 +99,70 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
 
   // Active in-flight transfers for this pair
   const pairEvents = Object.values(progress).filter(
-    (e): e is ProgressEvent =>
-      Boolean(
-        e &&
-          (e as ProgressEvent).pair_id === pairId &&
-          (e as ProgressEvent).bytes_total > 0 &&
-          (e as ProgressEvent).bytes_done <= (e as ProgressEvent).bytes_total
-      )
+    (e): e is ProgressEvent => Boolean(e && (e as ProgressEvent).pair_id === pairId)
   );
 
-  const isCurrentlySyncing = syncing || pairEvents.length > 0;
+  const runningJobs = pairStatus?.active_jobs?.filter((j) => j.status === "running") ?? [];
+
+  interface ActiveTransferView {
+    jobId: number | string;
+    relPath: string;
+    fileName: string;
+    kind: string;
+    bytesDone: number;
+    bytesTotal: number;
+    pct: number;
+    speedBps?: number;
+    etaSecs?: number | null;
+    isLiveByteStream: boolean;
+  }
+
+  const activeTransfers: ActiveTransferView[] = (() => {
+    const list: ActiveTransferView[] = [];
+    const seenPaths = new Set<string>();
+
+    for (const ev of pairEvents) {
+      const fileName = ev.rel_path.split(/[/\\]/).pop() || ev.rel_path;
+      const pct =
+        ev.bytes_total > 0
+          ? Math.min(100, Math.round((ev.bytes_done / ev.bytes_total) * 100))
+          : 0;
+      seenPaths.add(ev.rel_path);
+      list.push({
+        jobId: ev.job_id,
+        relPath: ev.rel_path,
+        fileName,
+        kind: ev.kind || "upload",
+        bytesDone: ev.bytes_done,
+        bytesTotal: ev.bytes_total,
+        pct,
+        speedBps: ev.speed_bps,
+        etaSecs: ev.eta_secs,
+        isLiveByteStream: true,
+      });
+    }
+
+    for (const j of runningJobs) {
+      if (!seenPaths.has(j.rel_path)) {
+        const fileName = j.rel_path.split(/[/\\]/).pop() || j.rel_path;
+        seenPaths.add(j.rel_path);
+        list.push({
+          jobId: j.id,
+          relPath: j.rel_path,
+          fileName,
+          kind: j.kind || "upload",
+          bytesDone: 0,
+          bytesTotal: 0,
+          pct: 0,
+          isLiveByteStream: false,
+        });
+      }
+    }
+
+    return list;
+  })();
+
+  const isCurrentlySyncing = syncing || activeTransfers.length > 0 || (pairStatus?.running ?? 0) > 0;
 
   // Activity events for this pair
   const pairActivities = allActivity.filter((a) => a.pair_id === pairId);
@@ -520,33 +574,23 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
       </div>
 
       {/* ── In-Flight Real-Time Transfers (Only when transfers active) ── */}
-      {pairEvents.length > 0 && (
+      {activeTransfers.length > 0 && (
         <div className="p-5 rounded-xl bg-[#0d1117] border border-[#1f6feb]/40 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-white flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#58a6ff] animate-ping" />
-              Live In-Flight Transfers ({pairEvents.length})
+              Live In-Flight Transfers ({activeTransfers.length})
             </span>
           </div>
 
           <div className="divide-y divide-[#30363d]/60">
-            {pairEvents.map((ev) => {
-              const isDownload = ev.kind === "download";
-              const fileName = ev.rel_path.split(/[/\\]/).pop() || ev.rel_path;
-              const evPct =
-                ev.bytes_total > 0
-                  ? Math.min(100, Math.round((ev.bytes_done / ev.bytes_total) * 100))
-                  : 0;
-              const speed =
-                ev.speed_bps && ev.speed_bps > 0
-                  ? formatSpeed(ev.speed_bps)
-                  : ev.start_ms && Date.now() - ev.start_ms > 300
-                  ? formatSpeed(ev.bytes_done / Math.max(0.1, (Date.now() - ev.start_ms) / 1000))
-                  : "";
-              const eta = ev.eta_secs && ev.eta_secs > 0 ? `${formatEta(ev.eta_secs)} left` : "";
+            {activeTransfers.map((t) => {
+              const isDownload = t.kind.toLowerCase().includes("download");
+              const speed = t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
+              const eta = t.etaSecs && t.etaSecs > 0 ? `${formatEta(t.etaSecs)} left` : "";
 
               return (
-                <div key={ev.job_id} className="py-3 space-y-2">
+                <div key={t.jobId} className="py-3 space-y-2">
                   <div className="flex items-center justify-between text-xs gap-3">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       {isDownload ? (
@@ -561,12 +605,12 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
                         </span>
                       )}
 
-                      <span className="font-mono text-xs text-white truncate font-medium" title={ev.rel_path}>
-                        {fileName}
+                      <span className="font-mono text-xs text-white truncate font-medium" title={t.relPath}>
+                        {t.fileName}
                       </span>
-                      {ev.rel_path !== fileName && (
+                      {t.relPath !== t.fileName && (
                         <span className="text-[#7d8590] text-xs font-mono truncate hidden md:inline">
-                          ({ev.rel_path})
+                          ({t.relPath})
                         </span>
                       )}
                     </div>
@@ -575,19 +619,28 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
                       {speed && <span className="text-[#58a6ff]">{speed}</span>}
                       {speed && eta && <span>•</span>}
                       {eta && <span>{eta}</span>}
-                      <span className="text-white font-bold ml-1">{evPct}%</span>
+                      {t.bytesTotal > 0 ? (
+                        <span className="text-white font-bold ml-1">{t.pct}%</span>
+                      ) : (
+                        <span className="text-[#58a6ff] font-medium ml-1">Transferring</span>
+                      )}
                     </div>
                   </div>
 
-                  <Progress value={evPct} className="h-2 bg-[#161b22]" />
+                  <Progress
+                    value={t.bytesTotal > 0 ? t.pct : 100}
+                    className={cn("h-2 bg-[#161b22]", t.bytesTotal === 0 && "animate-pulse")}
+                  />
 
                   <div className="flex items-center justify-between text-xs font-mono text-[#7d8590]">
                     <span>
-                      {formatBytes(ev.bytes_done)} of {formatBytes(ev.bytes_total)}
+                      {t.bytesTotal > 0
+                        ? `${formatBytes(t.bytesDone)} of ${formatBytes(t.bytesTotal)}`
+                        : "Connecting & transferring…"}
                     </span>
                     <span className="text-[#58a6ff] flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />
-                      Streaming data
+                      Live Google Drive transfer
                     </span>
                   </div>
                 </div>

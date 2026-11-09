@@ -49,9 +49,10 @@ impl JobState {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
+        const MIN_EMIT_INTERVAL: Duration = Duration::from_millis(250);
         JobState {
             speed_ema: 0.0,
-            last_emit: now,
+            last_emit: now.checked_sub(MIN_EMIT_INTERVAL).unwrap_or(now),
             last_bytes: 0,
             last_time: now,
             start_ms,
@@ -80,9 +81,10 @@ impl JobState {
             self.last_time = now;
         }
 
-        // Always emit on 100% completion; otherwise throttle emit rate.
+        // Always emit on start (first event) and 100% completion; otherwise throttle emit rate.
         let is_complete = upd.bytes_done >= upd.bytes_total && upd.bytes_total > 0;
-        if !is_complete && now.duration_since(self.last_emit) < MIN_EMIT_INTERVAL {
+        let is_start = self.last_bytes == 0 && upd.bytes_done == 0;
+        if !is_complete && !is_start && now.duration_since(self.last_emit) < MIN_EMIT_INTERVAL {
             return None;
         }
         self.last_emit = now;
