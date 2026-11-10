@@ -4,6 +4,7 @@
 //! Emits `transfer://progress` events throttled to 4/s per job.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
@@ -11,6 +12,13 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::queue::{ProgressRx, ProgressUpdate};
+
+pub static ACTIVE_TRANSFERS: AtomicUsize = AtomicUsize::new(0);
+
+/// Number of active file transfers currently streaming bytes.
+pub fn active_transfers_count() -> usize {
+    ACTIVE_TRANSFERS.load(Ordering::Relaxed)
+}
 
 // ── Rich progress ─────────────────────────────────────────────────────────────
 
@@ -131,14 +139,21 @@ pub async fn relay_progress(
 
         if let Some(rich) = state.update(&upd) {
             // Remove finished jobs from state.
-            if rich.bytes_done >= rich.bytes_total && rich.bytes_total > 0 {
+            if rich.bytes_done >= rich.bytes_total {
                 map.remove(&upd.job_id);
             }
+            let now = Instant::now();
+            map.retain(|_, s| now.duration_since(s.last_emit) < Duration::from_secs(15));
+            ACTIVE_TRANSFERS.store(map.len(), Ordering::Relaxed);
             drop(map);
 
             if let Err(e) = app.emit("transfer://progress", &rich) {
                 warn!("emit progress: {e}");
             }
+        } else {
+            let now = Instant::now();
+            map.retain(|_, s| now.duration_since(s.last_emit) < Duration::from_secs(15));
+            ACTIVE_TRANSFERS.store(map.len(), Ordering::Relaxed);
         }
     }
 }

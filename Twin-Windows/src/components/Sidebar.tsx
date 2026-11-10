@@ -3,6 +3,8 @@
  * Refined, native-feeling shell navigation with live engine telemetry,
  * notification indicators, and authenticated Google identity badge.
  */
+import { useState, useEffect } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   Activity as ActivityIcon,
   Settings as SettingsIcon,
@@ -31,11 +33,20 @@ interface NavItem {
 }
 
 export function Sidebar({ active, onNavigate }: SidebarProps) {
+  const [appVersion, setAppVersion] = useState("1.1.7");
   const authed = useStore((s) => s.authed);
   const userProfile = useStore((s) => s.userProfile);
   const gov = useStore((s) => s.gov);
   const queueStatus = useStore((s) => s.queueStatus);
   const pairs = useStore((s) => s.pairs);
+
+  useEffect(() => {
+    void getVersion()
+      .then((v) => {
+        if (v) setAppVersion(v);
+      })
+      .catch(() => {});
+  }, []);
 
   const items: NavItem[] = [
     { id: "home", label: "Overview", Icon: Layers },
@@ -110,12 +121,12 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
                 <span className="font-bold text-sm tracking-tight text-white">
                   Twin
                 </span>
-                <span className="text-xs text-[var(--text-subtle)] font-mono px-1.5 py-0.2 rounded bg-white/5 border border-white/5">
-                  v1.1
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-[5px] text-[10.5px] font-semibold text-slate-200 bg-white/[0.07] border border-white/[0.12] shadow-sm font-numeric tracking-tight select-none">
+                  v{appVersion}
                 </span>
               </div>
-              <p className="text-xs text-[var(--text-muted)] leading-tight mt-0.5">
-                Continuous Drive Sync
+              <p className="text-xs text-[var(--text-muted)] leading-tight mt-0.5 font-medium">
+                Perfect Cloud Sync
               </p>
             </div>
           </div>

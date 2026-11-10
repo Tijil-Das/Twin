@@ -165,6 +165,7 @@ async fn test_size_tier_matrix() {
             drive_mtime_ms: Some(100),
             drive_rev: Some("1".into()),
             state: "dirty".into(),
+            os_file_id: None,
         }).expect("upsert dl row");
 
         let (tx2, _rx2) = mpsc::unbounded_channel::<ProgressUpdate>();

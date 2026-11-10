@@ -51,6 +51,7 @@ fn test_bench_database_ops_throughput() {
             drive_mtime_ms: Some(1000 + i as i64),
             drive_rev: Some("1".into()),
             state: "synced".into(),
+            os_file_id: None,
         }).expect("upsert file");
     }
     let upsert_elapsed = t0.elapsed();

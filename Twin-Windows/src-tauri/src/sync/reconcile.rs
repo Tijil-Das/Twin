@@ -43,6 +43,7 @@ pub struct EchoKey {
 #[derive(Default)]
 pub struct SelfWritten {
     inner: Mutex<HashMap<EchoKey, SystemTime>>,
+    renames: Mutex<HashMap<(String, String), SystemTime>>,
 }
 
 impl SelfWritten {
@@ -59,6 +60,12 @@ impl SelfWritten {
         );
     }
 
+    /// Record that we renamed `old_path` to `new_path` locally. Expires after 10 s.
+    pub async fn record_rename(&self, old_path: &str, new_path: &str) {
+        let mut m = self.renames.lock().await;
+        m.insert((old_path.to_string(), new_path.to_string()), SystemTime::now());
+    }
+
     /// Returns true if this write should be suppressed (i.e., was ours).
     pub async fn is_echo(&self, path: &str, mtime_ms: i64) -> bool {
         let mut m = self.inner.lock().await;
@@ -72,10 +79,25 @@ impl SelfWritten {
         false
     }
 
+    /// Returns true if this rename was initiated by us locally.
+    pub async fn is_echo_rename(&self, old_path: &str, new_path: &str) -> bool {
+        let mut m = self.renames.lock().await;
+        let key = (old_path.to_string(), new_path.to_string());
+        if let Some(&written_at) = m.get(&key) {
+            if written_at.elapsed().unwrap_or(Duration::ZERO) < Duration::from_secs(10) {
+                return true;
+            }
+            m.remove(&key);
+        }
+        false
+    }
+
     /// Expire all entries older than 10 s.
     pub async fn gc(&self) {
         let mut m = self.inner.lock().await;
         m.retain(|_, t| t.elapsed().unwrap_or(Duration::ZERO) < Duration::from_secs(10));
+        let mut r = self.renames.lock().await;
+        r.retain(|_, t| t.elapsed().unwrap_or(Duration::ZERO) < Duration::from_secs(10));
     }
 }
 
@@ -205,10 +227,21 @@ pub async fn reconcile_listing_with_policy(
 
         let local_md5  = db_row.as_ref().and_then(|r| r.md5.as_deref()).unwrap_or("");
         let remote_md5 = remote.md5_checksum.as_deref().unwrap_or("");
-        let db_drive_md5 = db_row.as_ref().and_then(|r| r.drive_md5.as_deref()).unwrap_or("");
+        // Fall back to local md5 when Drive did not return md5Checksum (drive_md5 is NULL),
+        // otherwise every synced file looks "locally changed" and gets re-enqueued for upload.
+        let db_drive_md5 = db_row.as_ref().and_then(|r| r.drive_md5.as_deref())
+            .or(db_row.as_ref().and_then(|r| r.md5.as_deref()))
+            .unwrap_or("");
 
-        let local_changed  = local_exists && local_md5 != db_drive_md5 && !local_md5.is_empty();
-        let remote_changed = remote_md5 != db_drive_md5 && !remote_md5.is_empty();
+        // Only flag as changed if we have a stored md5 to compare against.
+        // NULL drive_md5 AND NULL local md5 means "unknown" — don't re-enqueue.
+        let local_changed = local_exists
+            && !local_md5.is_empty()
+            && !db_drive_md5.is_empty()
+            && local_md5 != db_drive_md5;
+        let remote_changed = !remote_md5.is_empty()
+            && !db_drive_md5.is_empty()
+            && remote_md5 != db_drive_md5;
 
         // Decision table: (local_exists, local_changed, remote_changed)
         if !local_exists {
@@ -227,6 +260,7 @@ pub async fn reconcile_listing_with_policy(
                     drive_mtime_ms: None,
                     drive_rev:     None,
                     state:         state_str.into(),
+                    os_file_id:    None,
                 })?;
                 result.deletes += 1;
                 continue;
@@ -247,6 +281,7 @@ pub async fn reconcile_listing_with_policy(
                         drive_mtime_ms: None,
                         drive_rev:     None,
                         state:         "dirty".into(),
+                        os_file_id:    None,
                     })?;
                     apply_local_delete_inner(db, pair, rel, now, deletion_policy.clone())?;
                     result.deletes += 1;
@@ -321,6 +356,7 @@ pub async fn reconcile_listing_with_policy(
             drive_mtime_ms: None,
             drive_rev:     None,
             state:         "synced".into(),
+            os_file_id:    None,
         });
         db.upsert_file(FileRow {
             pair_id:       pair.id.clone(),
@@ -333,6 +369,7 @@ pub async fn reconcile_listing_with_policy(
             drive_mtime_ms: Some(mtime_ms),
             drive_rev:     current.drive_rev.clone(),
             state:         current.state,
+            os_file_id:    current.os_file_id,
         })?;
     }
 
@@ -456,6 +493,57 @@ pub async fn apply_remote_change_with_policies(
     // relative path already stored for this Drive id so nested files are not
     // mistaken for files in the pair root.
     let tracked = db.get_file_by_drive_id(&pair.id, &file.id)?;
+
+    // Check if the file was renamed on Google Drive
+    if let Some(ref row) = tracked {
+        if let Some(ref new_remote_name) = file.name {
+            let old_name = std::path::Path::new(&row.rel_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if !old_name.is_empty() && &old_name != new_remote_name {
+                let old_rel = row.rel_path.clone();
+                let parent_dir = std::path::Path::new(&old_rel).parent().unwrap_or_else(|| std::path::Path::new(""));
+                let new_rel = if parent_dir.as_os_str().is_empty() {
+                    new_remote_name.clone()
+                } else {
+                    format!("{}/{}", parent_dir.to_string_lossy().replace('\\', "/"), new_remote_name)
+                };
+
+                let root = PathBuf::from(&pair.local);
+                let old_local = root.join(&old_rel);
+                let new_local = root.join(&new_rel);
+
+                if matches!(pair.mode, PairMode::TwoWay) {
+                    info!("Remote rename detected for {}: {} -> {}", file.id, old_rel, new_rel);
+                    // Record echo rename so watcher ignores the resulting local rename event
+                    echo.record_rename(&old_rel, &new_rel).await;
+
+                    if old_local.exists() {
+                        if let Some(parent) = new_local.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        if let Err(e) = std::fs::rename(&old_local, &new_local) {
+                            warn!("apply remote rename fs::rename failed: {e}");
+                        }
+                    }
+
+                    // Atomically update DB row to the new path
+                    let mut new_row = row.clone();
+                    new_row.rel_path = new_rel.clone();
+                    if let Some(ref md5) = file.md5_checksum {
+                        new_row.drive_md5 = Some(md5.clone());
+                        new_row.md5 = Some(md5.clone());
+                    }
+                    if let Some(ref mtime) = file.modified_time {
+                        new_row.drive_mtime_ms = rfc3339_to_ms(mtime);
+                    }
+                    let _ = db.apply_rename_tx(&pair.id, &old_rel, new_row);
+                    return Ok(());
+                }
+            }
+        }
+    }
     let rel_path = match tracked.as_ref() {
         Some(row) => row.rel_path.clone(),
         None => match &file.name {
@@ -470,15 +558,26 @@ pub async fn apply_remote_change_with_policies(
         Some(row) => Some(row),
         None => db.get_file(&pair.id, &rel_path)?,
     };
-    let db_drive_md5 = db_row.as_ref().and_then(|r| r.drive_md5.as_deref()).unwrap_or("");
+    // Fall back to local md5 when Drive did not return md5Checksum (drive_md5 is NULL),
+    // otherwise every synced file looks "locally changed" and gets re-enqueued for upload.
+    let db_drive_md5 = db_row.as_ref().and_then(|r| r.drive_md5.as_deref())
+        .or(db_row.as_ref().and_then(|r| r.md5.as_deref()))
+        .unwrap_or("");
 
     // Echo suppression: skip if this matches our own upload (md5 same as Db).
-    if remote_md5 == db_drive_md5 && !remote_md5.is_empty() {
+    if !remote_md5.is_empty()
+        && !db_drive_md5.is_empty()
+        && remote_md5 == db_drive_md5
+    {
         return Ok(());
     }
 
     let local_md5 = db_row.as_ref().and_then(|r| r.md5.as_deref()).unwrap_or("");
-    let local_changed = local_path.exists() && local_md5 != db_drive_md5;
+    // Only flag as changed if we have a stored md5 to compare against.
+    let local_changed = local_path.exists()
+        && !local_md5.is_empty()
+        && !db_drive_md5.is_empty()
+        && local_md5 != db_drive_md5;
 
     // Check echo suppression for local writes.
     let mtime_ms = db_row.as_ref().and_then(|r| r.mtime_ms).unwrap_or(0);
@@ -506,6 +605,7 @@ pub async fn apply_remote_change_with_policies(
                     drive_mtime_ms: None,
                     drive_rev:     None,
                     state:         "dirty".into(),
+                    os_file_id:    None,
                 })?;
                 apply_local_delete_inner(db, pair, &rel_path, now, deletion_policy.clone())?;
             }
@@ -526,6 +626,7 @@ pub async fn apply_remote_change_with_policies(
                     drive_mtime_ms: Some(drive_mtime),
                     drive_rev:     None,
                     state:         "dirty".into(),
+                    os_file_id:    None,
                 })?;
                 db.enqueue(NewJob {
                     pair_id:    pair.id.clone(),
@@ -611,6 +712,7 @@ async fn apply_conflict_inner(
                     drive_mtime_ms: Some(remote_mtime),
                     drive_rev:     None,
                     state:         "dirty".into(),
+                    os_file_id:    None,
                 })?;
                 db.enqueue(NewJob {
                     pair_id:    pair.id.clone(),
@@ -667,6 +769,7 @@ async fn apply_conflict_inner(
                 drive_mtime_ms: Some(remote_mtime),
                 drive_rev:     None,
                 state:         "dirty".into(),
+                os_file_id:    None,
             })?;
 
             // Download remote to original name.
@@ -839,6 +942,7 @@ fn enqueue_download(
         drive_mtime_ms: Some(mtime_ms),
         drive_rev:     None,
         state:         "dirty".into(),
+        os_file_id:    None,
     })?;
     db.enqueue(NewJob {
         pair_id:    pair.id.clone(),
@@ -956,6 +1060,7 @@ mod tests {
             drive_mtime_ms: Some(1_700_000_000_000),
             drive_rev:     None,
             state:         "synced".into(),
+            os_file_id:    None,
         }
     }
 

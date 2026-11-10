@@ -38,6 +38,8 @@ import {
   removePair,
   getConfig,
   updateConfig,
+  queueStatus,
+  getPairStatuses,
   openLocalPath,
   openUrlExternal,
   listPairSubfolders,
@@ -79,6 +81,8 @@ interface Props {
 export function PairDetailScreen({ pairId, onBack }: Props) {
   const config = useStore((s) => s.config);
   const setConfig = useStore((s) => s.setConfig);
+  const setQueueStatus = useStore((s) => s.setQueueStatus);
+  const setPairStatuses = useStore((s) => s.setPairStatuses);
   const pairs = useStore((s) => s.pairs) ?? [];
   const pairStatuses = useStore((s) => s.pairStatuses) ?? {};
   const allActivity = useStore((s) => s.activity) ?? [];
@@ -111,7 +115,9 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
   const folderName = pair.local.replace(/[/\\]$/, "").split(/[/\\]/).pop() || pair.local;
   const modeInfo = SYNC_MODES[pair.mode as keyof typeof SYNC_MODES] ?? SYNC_MODES.two_way;
 
-  // Active in-flight transfers for this pair
+  // Active in-flight transfers for this pair from progress store
+  // (includes completed transfers briefly so the activity dropdown shows
+  // during upload and confirms completion before numbers update)
   const pairEvents = Object.values(progress).filter(
     (e): e is ProgressEvent => Boolean(e && (e as ProgressEvent).pair_id === pairId)
   );
@@ -173,13 +179,61 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
       }
     }
 
+    // Always keep the currently active transferring item at the top of the dropdown list
+    list.sort((a, b) => {
+      const aIsActive = (a.speedBps ?? 0) > 0 || (a.isLiveByteStream && a.bytesDone > 0);
+      const bIsActive = (b.speedBps ?? 0) > 0 || (b.isLiveByteStream && b.bytesDone > 0);
+
+      if (aIsActive && !bIsActive) return -1;
+      if (!aIsActive && bIsActive) return 1;
+
+      if (a.isLiveByteStream && !b.isLiveByteStream) return -1;
+      if (!a.isLiveByteStream && b.isLiveByteStream) return 1;
+
+      if (typeof a.jobId === "number" && typeof b.jobId === "number") {
+        return a.jobId - b.jobId;
+      }
+      return 0;
+    });
+
     return list;
   })();
 
-  const isCurrentlySyncing = syncing || activeTransfers.length > 0 || (pairStatus?.running ?? 0) > 0;
+  const isCurrentlySyncing =
+    syncing ||
+    Boolean(pairStatus?.is_syncing) ||
+    activeTransfers.length > 0 ||
+    (pairStatus?.running ?? 0) > 0 ||
+    (pairStatus?.queued ?? 0) > 0;
 
-  // Activity events for this pair
+  // Activity events for this pair (historical DB records)
   const pairActivities = allActivity.filter((a) => a.pair_id === pairId);
+
+  // Real-time in-flight progress merged into activity display so uploads
+  // show during transfer (like delete-from-cloud) before numbers update.
+  const realTimeActivities = pairEvents.map((ev) => ({
+    id: `rt-${ev.job_id}`,
+    pair_id: ev.pair_id,
+    rel_path: ev.rel_path,
+    kind: ev.kind || "upload",
+    result: ev.bytes_done >= ev.bytes_total && ev.bytes_total > 0 ? "ok" : "pending",
+    ts_ms: ev.start_ms,
+    detail: ev.bytes_total > 0 ? `${Math.round((ev.bytes_done / ev.bytes_total) * 100)}%` : undefined,
+    bytes_done: ev.bytes_done,
+    bytes_total: ev.bytes_total,
+    isRealTime: true,
+  }));
+
+  // Combine: real-time first, then historical (dedupe by rel_path+kind)
+  const allPairActivities = [
+    ...realTimeActivities,
+    ...pairActivities.filter(
+      (a) =>
+        !realTimeActivities.some(
+          (rt) => rt.rel_path === a.rel_path && rt.kind === a.kind
+        )
+    ),
+  ];
 
   const totalFiles = pairStatus?.total ?? 0;
   const syncedFiles = pairStatus?.synced ?? 0;
@@ -190,6 +244,9 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
 
   const isFullySynced = Boolean(
     pairStatus?.is_synced &&
+      activeTransfers.length === 0 &&
+      !syncing &&
+      !pairStatus?.is_syncing &&
       (totalFiles === 0 || syncedFiles === totalFiles) &&
       pendingFiles === 0 &&
       failedFiles === 0 &&
@@ -197,18 +254,25 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
   );
 
   const hasPending = Boolean(
-    pairStatus && (pendingFiles > 0 || (totalFiles > 0 && syncedFiles < totalFiles))
+    activeTransfers.length === 0 &&
+      !syncing &&
+      !pairStatus?.is_syncing &&
+      pairStatus &&
+      (pendingFiles > 0 || (totalFiles > 0 && syncedFiles < totalFiles))
   );
 
   async function handleSync() {
     setSyncing(true);
     try {
       await runSyncCycle(pairId);
+      const [qs, ps] = await Promise.all([queueStatus(), getPairStatuses()]);
+      setQueueStatus(qs);
+      setPairStatuses(ps);
       toast.success(`Sync cycle completed for "${folderName}"`);
     } catch (err) {
       toast.error(`Sync error: ${String(err)}`);
     } finally {
-      setSyncing(false);
+      setTimeout(() => setSyncing(false), 800);
     }
   }
 
@@ -227,6 +291,15 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
       await updateConfig(nextCfg);
       const reloaded = await getConfig();
       setConfig(reloaded);
+
+      // When disabling a pair, immediately clear its in-flight UI state so
+      // active transfers / syncing indicators stop showing right away.
+      if (!enable) {
+        const clearPairProgress = useStore.getState().clearPairProgress;
+        const clearPairStatus = useStore.getState().clearPairStatus;
+        clearPairProgress(pairId);
+        clearPairStatus(pairId);
+      }
       toast.info(enable ? `Resumed sync for "${folderName}"` : `Paused sync for "${folderName}"`);
     } catch (err) {
       toast.error(`Failed to update pair: ${String(err)}`);
@@ -420,7 +493,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
         </button>
 
         <div className="flex items-center gap-2 text-xs font-mono text-[#7d8590]">
-          <span>Synced Folders</span>
+          <span>Pairs</span>
           <span className="text-[#30363d]">/</span>
           <span className="text-[#e6edf3] font-semibold">{folderName}</span>
         </div>
@@ -435,7 +508,15 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
             </h1>
 
             {/* Live Status Pill */}
-            {isFullySynced ? (
+            {activeTransfers.length > 0 || (pairStatus && pairStatus.running > 0) ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 whitespace-nowrap">
+                <RefreshCw size={12} className="animate-spin" /> Transferring
+              </span>
+            ) : syncing || Boolean(pairStatus?.is_syncing) ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 whitespace-nowrap">
+                <RefreshCw size={12} className="animate-spin" /> Scanning & Syncing
+              </span>
+            ) : isFullySynced ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
                 <CheckCircle2 size={12} /> Up to date
               </span>
@@ -444,8 +525,8 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
                 <Clock size={12} /> Sync pending ({totalFiles - syncedFiles} remaining)
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 whitespace-nowrap">
-                <RefreshCw size={12} className="animate-spin" /> Syncing
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#21262d] text-[#7d8590] border border-[#30363d] whitespace-nowrap">
+                <CheckCircle2 size={12} /> Ready
               </span>
             )}
 
@@ -508,7 +589,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
 
           <div className="w-[1px] h-4 bg-[#30363d] mx-0.5" />
 
-          <div className="flex items-center gap-1.5 bg-[#161b22] px-2.5 py-1 rounded-md border border-[#30363d]">
+          <div className="flex items-center gap-1.5">
             <span className="text-xs text-[#7d8590] font-medium">Sync:</span>
             <Switch checked={pair.enabled} onCheckedChange={handleToggle} />
           </div>
@@ -1031,17 +1112,17 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
             Recent File Activity for this Folder
           </span>
           <span className="text-[11px] font-mono text-[#7d8590]">
-            {pairActivities.length} recorded event{pairActivities.length === 1 ? "" : "s"}
+            {allPairActivities.length} recorded event{allPairActivities.length === 1 ? "" : "s"}
           </span>
         </div>
 
-        {pairActivities.length === 0 ? (
+        {allPairActivities.length === 0 ? (
           <div className="p-8 text-center text-xs text-[#7d8590]">
             No file transfer events recorded yet for this folder pair.
           </div>
         ) : (
           <div className="divide-y divide-[#30363d]/50 font-mono text-xs">
-            {pairActivities.map((act) => {
+            {allPairActivities.map((act) => {
               const fileName = act.rel_path.split(/[/\\]/).pop() || act.rel_path;
               const isUpload = act.kind === "upload";
               const isDownload = act.kind === "download";
@@ -1080,7 +1161,29 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
 
                   <div className="flex items-center gap-3 text-[#7d8590] shrink-0">
                     <span>{formatRelTime(act.ts_ms)}</span>
-                    {act.result === "ok" ? (
+                    {(act as any).isRealTime ? (
+                      <>
+                        {(act as any).bytes_total && (act as any).bytes_total > 0 ? (
+                          <>
+                            <span className="text-[#58a6ff] font-mono text-[10px]">
+                              {Math.round(((act as any).bytes_done / (act as any).bytes_total) * 100)}%
+                            </span>
+                            <Progress
+                              value={
+                                (act as any).bytes_total > 0
+                                  ? Math.round(((act as any).bytes_done / (act as any).bytes_total) * 100)
+                                  : 0
+                              }
+                              className="h-1 bg-[#161b22] w-24 shrink-0"
+                            />
+                          </>
+                        ) : (
+                          <span className="text-[#58a6ff] font-mono text-[10px]">
+                            Transferring…
+                          </span>
+                        )}
+                      </>
+                    ) : act.result === "ok" ? (
                       <span className="text-emerald-400 font-semibold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[11px]">
                         Success
                       </span>

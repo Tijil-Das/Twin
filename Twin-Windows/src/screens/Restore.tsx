@@ -35,14 +35,7 @@ import {
   RefreshCw,
   X,
   Lock,
-  Palette,
-  CheckSquare,
-  Square,
 } from "lucide-react";
-import {
-  FolderColorDialog,
-  type DriveFolderTarget,
-} from "@/components/FolderColorDialog";
 import { formatBytes, formatRelTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import gdLogo from "@/assets/gd-icon.png";
@@ -164,12 +157,6 @@ function FileBrowser() {
   const [isSearching, setIsSearching] = useState(false);
   const [descInput, setDescInput] = useState("");
 
-  // Color dialog & folder selection state
-  const [colorDialogOpen, setColorDialogOpen] = useState(false);
-  const [colorDialogTarget, setColorDialogTarget] = useState<DriveFolderTarget | null>(null);
-  const [colorDialogInitialIds, setColorDialogInitialIds] = useState<string[]>([]);
-  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
-
   useEffect(() => {
     invoke<SharedDrive[]>("list_shared_drives")
       .then((d) => setSharedDrives(d))
@@ -179,7 +166,6 @@ function FileBrowser() {
   async function loadFolder(folderId: string, name = "Root") {
     setLoading(true);
     setIsSearching(false);
-    setSelectedFolderIds(new Set());
     try {
       const result = await driveList(folderId);
       setFiles(result as ExtendedDriveFile[]);
@@ -194,40 +180,6 @@ function FileBrowser() {
     } finally {
       setLoading(false);
     }
-  }
-
-  function openSingleFolderColor(target: DriveFolderTarget) {
-    setColorDialogTarget(target);
-    setColorDialogInitialIds([target.id]);
-    setColorDialogOpen(true);
-  }
-
-  function openMultiFolderColor(initialIds?: string[]) {
-    setColorDialogTarget(null);
-    setColorDialogInitialIds(
-      initialIds && initialIds.length > 0 ? initialIds : folders.map((f) => f.id)
-    );
-    setColorDialogOpen(true);
-  }
-
-  function toggleSelectFolder(id: string) {
-    setSelectedFolderIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function handleColorApplied(ids: string[], color: string | null) {
-    setFiles((prev) =>
-      prev.map((f) =>
-        ids.includes(f.id)
-          ? { ...f, folderColorRgb: color, folder_color_rgb: color }
-          : f
-      )
-    );
-    setSelectedFolderIds(new Set());
   }
 
   async function handleBrowse() {
@@ -472,40 +424,6 @@ function FileBrowser() {
                 )}
               </div>
 
-              {folders.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    openMultiFolderColor(
-                      selectedFolderIds.size > 0 ? Array.from(selectedFolderIds) : undefined
-                    )
-                  }
-                  className="px-2.5 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white border border-[#30363d] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title="Choose which folders inside this folder to colorize"
-                >
-                  <Palette size={12} className="text-amber-400" />
-                  <span className="hidden sm:inline">Colorize Folders ({folders.length})</span>
-                  <span className="sm:hidden">Color</span>
-                </button>
-              )}
-
-              {breadcrumb.length > 0 && breadcrumb[breadcrumb.length - 1].id !== "root" && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    openSingleFolderColor({
-                      id: breadcrumb[breadcrumb.length - 1].id,
-                      name: breadcrumb[breadcrumb.length - 1].name,
-                    })
-                  }
-                  className="px-2 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white border border-[#30363d] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title={`Colorize "${breadcrumb[breadcrumb.length - 1].name}" folder`}
-                >
-                  <Palette size={12} className="text-blue-400" />
-                  <span className="hidden sm:inline">Color Current</span>
-                </button>
-              )}
-
               <span className="text-xs text-[#7d8590] code-text font-mono hidden md:inline">
                 {folders.length} dirs, {items.length} files
               </span>
@@ -521,31 +439,6 @@ function FileBrowser() {
               </button>
             </div>
           </div>
-
-          {/* Multi-selection Banner */}
-          {selectedFolderIds.size > 0 && (
-            <div className="bg-[#1f6feb]/15 border-b border-[#1f6feb]/30 px-4 py-2 flex items-center justify-between text-xs animate-in fade-in duration-100">
-              <div className="flex items-center gap-2">
-                <span className="text-[#58a6ff] font-semibold">
-                  {selectedFolderIds.size} of {folders.length} folders selected
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedFolderIds(new Set())}
-                  className="text-[11px] text-[#7d8590] hover:text-white underline cursor-pointer"
-                >
-                  Deselect
-                </button>
-              </div>
-              <button
-                onClick={() => openMultiFolderColor(Array.from(selectedFolderIds))}
-                className="px-2.5 py-1 rounded bg-blue-700 hover:bg-blue-600 active:bg-blue-800 text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer border border-blue-600/40"
-              >
-                <Palette size={12} />
-                <span>Colorize Selected ({selectedFolderIds.size})</span>
-              </button>
-            </div>
-          )}
 
           {/* GitHub-style '..' Up one level row */}
           {breadcrumb.length > 1 && (
@@ -578,7 +471,6 @@ function FileBrowser() {
                 const isFolder = file.mime_type === "application/vnd.google-apps.folder";
                 const isSelected = selected?.id === file.id;
                 const folderColor = file.folderColorRgb ?? file.folder_color_rgb;
-                const isFolderSelected = selectedFolderIds.has(file.id);
 
                 return (
                   <div
@@ -591,26 +483,8 @@ function FileBrowser() {
                         : "hover:bg-[#161b22] text-[#c9d1d9]"
                     )}
                   >
-                    {/* Left: Checkbox + Icon + Name */}
+                    {/* Left: Icon + Name */}
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      {isFolder && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleSelectFolder(file.id);
-                          }}
-                          className="p-0.5 text-[#7d8590] hover:text-[#e6edf3] cursor-pointer shrink-0"
-                          title={isFolderSelected ? "Deselect folder" : "Select folder"}
-                        >
-                          {isFolderSelected ? (
-                            <CheckSquare size={13} className="text-[#58a6ff]" />
-                          ) : (
-                            <Square size={13} className="text-[#484f58]" />
-                          )}
-                        </button>
-                      )}
-
                       {isFolder ? (
                         <GithubFolderIcon
                           color={folderColor || "#54aeff"}
@@ -650,27 +524,8 @@ function FileBrowser() {
                       </div>
                     )}
 
-                    {/* Right: Date, Size, Actions */}
+                    {/* Right: Date, Size */}
                     <div className="flex items-center gap-3 shrink-0 text-xs text-[#7d8590]">
-                      {isFolder && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openSingleFolderColor({
-                              id: file.id,
-                              name: file.name ?? file.id,
-                              folderColorRgb: folderColor,
-                            });
-                          }}
-                          title={`Colorize "${file.name ?? file.id}"`}
-                          className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white border border-[#30363d] transition-all cursor-pointer flex items-center gap-1 text-[11px]"
-                        >
-                          <Palette size={11} />
-                          <span>Color</span>
-                        </button>
-                      )}
-
                       {file.modified_time && (
                         <span className="w-24 text-right truncate font-mono text-[11px] text-[#7d8590]">
                           {formatRelTime(new Date(file.modified_time).getTime())}
@@ -842,21 +697,6 @@ function FileBrowser() {
           </div>
         </aside>
       )}
-
-      {/* Colorize Google Drive Folders Dialog */}
-      <FolderColorDialog
-        isOpen={colorDialogOpen}
-        onClose={() => setColorDialogOpen(false)}
-        targetFolder={colorDialogTarget}
-        parentFolderName={breadcrumb[breadcrumb.length - 1]?.name || "Current Folder"}
-        availableFolders={folders.map((f) => ({
-          id: f.id,
-          name: f.name ?? f.id,
-          folderColorRgb: f.folderColorRgb ?? f.folder_color_rgb ?? null,
-        }))}
-        initialSelectedIds={colorDialogInitialIds}
-        onColorApplied={handleColorApplied}
-      />
     </div>
   );
 }

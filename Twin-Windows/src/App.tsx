@@ -8,7 +8,7 @@ import { Toaster } from "sonner";
 import { WifiOff, Info, CheckCircle2, AlertCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { useStore, type ProgressEvent } from "@/store";
 import { getConfig, authStatus, govState, queueStatus, getPairStatuses } from "@/lib/tauri";
-import type { GovStatePayload } from "@/lib/tauri";
+import type { GovStatePayload, PairSyncStatus } from "@/lib/tauri";
 import { Sidebar, type Screen } from "@/components/Sidebar";
 import { ConflictDialog } from "@/components/ConflictDialog";
 import { UpdateBanner } from "@/components/UpdateBanner";
@@ -27,6 +27,7 @@ export default function App() {
   const setSelectedPairId = useStore((s) => s.setSelectedPairId);
 
   const setConfig = useStore((s) => s.setConfig);
+  const config = useStore((s) => s.config);
   const setAuthed = useStore((s) => s.setAuthed);
   const setUserProfile = useStore((s) => s.setUserProfile);
   const setProgress = useStore((s) => s.setProgress);
@@ -54,13 +55,21 @@ export default function App() {
 
   // Track window visibility so we stop processing events when hidden.
   const visibleRef = useRef(document.visibilityState === "visible");
+
+  // Only keep pair statuses for pairs still enabled in config.
+  // Prevents disabled pairs from resurrecting via backend polling.
+  const filterEnabledPairStatuses = (ps: Record<string, PairSyncStatus>) => {
+    const enabledIds = new Set((config?.pairs ?? []).filter((p) => p.enabled).map((p) => p.id));
+    return Object.fromEntries(Object.entries(ps).filter(([id]) => enabledIds.has(id)));
+  };
+
   useEffect(() => {
     function onVisChange() {
       visibleRef.current = document.visibilityState === "visible";
       // Refresh status on show
       if (visibleRef.current) {
         void queueStatus().then(setQueueStatus).catch(() => undefined);
-        void getPairStatuses().then(setPairStatuses).catch(() => undefined);
+        void getPairStatuses().then((ps) => setPairStatuses(filterEnabledPairStatuses(ps))).catch(() => undefined);
       }
     }
     document.addEventListener("visibilitychange", onVisChange);
@@ -83,7 +92,7 @@ export default function App() {
         setUserProfile(a.user ?? null);
         setGov(g);
         setQueueStatus(qs);
-        setPairStatuses(ps);
+        setPairStatuses(filterEnabledPairStatuses(ps));
       } catch {
         // Will surface as missing data in UI
       }
@@ -132,15 +141,15 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedPairId, setSelectedPairId]);
 
-  // Fallback idle polling for queue status and per-pair sync statuses (10s)
+  // Fallback idle polling for queue status and per-pair sync statuses (2s when visible)
   useEffect(() => {
     const id = setInterval(() => {
       if (!visibleRef.current) return;
       void queueStatus().then(setQueueStatus).catch(() => undefined);
-      void getPairStatuses().then(setPairStatuses).catch(() => undefined);
-    }, 10000);
+      void getPairStatuses().then((ps) => setPairStatuses(filterEnabledPairStatuses(ps))).catch(() => undefined);
+    }, 2000);
     return () => clearInterval(id);
-  }, [setQueueStatus, setPairStatuses]);
+  }, [setQueueStatus, setPairStatuses, config]);
 
   // Subscribe to Tauri events
   useEffect(() => {
@@ -148,6 +157,8 @@ export default function App() {
       // Transfer progress
       listen<ProgressEvent>("transfer://progress", (ev) => {
         if (!visibleRef.current) return; // drop events when window hidden
+        // Drop progress events for disabled pairs
+        if (config?.pairs?.some((p) => p.id === ev.payload.pair_id && p.enabled) === false) return;
         setProgress(ev.payload);
       }),
 
@@ -160,7 +171,7 @@ export default function App() {
       listen("queue://updated", () => {
         if (!visibleRef.current) return;
         void queueStatus().then(setQueueStatus).catch(() => undefined);
-        void getPairStatuses().then(setPairStatuses).catch(() => undefined);
+        void getPairStatuses().then((ps) => setPairStatuses(filterEnabledPairStatuses(ps))).catch(() => undefined);
       }),
 
       // Auth changed
@@ -249,7 +260,7 @@ export default function App() {
       <Toaster
         theme="dark"
         position="bottom-center"
-        offset={36}
+        offset={44}
         icons={{
           info: <Info size={16} className="text-sky-400 shrink-0" />,
           success: <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />,

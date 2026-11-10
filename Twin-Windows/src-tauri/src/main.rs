@@ -229,17 +229,36 @@ async fn drive_set_folders_color(folder_ids: Vec<String>, color_rgb: Option<Stri
     Ok(())
 }
 
-/// Colorize Google Drive folders for all configured pairs.
+/// Colorize Google Drive folders for all configured pairs using the automated colorizer.
 #[tauri::command]
-async fn drive_color_folders(color: Option<String>) -> Result<(), String> {
-    let cfg = config::load().unwrap_or_default();
+async fn drive_color_folders(_color: Option<String>) -> Result<(), String> {
     let drive = drive::DriveClient::new().map_err(|e| e.to_string())?;
-    let color_rgb = color.unwrap_or_else(|| "#4285f4".to_string());
-    for pair in &cfg.pairs {
-        if !pair.drive_folder_id.is_empty() {
-            let _ = drive.set_folder_color(&pair.drive_folder_id, Some(&color_rgb)).await;
-        }
+    let _ = drive::colorizer::colorize_all_pairs(&drive).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Colorize all folders in parent folders concerned with active pairs.
+#[tauri::command]
+async fn drive_colorize_all_pairs() -> Result<usize, String> {
+    let drive = drive::DriveClient::new().map_err(|e| e.to_string())?;
+    drive::colorizer::colorize_all_pairs(&drive).await.map_err(|e| e.to_string())
+}
+
+/// Enable or disable automated Drive folder colorization in config, and trigger immediate run if enabled.
+#[tauri::command]
+async fn drive_set_folder_colorizer_enabled(enable: bool) -> Result<(), String> {
+    let mut cfg = config::load().unwrap_or_default();
+    cfg.app.color_drive_folders = enable;
+    config::save_shared(&cfg).map_err(|e| e.to_string())?;
+
+    if enable {
+        tokio::spawn(async move {
+            if let Ok(drive) = drive::DriveClient::new() {
+                let _ = drive::colorizer::colorize_all_pairs(&drive).await;
+            }
+        });
     }
+
     Ok(())
 }
 
@@ -413,6 +432,12 @@ async fn run_sync_cycle(
         .ok_or_else(|| format!("pair {pair_id} not found"))?
         .clone();
 
+    // 100% hard cutoff: never run a sync cycle for a disabled pair,
+    // even if the user clicks "Sync Now" manually.
+    if !pair.enabled {
+        return Err(format!("pair {} is disabled", pair_id));
+    }
+
     let db_path = db_s.db_path();
     let db_arc  = Arc::new(db::Db::open(&db_path).map_err(|e| e.to_string())?);
     let drive   = drive::DriveClient::new().map_err(|e| e.to_string())?;
@@ -573,6 +598,8 @@ fn main() {
             drive_get_shared_folders,
             drive_create_folder,
             drive_color_folders,
+            drive_colorize_all_pairs,
+            drive_set_folder_colorizer_enabled,
             drive_set_folder_color,
             drive_set_folders_color,
             pick_folder,
@@ -683,7 +710,7 @@ fn main() {
             let _ = overlay::sync_registry_settings(&cfg.overlay);
             if let Ok(pair_statuses) = db_arc.get_all_pair_sync_statuses() {
                 let active_paths = db_arc.get_active_syncing_paths().unwrap_or_default();
-                overlay::update_folder_overlays(&cfg.pairs, &pair_statuses, &active_paths, &cfg.overlay);
+                overlay::update_folder_overlays(&cfg.pairs, &pair_statuses, &active_paths, &cfg.overlay, false);
             }
 
             // Spawn GitHub push loop (P11).
@@ -702,7 +729,7 @@ fn main() {
             setup_tray(handle)?;
 
             // Live system tray status supervisor:
-            // Yellow icon when uploading/downloading/queued;
+            // Yellow icon when uploading/downloading/queued/syncing;
             // Green checkmark icon when up to date / idle;
             // Paused icon when governor or user paused;
             // Red icon on errors.
@@ -712,49 +739,125 @@ fn main() {
                 let handle_tray = handle.clone();
                 tauri::async_runtime::spawn(async move {
                     let mut last_state = TrayState::Idle;
-                    let mut last_counts = (0i64, 0i64, 0i64);
+                    let mut last_tooltip = String::new();
+                    let mut last_state_key = (0i64, 0i64, 0i64, false, false);
+                    let mut syncing_cooldown: u32 = 0;
+                    let wake_notify = Arc::new(tokio::sync::Notify::new());
+                    queue::set_wake_observer(Arc::clone(&wake_notify));
                     loop {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
-                        let running = db_tray.count_jobs_by_status("running").unwrap_or(0);
-                        let queued = db_tray.count_jobs_by_status("queued").unwrap_or(0);
-                        let failed = db_tray.count_jobs_by_status("failed").unwrap_or(0);
-                        let is_paused = matches!(gov_tray.state(), governor::GovState::UserPaused);
-
-                        let current_counts = (running, queued, failed);
-                        if current_counts != last_counts {
-                            let _ = handle_tray.emit("queue://updated", ());
-                            last_counts = current_counts;
+                        tokio::select! {
+                            _ = tokio::time::sleep(tokio::time::Duration::from_millis(500)) => {}
+                            _ = wake_notify.notified() => {}
                         }
 
-                        // Continuously monitor and refresh Explorer icon overlays every 800ms.
+                        let is_paused = matches!(gov_tray.state(), governor::GovState::UserPaused);
+
+                        let live_transfers = transfer::active_transfers_count();
+                        let active_workers = queue::active_workers_count();
+                        let active_cycles = sync::active_sync_cycles_count();
+                        let active_paths = db_tray.get_active_syncing_paths().unwrap_or_default();
+                        let pair_statuses = db_tray.get_all_pair_sync_statuses().unwrap_or_default();
+
+                        // Only consider configured & enabled pairs for status calculation
+                        let cfg_opt = config::load().ok();
+                        let enabled_pairs: Vec<config::PairEntry> = cfg_opt
+                            .as_ref()
+                            .map(|c| c.pairs.iter().filter(|p| p.enabled).cloned().collect())
+                            .unwrap_or_default();
+                        let enabled_pair_ids: std::collections::HashSet<String> = enabled_pairs
+                            .iter()
+                            .map(|p| p.id.clone())
+                            .collect();
+
+                        let mut enabled_running = 0i64;
+                        let mut enabled_queued = 0i64;
+                        let mut enabled_failed = 0i64;
+                        let mut pair_syncing_active = false;
+
+                        for (pid, status) in &pair_statuses {
+                            if enabled_pair_ids.contains(pid) {
+                                enabled_running += status.running;
+                                enabled_queued += status.queued;
+                                enabled_failed += status.failed;
+                                if status.is_syncing
+                                    || status.running > 0
+                                    || status.queued > 0
+                                    || status.dirty > 0
+                                    || !status.active_jobs.is_empty()
+                                    || sync::is_pair_syncing(pid)
+                                {
+                                    pair_syncing_active = true;
+                                }
+                            }
+                        }
+
+                        let global_sync_active = enabled_running > 0
+                            || enabled_queued > 0
+                            || pair_syncing_active
+                            || live_transfers > 0
+                            || active_workers > 0
+                            || active_cycles > 0
+                            || sync::any_pair_syncing();
+
+                        if global_sync_active {
+                            syncing_cooldown = 4; // 4 ticks at 500ms = 2.0s linger cooldown
+                        } else if syncing_cooldown > 0 {
+                            syncing_cooldown -= 1;
+                        }
+
+                        let is_syncing = global_sync_active || syncing_cooldown > 0;
+
+                        // Continuously monitor and refresh Explorer icon overlays every 500ms.
                         // update_folder_overlays diffs against LAST_FOLDER_STATUSES in memory and
                         // only fires SHChangeNotify when a folder's status actually transitions.
-                        if let Ok(c) = config::load() {
-                            if let Ok(ps) = db_tray.get_all_pair_sync_statuses() {
-                                let active_paths = db_tray.get_active_syncing_paths().unwrap_or_default();
-                                overlay::update_folder_overlays(&c.pairs, &ps, &active_paths, &c.overlay);
-                            }
+                        if let Some(ref c) = cfg_opt {
+                            overlay::update_folder_overlays(
+                                &c.pairs,
+                                &pair_statuses,
+                                &active_paths,
+                                &c.overlay,
+                                is_syncing,
+                            );
+                        }
+
+                        let current_state_key = (
+                            enabled_running,
+                            enabled_queued,
+                            enabled_failed,
+                            global_sync_active,
+                            is_syncing,
+                        );
+                        if current_state_key != last_state_key {
+                            let _ = handle_tray.emit("queue://updated", ());
+                            last_state_key = current_state_key;
                         }
 
                         let (new_state, tooltip) = if is_paused {
                             (TrayState::Paused, "Twin \u{2013} Paused".to_string())
-                        } else if running > 0 || queued > 0 {
-                            (
-                                TrayState::Syncing,
-                                format!("Twin \u{2013} Syncing ({running} active, {queued} queued)"),
-                            )
-                        } else if failed > 0 {
+                        } else if is_syncing {
+                            let total_active = enabled_running
+                                .max(live_transfers as i64)
+                                .max(active_workers as i64)
+                                .max(1);
+                            let msg = if enabled_queued > 0 {
+                                format!("Twin \u{2013} Syncing ({total_active} active, {enabled_queued} queued)")
+                            } else {
+                                "Twin \u{2013} Syncing...".to_string()
+                            };
+                            (TrayState::Syncing, msg)
+                        } else if enabled_failed > 0 {
                             (
                                 TrayState::Error,
-                                format!("Twin \u{2013} {failed} sync error(s)"),
+                                format!("Twin \u{2013} {enabled_failed} sync error(s)"),
                             )
                         } else {
                             (TrayState::Idle, "Twin \u{2013} All files up to date".to_string())
                         };
 
-                        if new_state != last_state {
+                        if new_state != last_state || tooltip != last_tooltip {
                             set_tray_state(&handle_tray, new_state, Some(&tooltip));
                             last_state = new_state;
+                            last_tooltip = tooltip;
                         }
                     }
                 });
@@ -792,12 +895,15 @@ fn main() {
                     let rules_cfg = cfg.rules.clone();
                     tauri::async_runtime::spawn(async move {
                         for pair in pairs.iter().filter(|p| p.enabled) {
+                            let _guard = sync::PairSyncGuard::new(&pair.id);
                             let r = rules::Rules::for_pair(&rules_cfg, pair);
                             let _ = watcher::scan_pair(pair, Arc::clone(&d), &r, &g).await;
                         }
                     });
                 });
             }
+
+            let echo_shared = Arc::new(sync::SelfWritten::new());
 
             // Initial auto-gap check on startup: scan local disk AND reconcile remote Google Drive for all enabled pairs.
             {
@@ -808,7 +914,7 @@ fn main() {
                 let rules_cfg_init = cfg.rules.clone();
                 let policy_init = cfg.policy.clone();
                 let handle_init = handle.clone();
-                let echo_init = Arc::new(sync::SelfWritten::new());
+                let echo_init = Arc::clone(&echo_shared);
 
                 tauri::async_runtime::spawn(async move {
                     let drive_opt = drive::DriveClient::new().ok();
@@ -830,6 +936,7 @@ fn main() {
                                 warn!("Initial auto-gap check error for pair {}: {e}", pair.id);
                             }
                         } else {
+                            let _guard = sync::PairSyncGuard::new(&pair.id);
                             if let Err(e) = watcher::scan_pair(pair, Arc::clone(&db_init), &pair_rules, &gov_init).await {
                                 warn!("Initial local scan error for pair {}: {e}", pair.id);
                             }
@@ -845,6 +952,7 @@ fn main() {
                 let db_watch = Arc::clone(&db_arc);
                 let gov_watch = gov.clone();
                 let q_watch = q.clone();
+                let echo_watch = Arc::clone(&echo_shared);
                 tauri::async_runtime::spawn(async move {
                         while let Some(change) = local_rx.recv().await {
                             let current_cfg = config::load().unwrap_or_default();
@@ -876,7 +984,12 @@ fn main() {
                                                 .unwrap_or(0);
                                             let md5 = watcher::compute_md5(&full_path, &gov_watch).await.ok();
                                             let existing = db_watch.get_file(&pair.id, &rel_str).ok().flatten();
-                                            let skip = existing.as_ref().and_then(|r| r.md5.as_deref()) == md5.as_deref();
+                                            // Only skip re-upload if we have a stored md5 to compare against.
+                                            // NULL md5 means "unknown" — compute and store on first encounter.
+                                            let skip = match existing.as_ref().and_then(|r| r.md5.as_deref()) {
+                                                Some(db_md5) => md5.as_deref() == Some(db_md5),
+                                                None => false,
+                                            };
                                             if !skip {
                                                 let row = db::FileRow {
                                                     pair_id: pair.id.clone(),
@@ -889,6 +1002,7 @@ fn main() {
                                                     drive_mtime_ms: existing.as_ref().and_then(|r| r.drive_mtime_ms),
                                                     drive_rev: existing.as_ref().and_then(|r| r.drive_rev.clone()),
                                                     state: "dirty".into(),
+                                                    os_file_id: None,
                                                 };
                                                 let _ = db_watch.upsert_file(row);
                                                 let now_ms = std::time::SystemTime::now()
@@ -939,43 +1053,143 @@ fn main() {
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .unwrap_or_default()
                                         .as_millis() as i64;
-                                    let _ = db_watch.mark_state(&pair.id, &from_rel_str, "deleted_local");
-                                    let _ = db_watch.enqueue(db::NewJob {
-                                        pair_id: pair.id.clone(),
-                                        kind: "delete".into(),
-                                        rel_path: from_rel_str,
-                                        priority: 1,
-                                        created_ms: now_ms,
-                                    });
-                                    if let Ok(meta) = full_path.metadata() {
-                                        if meta.is_file() && rules.allowed_path(Some(&full_path), &change.rel_path, meta.len()) {
-                                            let size = meta.len() as i64;
-                                            let mtime_ms = meta.modified()
-                                                .ok()
-                                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                                                .map(|d| d.as_millis() as i64)
-                                                .unwrap_or(0);
-                                            let md5 = watcher::compute_md5(&full_path, &gov_watch).await.ok();
-                                            let row = db::FileRow {
-                                                pair_id: pair.id.clone(),
-                                                rel_path: rel_str.clone(),
-                                                size: Some(size),
-                                                mtime_ms: Some(mtime_ms),
-                                                md5,
-                                                drive_id: None,
-                                                drive_md5: None,
-                                                drive_mtime_ms: None,
-                                                drive_rev: None,
-                                                state: "dirty".into(),
-                                            };
-                                            let _ = db_watch.upsert_file(row);
-                                            let _ = db_watch.enqueue(db::NewJob {
-                                                pair_id: pair.id.clone(),
-                                                kind: "upload".into(),
-                                                rel_path: rel_str,
-                                                priority: 1,
-                                                created_ms: now_ms,
-                                            });
+
+                                    // 1. Suppress echo renames from cloud changes
+                                    if echo_watch.is_echo_rename(&from_rel_str, &rel_str).await {
+                                        info!("watcher: suppressing echo rename {} -> {}", from_rel_str, rel_str);
+                                        continue;
+                                    }
+
+                                    // 2. Folder rename detection
+                                    if full_path.is_dir() {
+                                        if let Ok(drive_client) = drive::DriveClient::new() {
+                                            let _ = twin_lib::rename::run_folder_rename(
+                                                &db_watch,
+                                                &drive_client,
+                                                &pair.id,
+                                                &pair.drive_folder_id,
+                                                &from_rel_str,
+                                                &rel_str,
+                                            ).await;
+                                        }
+                                        continue;
+                                    }
+
+                                    // 3. Safe-save behavior:
+                                    // Editors like Word and Vim write a temp file and rename it over the original,
+                                    // which changes the inode. Don't treat this as delete + new file.
+                                    // Match by path: if `rel_str` already exists in DB with a drive_id, it is an in-place update!
+                                    let existing_target = db_watch.get_file(&pair.id, &rel_str).ok().flatten();
+                                    if let Some(target_row) = existing_target {
+                                        if target_row.drive_id.is_some() {
+                                            info!("safe-save detected for {}: preserving cloud file ID and updating content", rel_str);
+                                            if let Ok(meta) = full_path.metadata() {
+                                                let size = meta.len() as i64;
+                                                let mtime_ms = meta.modified()
+                                                    .ok()
+                                                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                                    .map(|d| d.as_millis() as i64)
+                                                    .unwrap_or(0);
+                                                let os_id = twin_lib::rename::get_file_identity(&full_path).map(|id| id.os_id);
+                                                let md5 = watcher::compute_md5(&full_path, &gov_watch).await.ok();
+
+                                                let updated_row = db::FileRow {
+                                                    pair_id: pair.id.clone(),
+                                                    rel_path: rel_str.clone(),
+                                                    size: Some(size),
+                                                    mtime_ms: Some(mtime_ms),
+                                                    md5,
+                                                    drive_id: target_row.drive_id,
+                                                    drive_md5: target_row.drive_md5,
+                                                    drive_mtime_ms: target_row.drive_mtime_ms,
+                                                    drive_rev: target_row.drive_rev,
+                                                    state: "dirty".into(),
+                                                    os_file_id: os_id.or(target_row.os_file_id),
+                                                };
+                                                let _ = db_watch.upsert_file(updated_row);
+                                                let _ = db_watch.enqueue(db::NewJob {
+                                                    pair_id: pair.id.clone(),
+                                                    kind: "upload".into(),
+                                                    rel_path: rel_str,
+                                                    priority: 5,
+                                                    created_ms: now_ms,
+                                                });
+                                                q_watch.wake();
+                                            }
+                                            continue;
+                                        }
+                                    }
+
+                                    // 4. Try rename detection (OS file ID first, hash fallback only when candidate sizes match)
+                                    let new_size = full_path.metadata().ok().map(|m| m.len() as i64).unwrap_or(0);
+                                    let rename_detected = twin_lib::rename::detect_rename_with_root(
+                                        &db_watch,
+                                        &pair.id,
+                                        Some(&root),
+                                        &full_path,
+                                        &rel_str,
+                                        None,
+                                        new_size,
+                                    );
+
+                                    if let Some(old_rel) = rename_detected {
+                                        let _ = db_watch.mark_state(&pair.id, &old_rel, "renaming");
+                                        let _ = db_watch.enqueue(db::NewJob {
+                                            pair_id: pair.id.clone(),
+                                            kind: "rename".into(),
+                                            rel_path: format!("{}\t{}", old_rel, rel_str),
+                                            priority: 15,
+                                            created_ms: now_ms,
+                                        });
+                                    } else {
+                                        // Fallback: delete old (only if old had a drive_id) + upload new
+                                        let old_in_db = db_watch.get_file(&pair.id, &from_rel_str).ok().flatten();
+                                        if let Some(old_row) = old_in_db {
+                                            if old_row.drive_id.is_some() {
+                                                let _ = db_watch.mark_state(&pair.id, &from_rel_str, "deleted_local");
+                                                let _ = db_watch.enqueue(db::NewJob {
+                                                    pair_id: pair.id.clone(),
+                                                    kind: "delete".into(),
+                                                    rel_path: from_rel_str,
+                                                    priority: 1,
+                                                    created_ms: now_ms,
+                                                });
+                                            } else {
+                                                let _ = db_watch.delete_file(&pair.id, &from_rel_str);
+                                            }
+                                        }
+                                        if let Ok(meta) = full_path.metadata() {
+                                            if meta.is_file() && rules.allowed_path(Some(&full_path), &change.rel_path, meta.len()) {
+                                                let size = meta.len() as i64;
+                                                let mtime_ms = meta.modified()
+                                                    .ok()
+                                                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                                    .map(|d| d.as_millis() as i64)
+                                                    .unwrap_or(0);
+                                                let os_id = twin_lib::rename::get_file_identity(&full_path).map(|id| id.os_id);
+                                                let md5 = watcher::compute_md5(&full_path, &gov_watch).await.ok();
+                                                let row = db::FileRow {
+                                                    pair_id: pair.id.clone(),
+                                                    rel_path: rel_str.clone(),
+                                                    size: Some(size),
+                                                    mtime_ms: Some(mtime_ms),
+                                                    md5,
+                                                    drive_id: None,
+                                                    drive_md5: None,
+                                                    drive_mtime_ms: None,
+                                                    drive_rev: None,
+                                                    state: "dirty".into(),
+                                                    os_file_id: os_id,
+                                                };
+                                                let _ = db_watch.upsert_file(row);
+                                                let _ = db_watch.enqueue(db::NewJob {
+                                                    pair_id: pair.id.clone(),
+                                                    kind: "upload".into(),
+                                                    rel_path: rel_str,
+                                                    priority: 1,
+                                                    created_ms: now_ms,
+                                                });
+                                            }
                                         }
                                     }
                                     q_watch.wake();
@@ -994,7 +1208,7 @@ fn main() {
                 let q_sup = q.clone();
                 let handle_sup = handle.clone();
                 let local_tx_sup = local_tx.clone();
-                let echo_sup = Arc::new(sync::SelfWritten::new());
+                let echo_sup = Arc::clone(&echo_shared);
 
                 tauri::async_runtime::spawn(async move {
                     let mut debouncers: std::collections::HashMap<
@@ -1005,6 +1219,7 @@ fn main() {
                         >,
                     > = std::collections::HashMap::new();
                     let mut polled_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    let mut poll_handles: std::collections::HashMap<String, tauri::async_runtime::JoinHandle<()>> = std::collections::HashMap::new();
                     let mut last_heartbeat = std::time::Instant::now();
 
                     loop {
@@ -1012,7 +1227,19 @@ fn main() {
                         let enabled_pairs: Vec<_> = current_cfg.pairs.iter().filter(|p| p.enabled).cloned().collect();
                         let enabled_ids: std::collections::HashSet<String> = enabled_pairs.iter().map(|p| p.id.clone()).collect();
 
-                        // Clean up disabled or removed pairs
+                        // Clean up disabled or removed pairs — abort their background poll loops
+                        // and drop filesystem watchers so no new jobs can be enqueued for them.
+                        let to_abort: Vec<String> = poll_handles
+                            .keys()
+                            .filter(|id| !enabled_ids.contains(*id))
+                            .cloned()
+                            .collect();
+                        for id in to_abort {
+                            if let Some(handle) = poll_handles.remove(&id) {
+                                handle.abort();
+                                info!("Pair supervisor: aborted changes poll loop for disabled pair {}", id);
+                            }
+                        }
                         debouncers.retain(|id, _| enabled_ids.contains(id));
                         polled_ids.retain(|id| enabled_ids.contains(id));
 
@@ -1036,6 +1263,7 @@ fn main() {
                                         let q = q_sup.clone();
                                         let r = rules::Rules::for_pair(&current_cfg.rules, &pair);
                                         tauri::async_runtime::spawn(async move {
+                                            let _guard = sync::PairSyncGuard::new(&p.id);
                                             let _ = watcher::scan_pair(&p, d, &r, &g).await;
                                             q.wake();
                                         });
@@ -1060,7 +1288,8 @@ fn main() {
                                         app: Some(handle_sup.clone()),
                                         queue: Some(q_sup.clone()),
                                     };
-                                    tauri::async_runtime::spawn(sync::poll_changes_loop(pair.clone(), ctx));
+                                    let handle = tauri::async_runtime::spawn(sync::poll_changes_loop(pair.clone(), ctx));
+                                    poll_handles.insert(pair.id.clone(), handle);
                                     polled_ids.insert(pair.id.clone());
                                     info!("Pair supervisor: changes poll loop started for pair {}", pair.id);
                                 }
@@ -1081,6 +1310,7 @@ fn main() {
                         if last_heartbeat.elapsed() >= rescan_interval {
                             last_heartbeat = std::time::Instant::now();
                             for pair in &enabled_pairs {
+                                let _guard = sync::PairSyncGuard::new(&pair.id);
                                 let rules = rules::Rules::for_pair(&current_cfg.rules, pair);
                                 let _ = watcher::scan_pair(pair, Arc::clone(&db_sup), &rules, &gov_sup).await;
                             }

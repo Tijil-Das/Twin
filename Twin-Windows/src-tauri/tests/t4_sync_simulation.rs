@@ -77,6 +77,7 @@ async fn test_decision_table_27_cases() {
                         drive_mtime_ms: Some(1000),
                         drive_rev: Some("1".into()),
                         state: "synced".into(),
+                        os_file_id: None,
                     }).expect("upsert base");
                 } else if *l_st == "modified" {
                     fs::write(&local_path, b"local MODIFIED content").expect("write local");
@@ -91,6 +92,7 @@ async fn test_decision_table_27_cases() {
                         drive_mtime_ms: Some(1000),
                         drive_rev: Some("1".into()),
                         state: "dirty".into(),
+                        os_file_id: None,
                     }).expect("upsert base");
                 } else {
                     // deleted: local file does not exist on disk
@@ -105,6 +107,7 @@ async fn test_decision_table_27_cases() {
                         drive_mtime_ms: Some(1000),
                         drive_rev: Some("1".into()),
                         state: "synced".into(),
+                        os_file_id: None,
                     }).expect("upsert base");
                 }
 
@@ -227,6 +230,7 @@ async fn test_two_way_simulation_1000_scenarios() {
                     drive_mtime_ms: Some(1000),
                     drive_rev: None,
                     state: "dirty".into(),
+                    os_file_id: None,
                 }).expect("upsert");
             }
             1 => {
@@ -355,6 +359,7 @@ async fn test_deletion_propagation_safety() {
         drive_mtime_ms: Some(1000),
         drive_rev: Some("1".into()),
         state: "synced".into(),
+        os_file_id: None,
     }).expect("upsert file");
 
     let change = DriveChange {
@@ -401,6 +406,7 @@ async fn test_deletion_propagation_safety() {
         drive_mtime_ms: Some(2000),
         drive_rev: Some("1".into()),
         state: "synced".into(),
+        os_file_id: None,
     }).expect("upsert deleted file");
 
     let drive_entries = vec![DriveEntry {

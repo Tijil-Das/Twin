@@ -69,6 +69,7 @@ impl JobRunner for UploadRunner {
                 "mkdir"    => run_mkdir(job, db, cfg, drive).await,
                 "download" => crate::transfer::download::run_download(job, db, cfg, gov, drive, limiter, progress).await,
                 "restore"  => crate::transfer::download::run_restore(job, db, cfg, gov, drive, limiter, progress).await,
+                "rename"   => crate::rename::run_rename_job(&job, Arc::clone(&db), &drive).await,
                 other      => Err(AppError::Other(format!("unknown job kind: {other}"))),
             }
         }
@@ -127,7 +128,8 @@ async fn run_upload(
 
     // Skip if Drive already has the same content in local DB.
     if let Some(ref row) = existing {
-        if row.drive_md5.as_deref() == Some(&local_md5)
+        if (row.drive_md5.as_deref() == Some(&local_md5)
+            || row.md5.as_deref() == Some(&local_md5))
             && row.size == Some(size as i64)
             && row.drive_id.is_some()
         {
@@ -136,6 +138,16 @@ async fn run_upload(
             return Ok(());
         }
     }
+
+    // Emit initial progress event immediately so UI displays active in-flight transfer from the start
+    let _ = progress.send(ProgressUpdate {
+        job_id: job.id,
+        pair_id: job.pair_id.clone(),
+        rel_path: job.rel_path.clone(),
+        bytes_done: 0,
+        bytes_total: size,
+        kind: "upload".into(),
+    });
 
     // Resolve Drive parent folder.
     let rel_dir = parent_dir(&job.rel_path);
@@ -156,15 +168,26 @@ async fn run_upload(
                 && (remote_size.is_none() || remote_size == Some(size as i64))
             {
                 info!("upload: skip {} (already exists on Drive: {})", job.rel_path, remote_id);
+                let _ = progress.send(ProgressUpdate {
+                    job_id: job.id,
+                    pair_id: job.pair_id.clone(),
+                    rel_path: job.rel_path.clone(),
+                    bytes_done: size,
+                    bytes_total: size,
+                    kind: "upload".into(),
+                });
                 let _ = db.set_drive_meta(
                     &job.pair_id,
                     &job.rel_path,
+                    Some(size as i64),
+                    Some(mtime_ms),
+                    Some(&local_md5),
                     &remote_id,
                     remote_md5.as_deref(),
                     None,
                     None,
+                    "synced",
                 );
-                db.mark_state(&job.pair_id, &job.rel_path, "synced")?;
                 return Ok(());
             }
 
@@ -263,6 +286,7 @@ async fn run_upload(
         drive_mtime_ms: Some(mtime_ms),
         drive_rev: meta_result.head_revision_id.clone(),
         state: "synced".into(),
+        os_file_id: None,
     };
     db.upsert_file(file_row)?;
 

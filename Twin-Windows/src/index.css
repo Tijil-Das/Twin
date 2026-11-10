@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -128,10 +129,14 @@ select {
     box-shadow: 0 0 0 2px var(--accent-subtle);
   }
 
-  /* Monospace badge / code font */
-  .code-text {
-    font-family: "Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", monospace;
-    font-variant-ligatures: none;
+  /* High-legibility modern number & telemetry typography */
+  .code-text,
+  .font-numeric,
+  .font-mono {
+    font-family: "JetBrains Mono", "Geist Mono", "Segoe UI Variable Text", "Cascadia Code", Consolas, monospace;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "zero" 1;
+    letter-spacing: -0.015em;
   }
 }
 
@@ -147,55 +152,76 @@ select {
 
 /* ==========================================================================
    High-Contrast Elevated Desktop Toast Notifications (Sonner)
-   Distinct surface elevation, crisp boundary highlight, and multi-tier drop
-   shadow to prevent visual blending with background cards and text.
+   Distinct surface elevation, sharp 1px white border, solid colored accent strip,
+   and multi-tier shadow buffer to guarantee unmistakable contrast against cards.
    ========================================================================== */
 
 [data-sonner-toaster] {
-  --normal-bg: #1c212c;
-  --normal-border: rgba(255, 255, 255, 0.16);
-  --normal-text: #f3f4f6;
+  --normal-bg: #242933;
+  --normal-border: rgba(255, 255, 255, 0.28);
+  --normal-text: #ffffff;
   font-family: inherit;
 }
 
 [data-sonner-toast] {
-  background: rgba(28, 33, 44, 0.97) !important;
-  backdrop-filter: blur(20px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: #242933 !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
   border-radius: 9px !important;
   font-size: 13px !important;
   font-weight: 500 !important;
-  padding: 10px 16px !important;
-  color: #f3f4f6 !important;
-  box-shadow: 0 24px 48px -6px rgba(0, 0, 0, 0.9), 0 8px 16px -2px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  padding: 11px 16px !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), 0 20px 48px -4px rgba(0, 0, 0, 0.95), 0 8px 16px -2px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
   text-rendering: optimizeLegibility !important;
 }
 
 [data-sonner-toast][data-styled='true'] {
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
-  background: rgba(28, 33, 44, 0.97) !important;
-  color: #f3f4f6 !important;
-  box-shadow: 0 24px 48px -6px rgba(0, 0, 0, 0.9), 0 8px 16px -2px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  background: #242933 !important;
+  color: #ffffff !important;
 }
 
-[data-sonner-toast][data-type='info'],
-[data-sonner-toast][data-type='success'],
-[data-sonner-toast][data-type='error'],
+/* Success Balloon */
+[data-sonner-toast][data-type='success'] {
+  background: #20282e !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  border-left: 4px solid #10b981 !important;
+  color: #ffffff !important;
+}
+
+/* Info Balloon */
+[data-sonner-toast][data-type='info'] {
+  background: #202732 !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  border-left: 4px solid #38bdf8 !important;
+  color: #ffffff !important;
+}
+
+/* Error Balloon */
+[data-sonner-toast][data-type='error'] {
+  background: #2b2225 !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  border-left: 4px solid #ef4444 !important;
+  color: #ffffff !important;
+}
+
+/* Warning Balloon */
 [data-sonner-toast][data-type='warning'] {
-  background: rgba(28, 33, 44, 0.97) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
-  color: #f3f4f6 !important;
-  box-shadow: 0 24px 48px -6px rgba(0, 0, 0, 0.9), 0 8px 16px -2px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  background: #2a261f !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  border-left: 4px solid #f59e0b !important;
+  color: #ffffff !important;
 }
 
 [data-sonner-toast] [data-title] {
-  color: #f3f4f6 !important;
-  font-weight: 500 !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
 }
 
 [data-sonner-toast] [data-description] {
-  color: #9aa1b0 !important;
+  color: #cbd5e1 !important;
   font-size: 12px !important;
 }
 

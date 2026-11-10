@@ -1,87 +1,76 @@
 """
-Generates multi-resolution Windows File Explorer shell icon overlays for Twin.
-
-Standard Windows Shell (IShellIconOverlayIdentifier) overlays:
-- synced: Emerald green circle with crisp white checkmark
-- syncing: Solid yellow circle with dark outline, NO inner symbols
-
-Icons are centered with a 20% transparent boundary padding so Windows Explorer's
-shell overlay rendering engine draws them crisply in the lower-left slot without
-clipping, blurring, or distortion.
-
-Multi-resolution ICOs (16x16 up to 256x256) support all Explorer view modes and DPI scalings.
+Generates multi-resolution Windows File Explorer shell icon overlays for Twin
+directly from authentic Icon-Pack assets with standard Windows overlay badge proportions (~52% diameter):
+- synced.ico  <- derived from Icon-Pack/tray_idle.ico
+- syncing.ico <- derived from Icon-Pack/tray_syncing.ico
 """
+import io
 import os
-from PIL import Image, ImageDraw
+import struct
+from PIL import Image
 
-def render_badge(sz: int, kind: str) -> Image.Image:
-    scale = 4
-    s = sz * scale
-    r = s * 0.40
-    cx = s * 0.50
-    cy = s * 0.50
+def get_highest_res_image(ico_path: str) -> Image.Image:
+    with open(ico_path, 'rb') as f:
+        data = f.read()
+    count = struct.unpack('<H', data[4:6])[0]
+    best_img = None
+    best_w = 0
+    for i in range(count):
+        w, h, sz, off = struct.unpack('<BBII', data[6+i*16:6+i*16+2] + data[6+i*16+8:6+i*16+16])
+        w = 256 if w == 0 else w
+        if w > best_w:
+            best_w = w
+            best_img = Image.open(io.BytesIO(data[off:off+sz])).convert('RGBA')
+    return best_img
 
-    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    bbox = [cx - r, cy - r, cx + r, cy + r]
+def build_overlay_ico(circle_img: Image.Image, out_paths: list[str], ratio: float = 0.52, y_shift_ratio: float = 0.08):
+    sizes = [16, 20, 24, 32, 40, 48, 60, 64, 72, 80, 96, 120, 128, 144, 192, 256]
+    frames = {}
+    for sz in sizes:
+        diam = max(8, int(round(sz * ratio)))
+        resized = circle_img.resize((diam, diam), Image.Resampling.LANCZOS)
+        canvas = Image.new('RGBA', (sz, sz), (0, 0, 0, 0))
+        offset_x = (sz - diam) // 2
+        # Center horizontally, shift down slightly (~8% of canvas) for ideal bottom-left folder placement
+        offset_y = min(sz - diam, (sz - diam) // 2 + max(1, int(round(sz * y_shift_ratio))))
+        canvas.paste(resized, (offset_x, offset_y), resized)
+        frames[sz] = canvas
 
-    if kind == "synced":
-        green_fill = (34, 197, 94, 255)     # #22c55e (emerald green)
-        green_outline = (21, 128, 61, 255)  # #15803d (dark green border for contrast)
-        outline_w = max(1, int(round(0.12 * r)))
-        draw.ellipse(bbox, fill=green_fill, outline=green_outline, width=outline_w)
-
-        # Crisp, high-contrast white checkmark
-        p1 = (cx - r * 0.48, cy + r * 0.05)
-        p2 = (cx - r * 0.14, cy + r * 0.38)
-        p3 = (cx + r * 0.48, cy - r * 0.32)
-        tick_w = max(1, int(round(0.24 * r)))
-        draw.line([p1, p2, p3], fill=(255, 255, 255, 255), width=tick_w, joint="curve")
-
-        # Smooth rounded end caps
-        cap_r = tick_w / 2.0
-        for pt in [p1, p3]:
-            draw.ellipse(
-                [pt[0] - cap_r, pt[1] - cap_r, pt[0] + cap_r, pt[1] + cap_r],
-                fill=(255, 255, 255, 255),
-            )
-    elif kind == "syncing":
-        # Solid yellow circle with dark outline, NO inner symbols
-        yellow_fill = (250, 204, 21, 255)   # #facc15
-        yellow_outline = (92, 38, 5, 255)   # #5c2605
-        outline_w = max(1, int(round(0.14 * r)))
-        draw.ellipse(bbox, fill=yellow_fill, outline=yellow_outline, width=outline_w)
-
-    return img.resize((sz, sz), Image.Resampling.LANCZOS)
+    size_tuples = [(sz, sz) for sz in sizes]
+    largest = frames[256]
+    others = [frames[sz] for sz in sizes if sz != 256]
+    for p in out_paths:
+        largest.save(p, format='ICO', append_images=others, sizes=size_tuples)
+        print(f"Generated {p} ({len(sizes)} resolutions: {sizes[0]}px..{sizes[-1]}px, badge={int(ratio*100)}%, y_shift=+{int(y_shift_ratio*100)}%)")
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    out_dir_tauri = os.path.normpath(os.path.join(script_dir, "..", "src-tauri", "icons", "overlay"))
-    out_dir_iconpack = os.path.normpath(os.path.join(script_dir, "..", "..", "Icon-Pack"))
+    repo_root = os.path.normpath(os.path.join(script_dir, "..", ".."))
+    icon_pack = os.path.join(repo_root, "Icon-Pack")
+    out_dir_tauri = os.path.join(repo_root, "Twin-Windows", "src-tauri", "icons", "overlay")
 
     os.makedirs(out_dir_tauri, exist_ok=True)
-    os.makedirs(out_dir_iconpack, exist_ok=True)
+    os.makedirs(icon_pack, exist_ok=True)
 
-    sizes = [16, 20, 24, 32, 40, 48, 60, 64, 72, 80, 96, 120, 128, 144, 192, 256]
-    size_tuples = [(sz, sz) for sz in sizes]
+    src_idle = os.path.join(icon_pack, "tray_idle.ico")
+    if os.path.exists(src_idle):
+        idle_master = get_highest_res_image(src_idle)
+        idle_circle = idle_master.crop(idle_master.getbbox())
+        build_overlay_ico(
+            idle_circle,
+            [os.path.join(icon_pack, "synced.ico"), os.path.join(out_dir_tauri, "synced.ico")],
+            ratio=0.52,
+        )
 
-    for kind in ["synced", "syncing"]:
-        frames = {sz: render_badge(sz, kind) for sz in sizes}
-        largest = frames[256]
-        others = [frames[sz] for sz in sizes if sz != 256]
-
-        filenames = [
-            f"{kind}.ico",
-            f"{kind}_centered.ico",
-            f"{kind}_top_right.ico",
-            f"{kind}_bottom_right.ico",
-        ]
-
-        for fname in filenames:
-            for target_dir in [out_dir_tauri, out_dir_iconpack]:
-                filepath = os.path.join(target_dir, fname)
-                largest.save(filepath, format="ICO", append_images=others, sizes=size_tuples)
-            print(f"Generated {fname} ({len(sizes)} resolutions: {sizes[0]}px..{sizes[-1]}px)")
+    src_syncing = os.path.join(icon_pack, "tray_syncing.ico")
+    if os.path.exists(src_syncing):
+        syncing_master = get_highest_res_image(src_syncing)
+        syncing_circle = syncing_master.crop(syncing_master.getbbox())
+        build_overlay_ico(
+            syncing_circle,
+            [os.path.join(icon_pack, "syncing.ico"), os.path.join(out_dir_tauri, "syncing.ico")],
+            ratio=0.52,
+        )
 
 if __name__ == "__main__":
     main()

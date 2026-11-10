@@ -400,10 +400,24 @@ pub async fn scan_pair(
             let needs_upload = match &existing {
                 None => true,
                 Some(row) => {
-                    row.state != "synced"
-                        || row.drive_id.is_none()
-                        || row.mtime_ms != Some(mtime_ms)
-                        || row.size != Some(size as i64)
+                    // Legacy rows (from before set_drive_meta stored real values) have
+                    // state='dirty' but NULL size/mtime/md5. If drive_id is set, the file
+                    // exists on Drive — don't re-enqueue based on state alone.
+                    if row.state == "dirty"
+                        && row.size.is_none()
+                        && row.mtime_ms.is_none()
+                        && row.md5.is_none()
+                        && row.drive_id.is_some()
+                    {
+                        false
+                    } else {
+                        row.state != "synced"
+                            || row.drive_id.is_none()
+                            // Only flag as changed if we have a stored value to compare against;
+                            // NULL means "unknown", not "different".
+                            || row.mtime_ms.map_or(false, |m| m != mtime_ms)
+                            || row.size.map_or(false, |s| s != size as i64)
+                    }
                 }
             };
 
@@ -412,8 +426,13 @@ pub async fn scan_pair(
                 let md5 = compute_md5(&path, gov).await.ok();
 
                 // Check if md5 actually changed (avoids enqueue on metadata-only change).
-                let skip = existing.as_ref().and_then(|r| r.md5.as_deref())
-                    == md5.as_deref();
+                // If DB md5 is NULL we cannot verify, so don't skip (one-time re-upload to store proper values).
+                let skip = match existing.as_ref().and_then(|r| r.md5.as_deref()) {
+                    Some(db_md5) => md5.as_deref() == Some(db_md5),
+                    None => false,
+                };
+
+                let os_id = crate::rename::get_file_identity(&path).map(|id| id.os_id);
 
                 let file_row = FileRow {
                     pair_id: pair.id.clone(),
@@ -426,17 +445,47 @@ pub async fn scan_pair(
                     drive_mtime_ms: existing.as_ref().and_then(|r| r.drive_mtime_ms),
                     drive_rev: existing.as_ref().and_then(|r| r.drive_rev.clone()),
                     state: if skip { "synced".into() } else { "dirty".into() },
+                    os_file_id: os_id.or_else(|| existing.as_ref().and_then(|r| r.os_file_id.clone())),
                 };
                 db.upsert_file(file_row)?;
 
                 if !skip {
-                    db.enqueue(NewJob {
-                        pair_id: pair.id.clone(),
-                        kind: "upload".into(),
-                        rel_path: rel_str,
-                        priority: 0,
-                        created_ms: now_ms,
-                    })?;
+                    // Try rename detection: if this is a new/deleted-local file that
+                    // matches a previously-tracked file, enqueue a rename instead of upload.
+                    let is_new = existing.is_none()
+                        || existing.as_ref().map(|r| r.state.as_str() == "deleted_local").unwrap_or(false);
+                    let rename_old = if is_new {
+                        crate::rename::detect_rename_with_root(
+                            &db,
+                            &pair.id,
+                            Some(&root),
+                            &path,
+                            &rel_str,
+                            md5.as_deref(),
+                            size as i64,
+                        )
+                    } else {
+                        None
+                    };
+
+                    if let Some(old_rel) = rename_old {
+                        let _ = db.mark_state(&pair.id, &old_rel, "renaming");
+                        db.enqueue(NewJob {
+                            pair_id: pair.id.clone(),
+                            kind: "rename".into(),
+                            rel_path: format!("{}\t{}", old_rel, rel_str),
+                            priority: 15,
+                            created_ms: now_ms,
+                        })?;
+                    } else {
+                        db.enqueue(NewJob {
+                            pair_id: pair.id.clone(),
+                            kind: "upload".into(),
+                            rel_path: rel_str,
+                            priority: 0,
+                            created_ms: now_ms,
+                        })?;
+                    }
                 }
             }
         }
@@ -463,10 +512,11 @@ fn mark_missing(
             continue;
         }
 
-        // Don't resurrect rows that are already in a confirmed terminal deleted state.
+        // Don't resurrect rows that are already in a confirmed terminal deleted state
+        // or undergoing an active rename.
         if matches!(
             row.state.as_str(),
-            "remote_deleted" | "deleted" | "trashed" | "conflict"
+            "remote_deleted" | "deleted" | "trashed" | "conflict" | "renaming"
         ) {
             continue;
         }

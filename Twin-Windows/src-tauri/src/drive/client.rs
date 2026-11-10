@@ -380,7 +380,19 @@ impl DriveClient {
         });
         if cfg.app.color_drive_folders {
             if let Some(obj) = body_map.as_object_mut() {
-                obj.insert("folderColorRgb".to_string(), serde_json::json!("#4285f4"));
+                let parent_meta = self.get_folder_meta(parent_id).await.ok();
+                let parent_idx = parent_meta
+                    .as_ref()
+                    .and_then(|m| crate::drive::colorizer::palette_index_of(m.folder_color_rgb.as_deref()))
+                    .unwrap_or(0);
+
+                let used_colors: Vec<String> = match self.list_subfolders(parent_id).await {
+                    Ok(subs) => subs.into_iter().filter_map(|s| s.folder_color_rgb).collect(),
+                    Err(_) => Vec::new(),
+                };
+
+                let assigned_color = crate::drive::colorizer::pick_next_available_sibling_color(parent_idx, &used_colors);
+                obj.insert("folderColorRgb".to_string(), serde_json::json!(assigned_color));
             }
         }
         let resp = self.execute_with_retry(|| {
@@ -543,6 +555,54 @@ impl DriveClient {
                 }
             }
         }
+    }
+
+    /// Rename (and optionally move) a file on Drive — metadata update only, no content upload.
+    /// If `new_parent_id` is Some and different from `old_parent_id`, also moves it.
+    pub async fn rename_file(
+        &self,
+        file_id: &str,
+        new_name: &str,
+        new_parent_id: Option<&str>,
+        old_parent_id: Option<&str>,
+    ) -> Result<(), AppError> {
+        let token = auth::access_token().await?;
+        let url = format!("{}/files/{file_id}", self.base_url);
+        let body = serde_json::json!({ "name": new_name });
+
+        // Build query params conditionally.
+        let needs_move = new_parent_id.is_some()
+            && old_parent_id.is_some()
+            && new_parent_id != old_parent_id;
+
+        let resp = if needs_move {
+            let add = new_parent_id.unwrap();
+            let remove = old_parent_id.unwrap();
+            self.execute_with_retry(|| {
+                self.http.patch(&url)
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .query(&[
+                        ("addParents", add),
+                        ("removeParents", remove),
+                        ("supportsAllDrives", "true"),
+                    ])
+                    .json(&body)
+            }).await?
+        } else {
+            self.execute_with_retry(|| {
+                self.http.patch(&url)
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .query(&[("supportsAllDrives", "true")])
+                    .json(&body)
+            }).await?
+        };
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(AppError::Drive(format!("rename_file {status}: {body_text}")));
+        }
+        Ok(())
     }
 
     /// Move a file or folder from old_parent to new_parent in Google Drive.

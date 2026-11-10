@@ -170,6 +170,7 @@ export interface PairSyncStatus {
   synced: number;
   total: number;
   is_synced: boolean;
+  is_syncing?: boolean;
   deleted?: number;
   last_sync_ms?: number | null;
   active_jobs?: ActiveJobSummary[];
@@ -229,6 +230,10 @@ export const driveCreateFolder = (parentId: string, name: string) =>
   invoke<string>("drive_create_folder", { parentId, name });
 export const driveColorFolders = (color?: string) =>
   invoke<void>("drive_color_folders", { color: color ?? null });
+export const driveColorizeAllPairs = () =>
+  invoke<number>("drive_colorize_all_pairs");
+export const driveSetFolderColorizerEnabled = (enable: boolean) =>
+  invoke<void>("drive_set_folder_colorizer_enabled", { enable });
 export const driveSetFolderColor = (folderId: string, color?: string | null) =>
   invoke<void>("drive_set_folder_color", { folderId, colorRgb: color ?? null });
 export const driveSetFoldersColor = (folderIds: string[], color?: string | null) =>

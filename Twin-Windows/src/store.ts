@@ -47,6 +47,8 @@ interface AppState {
   progress: Record<number, ProgressEvent>;
   setProgress: (ev: ProgressEvent) => void;
   clearProgress: (jobId: number) => void;
+  clearPairProgress: (pairId: string) => void;
+  clearPairStatus: (pairId: string) => void;
 
   // Governor
   gov: GovStatePayload;
@@ -102,13 +104,17 @@ export const useStore = create<AppState>((set) => ({
 
   progress: {},
   setProgress: (ev) => {
+    // 100% guard: never store progress events for disabled pairs
+    const cfg = useStore.getState().config;
+    if (cfg?.pairs?.some((p: PairEntry) => p.id === ev.pair_id && !p.enabled)) return;
+
     // Schedule delayed cleanup for finished jobs outside of the pure reducer
     if (ev.bytes_done >= ev.bytes_total && ev.bytes_total > 0) {
       if (!completionTimers.has(ev.job_id)) {
         const timer = setTimeout(() => {
           completionTimers.delete(ev.job_id);
           useStore.getState().clearProgress(ev.job_id);
-        }, 1200);
+        }, 300);
         completionTimers.set(ev.job_id, timer);
       }
     } else {
@@ -139,6 +145,34 @@ export const useStore = create<AppState>((set) => ({
     });
   },
 
+  // Remove all in-flight progress events for a given pair (e.g. when pair is disabled)
+  clearPairProgress: (pairId: string) => {
+    set((s) => {
+      const next = { ...s.progress };
+      let changed = false;
+      for (const jobId of Object.keys(next) as (string | number)[]) {
+        const ev = next[jobId as number];
+        if (ev?.pair_id === pairId) {
+          delete next[jobId as number];
+          changed = true;
+        }
+      }
+      return changed ? { progress: next } : {};
+    });
+  },
+
+  // Remove a single pair's sync status (e.g. when pair is disabled)
+  clearPairStatus: (pairId: string) => {
+    set((s) => {
+      const next = { ...s.pairStatuses };
+      if (next[pairId]) {
+        delete next[pairId];
+        return { pairStatuses: next };
+      }
+      return {};
+    });
+  },
+
   gov: defaultGov,
   setGov: (gov) => set({ gov }),
 
@@ -146,7 +180,21 @@ export const useStore = create<AppState>((set) => ({
   setQueueStatus: (queueStatus) => set({ queueStatus }),
 
   pairStatuses: {},
-  setPairStatuses: (pairStatuses) => set({ pairStatuses }),
+  setPairStatuses: (pairStatuses) => {
+    // 100% guard: never persist statuses for pairs that are disabled in config.
+    // This makes every call site (boot, poller, events, sync buttons) safe by default.
+    const state = useStore.getState();
+    const cfg = state.config;
+    if (!cfg?.pairs) {
+      set({ pairStatuses });
+      return;
+    }
+    const enabledIds = new Set(cfg.pairs.filter((p: PairEntry) => p.enabled).map((p: PairEntry) => p.id));
+    const filtered = Object.fromEntries(
+      Object.entries(pairStatuses).filter(([id]) => enabledIds.has(id))
+    );
+    set({ pairStatuses: filtered });
+  },
 
   conflicts: [],
   addConflict: (c) =>

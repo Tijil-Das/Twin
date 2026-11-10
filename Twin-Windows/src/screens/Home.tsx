@@ -3,7 +3,7 @@
  * Clean, native desktop interface for live sync state, real-time queues,
  * and folder pair configuration.
  */
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Plus,
   Trash2,
@@ -37,6 +37,8 @@ import {
   updateConfig,
   runSyncCycle,
   retryAllFailed,
+  queueStatus,
+  getPairStatuses,
   type PairEntry,
 } from "@/lib/tauri";
 import { progressLabel, formatBytes, formatSpeed, formatSmartEta } from "@/lib/format";
@@ -86,6 +88,8 @@ function FolderPairRow({
   const pairStatuses = useStore((s) => s.pairStatuses) ?? {};
   const pairStatus = pairStatuses[id];
   const setConfig = useStore((s) => s.setConfig);
+  const setQueueStatus = useStore((s) => s.setQueueStatus);
+  const setPairStatuses = useStore((s) => s.setPairStatuses);
   const config = useStore((s) => s.config);
 
   const [syncing, setSyncing] = useState(false);
@@ -96,6 +100,8 @@ function FolderPairRow({
   const ModeIcon = modeInfo.Icon;
 
   // Active in-flight transfer events for this pair from progress store
+  // (includes completed transfers briefly so the activity dropdown shows
+  // during upload and confirms completion before numbers update)
   const pairEvents = Object.values(progress).filter(
     (e): e is ProgressEvent => Boolean(e && (e as ProgressEvent).pair_id === id)
   );
@@ -159,11 +165,46 @@ function FolderPairRow({
       }
     }
 
+    // Always keep the currently active transferring item at the top of the dropdown list
+    list.sort((a, b) => {
+      const aIsActive = (a.speedBps ?? 0) > 0 || (a.isLiveByteStream && a.bytesDone > 0);
+      const bIsActive = (b.speedBps ?? 0) > 0 || (b.isLiveByteStream && b.bytesDone > 0);
+
+      if (aIsActive && !bIsActive) return -1;
+      if (!aIsActive && bIsActive) return 1;
+
+      if (a.isLiveByteStream && !b.isLiveByteStream) return -1;
+      if (!a.isLiveByteStream && b.isLiveByteStream) return 1;
+
+      if (typeof a.jobId === "number" && typeof b.jobId === "number") {
+        return a.jobId - b.jobId;
+      }
+      return 0;
+    });
+
     return list;
   })();
 
-  const isCurrentlySyncing = syncing || activeTransfers.length > 0 || (pairStatus?.running ?? 0) > 0;
+  const isCurrentlySyncing =
+    syncing ||
+    Boolean(pairStatus?.is_syncing) ||
+    activeTransfers.length > 0 ||
+    (pairStatus?.running ?? 0) > 0 ||
+    (pairStatus?.queued ?? 0) > 0;
   const primaryTransfer = activeTransfers[0];
+  const transfersScrollRef = useRef<HTMLDivElement>(null);
+  const primaryTransferRef = useRef<HTMLDivElement>(null);
+
+  // Keep scroll at the top so the currently transferring file (at the top) is always in view
+  useEffect(() => {
+    if (transfersScrollRef.current) {
+      transfersScrollRef.current.scrollTop = 0;
+    }
+    // Ensure the currently transferring item (sorted to index 0) is always in view
+    if (primaryTransferRef.current) {
+      primaryTransferRef.current.scrollIntoView({ block: "start", behavior: "auto" });
+    }
+  }, [primaryTransfer?.jobId, activeTransfers.length]);
   const primaryEta = primaryTransfer
     ? formatSmartEta(
         primaryTransfer.etaSecs,
@@ -182,6 +223,9 @@ function FolderPairRow({
 
   const isFullySynced = Boolean(
     pairStatus?.is_synced &&
+      activeTransfers.length === 0 &&
+      !syncing &&
+      !pairStatus?.is_syncing &&
       (totalFiles === 0 || syncedFiles === totalFiles) &&
       pendingFiles === 0 &&
       failedFiles === 0 &&
@@ -189,7 +233,11 @@ function FolderPairRow({
   );
 
   const hasPending = Boolean(
-    pairStatus && (pendingFiles > 0 || (totalFiles > 0 && syncedFiles < totalFiles))
+    activeTransfers.length === 0 &&
+      !syncing &&
+      !pairStatus?.is_syncing &&
+      pairStatus &&
+      (pendingFiles > 0 || (totalFiles > 0 && syncedFiles < totalFiles))
   );
 
   async function handleSync(e: React.MouseEvent) {
@@ -197,11 +245,14 @@ function FolderPairRow({
     setSyncing(true);
     try {
       await runSyncCycle(id);
+      const [qs, ps] = await Promise.all([queueStatus(), getPairStatuses()]);
+      setQueueStatus(qs);
+      setPairStatuses(ps);
       toast.success(`Sync cycle completed for "${folderName}"`);
     } catch (err) {
       toast.error(`Sync error: ${String(err)}`);
     } finally {
-      setSyncing(false);
+      setTimeout(() => setSyncing(false), 800);
     }
   }
 
@@ -220,6 +271,15 @@ function FolderPairRow({
       await updateConfig(nextCfg);
       const reloaded = await getConfig();
       setConfig(reloaded);
+
+      // When disabling a pair, immediately clear its in-flight UI state so
+      // active transfers / syncing indicators stop showing right away.
+      if (!enable) {
+        const clearPairProgress = useStore.getState().clearPairProgress;
+        const clearPairStatus = useStore.getState().clearPairStatus;
+        clearPairProgress(id);
+        clearPairStatus(id);
+      }
       toast.info(enable ? `Resumed sync for "${folderName}"` : `Paused sync for "${folderName}"`);
     } catch (err) {
       toast.error(`Failed to update pair: ${String(err)}`);
@@ -343,7 +403,7 @@ function FolderPairRow({
                     </span>
                   )}
                 </div>
-              ) : syncing ? (
+              ) : syncing || Boolean(pairStatus?.is_syncing) ? (
                 <div className="flex items-center gap-1.5 text-[#58a6ff] whitespace-nowrap">
                   <RefreshCw size={12} className="animate-spin text-[#58a6ff] shrink-0" />
                   <span className="truncate">Scanning Google Drive & syncing changes…</span>
@@ -476,15 +536,9 @@ function FolderPairRow({
           onClick={(e) => e.stopPropagation()}
           className="pb-3.5 pt-0.5 px-4 sm:pl-11 sm:pr-4 cursor-default select-none"
         >
-          <div className="relative rounded-lg bg-[#080c12] border border-[#30363d]/80 p-3 shadow-inner space-y-2.5">
-            {/* Visual tree branch connecting parent folder to child transfers */}
-            <div
-              className="hidden sm:block absolute -left-4 top-3.5 w-3 h-3 border-l-2 border-b-2 border-[#30363d] rounded-bl-md pointer-events-none"
-              aria-hidden="true"
-            />
-
+          <div className="relative rounded-lg bg-[#080c12] border border-[#30363d]/80 p-3 shadow-inner flex flex-col h-[180px]">
             {/* Child Panel Sub-Header */}
-            <div className="flex items-center justify-between text-[11px] font-medium text-[#7d8590] pb-1.5 border-b border-[#21262d]">
+            <div className="flex items-center justify-between text-[11px] font-medium text-[#7d8590] pb-2 border-b border-[#21262d] shrink-0">
               <span className="flex items-center gap-1.5 text-[#58a6ff] font-semibold">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />
                 Active Transfers in "{folderName}" ({activeTransfers.length})
@@ -495,14 +549,21 @@ function FolderPairRow({
             </div>
 
             {/* Active Transfer Child Items */}
-            <div className="divide-y divide-[#21262d]/60 space-y-2.5">
+            <div
+              ref={transfersScrollRef}
+              className="flex-1 overflow-y-auto divide-y divide-[#21262d]/60 space-y-2.5 pr-1.5 min-h-0 pt-2"
+            >
               {activeTransfers.map((t, idx) => {
                 const isDownload = t.kind.toLowerCase().includes("download");
                 const speed = t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
                 const eta = formatSmartEta(t.etaSecs, t.bytesTotal, t.bytesDone, t.speedBps);
 
                 return (
-                  <div key={t.jobId} className={cn("space-y-1.5", idx > 0 && "pt-2.5")}>
+                  <div
+                    key={t.jobId}
+                    ref={idx === 0 ? primaryTransferRef : undefined}
+                    className={cn("space-y-1.5", idx > 0 && "pt-2.5")}
+                  >
                     <div className="flex items-center justify-between text-xs gap-3">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         {isDownload ? (
@@ -589,6 +650,8 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
   const pairs = useStore((s) => s.pairs) ?? [];
   const queueStatus = useStore((s) => s.queueStatus) ?? { queued: 0, running: 0, done: 0, failed: 0 };
   const pairStatuses = useStore((s) => s.pairStatuses) ?? {};
+  const setQueueStatus = useStore((s) => s.setQueueStatus);
+  const setPairStatuses = useStore((s) => s.setPairStatuses);
   const authed = useStore((s) => s.authed);
   const config = useStore((s) => s.config);
   const setConfig = useStore((s) => s.setConfig);
@@ -618,7 +681,12 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
   const activeEvents = Object.values(progress).filter(
     (e): e is ProgressEvent => Boolean(e && e.bytes_total > 0 && e.bytes_done < e.bytes_total)
   );
-  const isBatchActive = queueStatus.running > 0 || queueStatus.queued > 0 || activeEvents.length > 0;
+  const isBatchActive =
+    queueStatus.running > 0 ||
+    queueStatus.queued > 0 ||
+    activeEvents.length > 0 ||
+    syncingAll ||
+    Object.values(pairStatuses).some((s) => s.is_syncing);
   const hasFailures = (queueStatus.failed ?? 0) > 0 && !isBatchActive;
 
   // Check if any active pair has pending files that need sync
@@ -665,11 +733,14 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
     setSyncingAll(true);
     try {
       await syncNow();
+      const [qs, ps] = await Promise.all([queueStatus(), getPairStatuses()]);
+      setQueueStatus(qs);
+      setPairStatuses(ps);
       toast.success("Triggered sync cycle for all folders");
     } catch (err) {
       toast.error(`Sync cycle failed: ${String(err)}`);
     } finally {
-      setTimeout(() => setSyncingAll(false), 800);
+      setTimeout(() => setSyncingAll(false), 1000);
     }
   }
 
@@ -726,7 +797,9 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
                   : isThrottled
                   ? "Engine Throttled (System Load)"
                   : isBatchActive
-                  ? `Synchronizing ${queueStatus.running + queueStatus.queued} files…`
+                  ? queueStatus.running + queueStatus.queued > 0 || activeEvents.length > 0
+                    ? `Synchronizing ${Math.max(queueStatus.running + queueStatus.queued, activeEvents.length)} ${Math.max(queueStatus.running + queueStatus.queued, activeEvents.length) === 1 ? "file" : "files"}…`
+                    : "Scanning and synchronizing changes…"
                   : hasFailures
                   ? `${queueStatus.failed} ${queueStatus.failed === 1 ? "file" : "files"} failed to sync`
                   : anyPairPending
@@ -859,7 +932,7 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
           <div className="flex items-center gap-2.5">
             <GithubFolderIcon className="w-4 h-4 text-[#7d8590]" />
             <span className="font-semibold text-sm text-[#e6edf3]">
-              Synced Folders
+              Pairs
             </span>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-[#21262d] text-[#7d8590] border border-[#30363d]">
               {pairs.length}
@@ -884,10 +957,10 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
               type="button"
               onClick={() => setShowAdd(true)}
               className="px-3 py-1.5 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[rgba(240,246,252,0.1)] shadow-sm"
-              title="Add a new folder pair"
+              title="Add a new pair"
             >
               <Plus size={14} strokeWidth={2.5} />
-              <span>Add Folder</span>
+              <span>Add Pair</span>
             </button>
           </div>
         </div>
@@ -898,10 +971,10 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
             <GithubFolderIcon className="w-10 h-10 text-[#7d8590]/40" />
             <div className="space-y-1">
               <h3 className="text-sm font-semibold text-[#e6edf3]">
-                No synced folders configured
+                No pairs configured
               </h3>
               <p className="text-xs text-[#7d8590]">
-                Connect a local folder to Google Drive to begin continuous synchronization.
+                Connect a local folder to Google Drive to create a sync pair.
               </p>
             </div>
             <button
@@ -910,7 +983,7 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
               className="mt-2 px-3 py-1.5 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer border border-[rgba(240,246,252,0.1)]"
             >
               <Plus size={14} strokeWidth={2.5} />
-              <span>Add Folder Pair</span>
+              <span>Add Pair</span>
             </button>
           </div>
         ) : (

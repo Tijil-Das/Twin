@@ -10,12 +10,93 @@ pub mod appdata;
 pub mod changes;
 pub mod reconcile;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use tracing::{info, warn};
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+pub static ACTIVE_SYNC_CYCLES: AtomicUsize = AtomicUsize::new(0);
+static ACTIVE_SYNC_PAIRS: Mutex<Option<HashMap<String, usize>>> = Mutex::new(None);
+
+pub fn mark_pair_sync_start(pair_id: &str) {
+    if let Ok(mut lock) = ACTIVE_SYNC_PAIRS.lock() {
+        let map = lock.get_or_insert_with(HashMap::new);
+        *map.entry(pair_id.to_string()).or_insert(0) += 1;
+    }
+}
+
+pub fn mark_pair_sync_end(pair_id: &str) {
+    if let Ok(mut lock) = ACTIVE_SYNC_PAIRS.lock() {
+        if let Some(map) = lock.as_mut() {
+            if let Some(count) = map.get_mut(pair_id) {
+                if *count > 1 {
+                    *count -= 1;
+                } else {
+                    map.remove(pair_id);
+                }
+            }
+        }
+    }
+}
+
+pub fn is_pair_syncing(pair_id: &str) -> bool {
+    if let Ok(lock) = ACTIVE_SYNC_PAIRS.lock() {
+        if let Some(map) = lock.as_ref() {
+            return map.get(pair_id).map(|&c| c > 0).unwrap_or(false);
+        }
+    }
+    false
+}
+
+pub fn any_pair_syncing() -> bool {
+    if let Ok(lock) = ACTIVE_SYNC_PAIRS.lock() {
+        if let Some(map) = lock.as_ref() {
+            return !map.is_empty();
+        }
+    }
+    false
+}
+
+/// Number of active sync or reconciliation cycles currently running.
+pub fn active_sync_cycles_count() -> usize {
+    ACTIVE_SYNC_CYCLES.load(Ordering::Relaxed)
+}
+
+pub struct PairSyncGuard(pub String);
+
+impl PairSyncGuard {
+    pub fn new(pair_id: &str) -> Self {
+        mark_pair_sync_start(pair_id);
+        ACTIVE_SYNC_CYCLES.fetch_add(1, Ordering::SeqCst);
+        PairSyncGuard(pair_id.to_string())
+    }
+}
+
+impl Drop for PairSyncGuard {
+    fn drop(&mut self) {
+        mark_pair_sync_end(&self.0);
+        ACTIVE_SYNC_CYCLES.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+pub struct SyncCycleGuard;
+impl SyncCycleGuard {
+    pub fn new() -> Self {
+        ACTIVE_SYNC_CYCLES.fetch_add(1, Ordering::SeqCst);
+        SyncCycleGuard
+    }
+}
+impl Drop for SyncCycleGuard {
+    fn drop(&mut self) {
+        ACTIVE_SYNC_CYCLES.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 use crate::config::{PairEntry, PairMode, PolicySection};
 use crate::db::Db;
@@ -61,6 +142,7 @@ pub struct CycleReport {
 /// - Apply decision table for every file found.
 /// - Returns a `CycleReport`.
 pub async fn run_pair_cycle(pair: &PairEntry, ctx: &Ctx) -> Result<CycleReport, AppError> {
+    let _guard = PairSyncGuard::new(&pair.id);
     let mut report = CycleReport::default();
 
     // 1. Scan local filesystem so Db has all local files, modifications, and deletions recorded.
@@ -116,6 +198,16 @@ pub async fn run_pair_cycle(pair: &PairEntry, ctx: &Ctx) -> Result<CycleReport, 
         .as_millis() as i64;
     let _ = ctx.db.upsert_pair_meta(&pair.id, None, Some(now));
 
+    // Ensure Google Drive folder colors are harmonized while syncing if enabled
+    if cfg.app.color_drive_folders && !pair.drive_folder_id.is_empty() {
+        let drive_clone = ctx.drive.clone();
+        let folder_id = pair.drive_folder_id.clone();
+        let pair_idx = cfg.pairs.iter().position(|p| p.id == pair.id).unwrap_or(0);
+        tokio::spawn(async move {
+            let _ = crate::drive::colorizer::colorize_pair_folder_tree(&drive_clone, &folder_id, pair_idx).await;
+        });
+    }
+
     if let Some(ref q) = ctx.queue {
         q.wake();
     }
@@ -136,6 +228,7 @@ pub async fn reconcile_pair_gap(
     ctx: &Ctx,
     rules: &crate::rules::Rules,
 ) -> Result<CycleReport, AppError> {
+    let _guard = PairSyncGuard::new(&pair.id);
     // 1. Scan local filesystem
     let _ = crate::watcher::scan_pair(pair, Arc::clone(&ctx.db), rules, &ctx.gov).await;
 
@@ -209,10 +302,17 @@ pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
     // Initial check after 5 seconds instead of waiting full 60 seconds
     sleep(Duration::from_secs(5)).await;
 
-    loop {
-        ctx.gov.checkpoint().await;
+        loop {
+            // 100% hard cutoff: if this pair has been disabled, abort immediately
+            // so no remote changes are ever fetched or jobs enqueued for it.
+            if !pair.enabled {
+                info!("pair {}: changes poll loop exiting (pair disabled)", pair.id);
+                return;
+            }
 
-        let page_token = match ctx.db.get_page_token(&pair.id) {
+            ctx.gov.checkpoint().await;
+
+            let page_token = match ctx.db.get_page_token(&pair.id) {
             Ok(Some(t)) => t,
             Ok(None) => {
                 // Not bootstrapped yet: bootstrap start page token

@@ -270,7 +270,7 @@ pub fn get_overlay_status() -> Result<OverlayStatus, String> {
 pub fn set_overlay_settings(
     enabled: bool,
     placement: String,
-    db_state: tauri::State<'_, crate::db::DbState>,
+    _db_state: tauri::State<'_, crate::db::DbState>,
 ) -> Result<(), String> {
     let mut cfg = crate::config::load().map_err(|e| e.to_string())?;
     cfg.overlay.enabled = enabled;
@@ -279,10 +279,11 @@ pub fn set_overlay_settings(
 
     let _ = crate::overlay::sync_registry_settings(&cfg.overlay);
 
-    if let Ok(pair_statuses) = db_state.0.get_all_pair_sync_statuses() {
-        let active_paths = db_state.0.get_active_syncing_paths().unwrap_or_default();
-        crate::overlay::update_folder_overlays(&cfg.pairs, &pair_statuses, &active_paths, &cfg.overlay);
-    }
+    // Refresh Explorer to pick up new overlay settings (enabled/placement).
+    // The live tray-loop supervisor (main.rs) keeps shared-memory sync status
+    // up to date using the same 7 signals as the system tray icon; we must NOT
+    // overwrite it here with a hardcoded false, which would force the badge to
+    // stay green even while a transfer is in flight.
     crate::overlay::refresh_all_folder_overlays(&cfg.pairs);
 
     Ok(())

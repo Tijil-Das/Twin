@@ -255,6 +255,7 @@ pub(crate) async fn run_download(
         drive_mtime_ms: Some(drive_mtime_ms),
         drive_rev: None,
         state: "synced".into(),
+        os_file_id: None,
     };
     db.upsert_file(row)?;
 

@@ -7,12 +7,50 @@
 //! - Calls an injected `JobRunner` trait for actual work.
 //! - If no job is due but future jobs exist, sleeps until `next_try_ms`.
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, Notify, Semaphore};
 use tokio::time::{sleep_until, Instant};
 use tracing::{info, warn};
+
+static WAKE_OBSERVER: Mutex<Option<Arc<Notify>>> = Mutex::new(None);
+
+/// Register an observer Notify to be alerted immediately whenever a job is queued or finished.
+pub fn set_wake_observer(n: Arc<Notify>) {
+    if let Ok(mut guard) = WAKE_OBSERVER.lock() {
+        *guard = Some(n);
+    }
+}
+
+pub fn notify_wake_observer() {
+    if let Ok(guard) = WAKE_OBSERVER.lock() {
+        if let Some(ref obs) = *guard {
+            obs.notify_one();
+        }
+    }
+}
+
+pub static ACTIVE_WORKERS: AtomicUsize = AtomicUsize::new(0);
+
+/// Number of active queue transfer workers currently executing.
+pub fn active_workers_count() -> usize {
+    ACTIVE_WORKERS.load(Ordering::Relaxed)
+}
+
+struct WorkerGuard;
+impl WorkerGuard {
+    fn new() -> Self {
+        ACTIVE_WORKERS.fetch_add(1, Ordering::SeqCst);
+        WorkerGuard
+    }
+}
+impl Drop for WorkerGuard {
+    fn drop(&mut self) {
+        ACTIVE_WORKERS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 use crate::config::Config;
 use crate::db::{Db, Job};
@@ -94,6 +132,7 @@ impl Queue {
     /// Wake the dispatcher (call after inserting a new job into the DB).
     pub fn wake(&self) {
         self.notify.notify_one();
+        notify_wake_observer();
     }
 }
 
@@ -136,6 +175,8 @@ async fn dispatcher<R: JobRunner>(
                 let job_kind = job.kind.clone();
 
                 tauri::async_runtime::spawn(async move {
+                    let _worker_guard = WorkerGuard::new();
+                    let _pair_guard = crate::sync::PairSyncGuard::new(&job_pair_id);
                     let _permit = permit; // held for duration
                     match runner2.run(job, prog).await {
                         Ok(()) => {
@@ -151,6 +192,7 @@ async fn dispatcher<R: JobRunner>(
                                 result: "ok".into(),
                                 detail: None,
                             });
+                            notify_wake_observer();
                         }
                         Err(e) => {
                             warn!("job {job_id} failed: {e}");
@@ -167,6 +209,7 @@ async fn dispatcher<R: JobRunner>(
                                 result: "failed".into(),
                                 detail: Some(err_msg),
                             });
+                            notify_wake_observer();
                         }
                     }
                 });
@@ -270,6 +313,7 @@ pub async fn sync_now(
                 };
                 let _ = crate::sync::run_pair_cycle(pair, &ctx).await;
             } else {
+                let _guard = crate::sync::PairSyncGuard::new(&pair.id);
                 let pair_rules = crate::rules::Rules::for_pair(&cfg.rules, pair);
                 let _ = crate::watcher::scan_pair(pair, std::sync::Arc::clone(&db), &pair_rules, &gov).await;
             }

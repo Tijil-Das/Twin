@@ -6,6 +6,6 @@ pub mod upload;
 
 pub use download::DownloadRunner;
 pub use limiter::Limiter;
-pub use progress::relay_progress;
+pub use progress::{active_transfers_count, relay_progress};
 pub use upload::UploadRunner;
 

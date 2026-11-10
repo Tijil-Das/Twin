@@ -3,7 +3,7 @@
  * Desktop modal for selecting local directories, traversing Google Drive
  * folder hierarchies, and choosing sync topologies.
  */
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   ArrowLeftRight,
@@ -11,15 +11,16 @@ import {
   FlipHorizontal2,
   X,
   Link2,
-  ChevronDown,
   Pencil,
   Check,
+  CheckCircle2,
+  Info,
   Compass,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useStore } from "@/store";
-import { addPair, pickFolder } from "@/lib/tauri";
+import { addPair, pickFolder, getConfig, updateConfig } from "@/lib/tauri";
 import type { PairEntry, PairMode } from "@/lib/tauri";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,20 @@ function getLocalFolderName(path: string): string {
   const cleaned = path.trim().replace(/[/\\]+$/, "");
   const parts = cleaned.split(/[/\\]/);
   return parts[parts.length - 1] || cleaned;
+}
+
+function normalizePath(p: string): string {
+  return p.trim().replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
+}
+
+function getRelativeSubfolder(parentPath: string, childPath: string): string {
+  const normParent = normalizePath(parentPath);
+  const normChild = normalizePath(childPath);
+  if (normChild.startsWith(normParent + "/")) {
+    const trimmedChild = childPath.trim().replace(/[\\/]+$/, "").replace(/\\/g, "/");
+    return trimmedChild.slice(normParent.length + 1);
+  }
+  return "";
 }
 
 const MODES: {
@@ -87,11 +102,64 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
   const [driveFolderName, setDriveFolderName] = useState("");
   const [driveSelectionMode, setDriveSelectionMode] = useState<"explorer" | "manual">("explorer");
   const [mode, setMode] = useState<PairMode>("two_way");
-  const [deletion, setDeletion] = useState<"drive_trash" | "delete">("drive_trash");
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [deletion, setDeletion] = useState<"drive_trash" | "delete">("delete");
   const [saving, setSaving] = useState(false);
   const [localErr, setLocalErr] = useState("");
   const [driveErr, setDriveErr] = useState("");
+
+  const cleanDriveId = parseDriveFolderId(driveInput);
+
+  // Dynamic analysis of relationships with existing pairs
+  const smartAnalysis = useMemo(() => {
+    const cleanLocal = local.trim();
+    if (!cleanLocal) return null;
+    const normLocal = normalizePath(cleanLocal);
+
+    // Exact duplicate?
+    if (cleanDriveId) {
+      const exactMatch = pairs.find(
+        (p) => normalizePath(p.local) === normLocal && p.drive_folder_id.trim() === cleanDriveId
+      );
+      if (exactMatch) {
+        return { type: "exact_duplicate" as const, pair: exactMatch };
+      }
+    }
+
+    // Nested: child of existing pair
+    const parentPair = pairs.find((p) => {
+      const pNorm = normalizePath(p.local);
+      return normLocal.startsWith(pNorm + "/");
+    });
+    if (parentPair) {
+      const subfolder = getRelativeSubfolder(parentPair.local, cleanLocal);
+      return { type: "child_of_existing" as const, pair: parentPair, subfolder };
+    }
+
+    // Nested: parent of existing pair(s)
+    const childPairs = pairs.filter((p) => {
+      const pNorm = normalizePath(p.local);
+      return pNorm.startsWith(normLocal + "/");
+    });
+    if (childPairs.length > 0) {
+      return { type: "parent_of_existing" as const, childPairs };
+    }
+
+    // Same local folder, different Drive folder
+    const sameLocal = pairs.find((p) => normalizePath(p.local) === normLocal);
+    if (sameLocal) {
+      return { type: "same_local" as const, pair: sameLocal };
+    }
+
+    // Same Drive folder, different local folder
+    if (cleanDriveId) {
+      const sameDrive = pairs.find((p) => p.drive_folder_id.trim() === cleanDriveId);
+      if (sameDrive) {
+        return { type: "same_drive" as const, pair: sameDrive };
+      }
+    }
+
+    return null;
+  }, [local, cleanDriveId, pairs]);
 
   function validate(): boolean {
     let ok = true;
@@ -100,54 +168,29 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
       setLocalErr("Please select a local folder to sync.");
       ok = false;
     } else {
-      const normLocal = cleanLocal.replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
-      const duplicateLocal = pairs.find(
-        (p) => p.local.trim().replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase() === normLocal
-      );
-      if (duplicateLocal) {
-        setLocalErr("This local folder is already configured in an existing sync pair.");
-        ok = false;
-      } else {
-        const parentPair = pairs.find((p) => {
-          const pNorm = p.local.trim().replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
-          return normLocal.startsWith(pNorm + "/");
-        });
-        if (parentPair) {
-          setLocalErr(
-            `This folder is inside an already synced folder ("${parentPair.local}"). Nested sync pairs cause duplicate synchronization conflicts.`
-          );
-          ok = false;
-        } else {
-          const childPair = pairs.find((p) => {
-            const pNorm = p.local.trim().replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
-            return pNorm.startsWith(normLocal + "/");
-          });
-          if (childPair) {
-            setLocalErr(
-              `This folder contains an already synced folder ("${childPair.local}"). Nested sync pairs cause duplicate synchronization conflicts.`
-            );
-            ok = false;
-          } else {
-            setLocalErr("");
-          }
-        }
-      }
+      setLocalErr("");
     }
 
-    const cleanDrive = parseDriveFolderId(driveInput);
-    if (!cleanDrive) {
+    if (!cleanDriveId) {
       setDriveErr("Please choose a Google Drive folder or provide its ID.");
       ok = false;
     } else {
-      const duplicateDrive = pairs.find((p) => p.drive_folder_id.trim() === cleanDrive);
-      if (duplicateDrive) {
-        setDriveErr("This Google Drive folder is already linked to another sync pair.");
-        ok = false;
-      } else {
-        setDriveErr("");
-      }
+      setDriveErr("");
     }
-    return ok;
+
+    if (!ok) return false;
+
+    // Only block if this is an exact duplicate pair (same local folder AND same Google Drive folder)
+    const normLocal = normalizePath(cleanLocal);
+    const exactMatch = pairs.find(
+      (p) => normalizePath(p.local) === normLocal && p.drive_folder_id.trim() === cleanDriveId
+    );
+    if (exactMatch) {
+      setDriveErr("This exact local folder and Google Drive destination pair is already configured.");
+      return false;
+    }
+
+    return true;
   }
 
   async function handlePickLocal() {
@@ -177,16 +220,78 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
     if (!validate()) return;
     setSaving(true);
     try {
+      const cleanLocal = local.trim();
+      const normLocal = normalizePath(cleanLocal);
+      const cleanDrive = cleanDriveId;
+
+      // 1. If this new folder contains existing child pairs, exclude them from the new parent pair
+      const childPairs = pairs.filter((p) => {
+        const pNorm = normalizePath(p.local);
+        return pNorm.startsWith(normLocal + "/");
+      });
+      const childExcludedSubfolders = childPairs
+        .map((cp) => getRelativeSubfolder(cleanLocal, cp.local))
+        .filter(Boolean);
+
+      // 2. If this new folder is inside an existing parent pair, auto-exclude it from the parent pair
+      const parentPair = pairs.find((p) => {
+        const pNorm = normalizePath(p.local);
+        return normLocal.startsWith(pNorm + "/");
+      });
+
+      if (parentPair) {
+        const subfolderRel = getRelativeSubfolder(parentPair.local, cleanLocal);
+        if (subfolderRel) {
+          try {
+            const currentCfg = await getConfig();
+            const currentPairs = Array.isArray(currentCfg.pairs)
+              ? currentCfg.pairs
+              : Array.isArray((currentCfg as any).pair)
+              ? (currentCfg as any).pair
+              : [];
+            const nextPairs = currentPairs.map((p: PairEntry) => {
+              if (p.id === parentPair.id) {
+                const currentEx = p.excluded_folders ?? [];
+                if (!currentEx.some((x) => normalizePath(x) === normalizePath(subfolderRel))) {
+                  return {
+                    ...p,
+                    excluded_folders: [...currentEx, subfolderRel],
+                  };
+                }
+              }
+              return p;
+            });
+            await updateConfig({ ...currentCfg, pairs: nextPairs, pair: nextPairs });
+          } catch (err) {
+            console.warn("Could not auto-update parent pair exclusion:", err);
+          }
+        }
+      }
+
       const pair: PairEntry = {
         id: crypto.randomUUID(),
-        local: local.trim(),
-        drive_folder_id: parseDriveFolderId(driveInput),
+        local: cleanLocal,
+        drive_folder_id: cleanDrive,
         mode,
         enabled: true,
         deletion,
+        excluded_folders: childExcludedSubfolders.length > 0 ? childExcludedSubfolders : undefined,
       };
+
       await addPair(pair);
-      toast.success("Folder pair configured successfully");
+
+      if (parentPair) {
+        toast.success(`Pair configured. Subfolder isolated from "${getLocalFolderName(parentPair.local)}".`);
+      } else if (childPairs.length > 0) {
+        toast.success(`Pair configured. Isolated existing subfolder pair${childPairs.length > 1 ? "s" : ""}.`);
+      } else if (smartAnalysis?.type === "same_local") {
+        toast.success("Multi-destination pair configured successfully");
+      } else if (smartAnalysis?.type === "same_drive") {
+        toast.success("Multi-location replica pair configured successfully");
+      } else {
+        toast.success("Folder pair configured successfully");
+      }
+
       onAdded();
       onClose();
       // Reset state for subsequent openings
@@ -195,8 +300,7 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
       setDriveInput("");
       setDriveFolderName("");
       setMode("two_way");
-      setDeletion("drive_trash");
-      setShowAdvanced(false);
+      setDeletion("delete");
     } catch (e) {
       toast.error(`Failed to add folder pair: ${String(e)}`);
     } finally {
@@ -318,6 +422,45 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
               {localErr && (
                 <p className="text-xs text-[#f85149] mt-1.5 font-medium">{localErr}</p>
               )}
+
+              {/* Smart feedback when local folder relates to an existing pair */}
+              {!localErr && smartAnalysis?.type === "child_of_existing" && (
+                <div className="flex items-start gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 p-2.5 rounded-lg mt-2">
+                  <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-emerald-400">Smart Subfolder Isolation:</span>
+                    <span className="text-[#c9d1d9] ml-1">
+                      Subfolder &ldquo;{smartAnalysis.subfolder}&rdquo; will be automatically excluded from &ldquo;{getLocalFolderName(smartAnalysis.pair.local)}&rdquo; to prevent duplicate sync conflicts.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {!localErr && smartAnalysis?.type === "parent_of_existing" && (
+                <div className="flex items-start gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 p-2.5 rounded-lg mt-2">
+                  <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-emerald-400">Smart Subfolder Isolation:</span>
+                    <span className="text-[#c9d1d9] ml-1">
+                      {smartAnalysis.childPairs.length === 1
+                        ? `Existing pair subfolder "${getLocalFolderName(smartAnalysis.childPairs[0].local)}" will be automatically excluded from this new pair.`
+                        : `${smartAnalysis.childPairs.length} existing pair subfolders will be automatically excluded from this new pair.`}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {!localErr && smartAnalysis?.type === "same_local" && (
+                <div className="flex items-start gap-2 text-xs text-[#58a6ff] bg-[#1f6feb]/10 border border-[#1f6feb]/25 p-2.5 rounded-lg mt-2">
+                  <Info size={14} className="text-[#58a6ff] shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-[#58a6ff]">Multi-Destination Sync:</span>
+                    <span className="text-[#c9d1d9] ml-1">
+                      This local folder is already linked to another Drive destination. It will sync to this additional destination independently.
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* ── STEP 2: Google Drive Destination ── */}
@@ -415,6 +558,18 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
               {driveErr && (
                 <p className="text-xs text-[#f85149] mt-1.5 font-medium">{driveErr}</p>
               )}
+
+              {!driveErr && smartAnalysis?.type === "same_drive" && (
+                <div className="flex items-start gap-2 text-xs text-[#58a6ff] bg-[#1f6feb]/10 border border-[#1f6feb]/25 p-2.5 rounded-lg mt-2">
+                  <Info size={14} className="text-[#58a6ff] shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-[#58a6ff]">Multi-Location Sync:</span>
+                    <span className="text-[#c9d1d9] ml-1">
+                      This Drive folder is already linked to local folder &ldquo;{getLocalFolderName(smartAnalysis.pair.local)}&rdquo;. It will sync to this additional local folder independently.
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* ── STEP 3: Sync Mode Selection ── */}
@@ -478,67 +633,46 @@ export function AddPairDialog({ open, onClose, onAdded }: Props) {
               </div>
             </div>
 
-            {/* ── Advanced Options (Collapsible) ── */}
-            <div className="border border-[#30363d] rounded-lg bg-[#161b22]/40 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowAdvanced((v) => !v)}
-                className="w-full px-3.5 py-2.5 flex items-center justify-between text-xs text-[#7d8590] hover:text-[#c9d1d9] hover:bg-[#161b22] transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-2">
-                  <ChevronDown
-                    size={14}
-                    className={cn("transition-transform duration-150", !showAdvanced && "-rotate-90")}
-                  />
-                  <span className="font-medium text-[#c9d1d9]">Advanced Settings</span>
+            {/* ── Remote Deletion Safety Option ── */}
+            <div className="p-3.5 rounded-lg border border-[#30363d] bg-[#161b22]/40">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <span className="text-xs font-semibold text-[#e6edf3] block">
+                    Remote Deletion Safety
+                  </span>
+                  <span className="text-[11px] text-[#7d8590] block mt-0.5">
+                    {deletion === "delete"
+                      ? "Files deleted on PC are permanently purged from Google Drive without recovery."
+                      : "Files deleted on PC are safely moved to Drive Trash with a 30-day recovery window."}
+                  </span>
                 </div>
-                <span className="text-[11px] text-[#7d8590]">
-                  Deletion: {deletion === "drive_trash" ? "Drive Trash (30-day recovery)" : "Permanent"}
-                </span>
-              </button>
-
-              {showAdvanced && (
-                <div className="p-3.5 pt-2 border-t border-[#30363d] bg-[#0d1117]/60 space-y-2.5 animate-in fade-in duration-100">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <span className="text-xs font-medium text-[#e6edf3] block">
-                        Remote Deletion Safety
-                      </span>
-                      <span className="text-[11px] text-[#7d8590] block mt-0.5">
-                        {deletion === "drive_trash"
-                          ? "Files deleted on PC are safely moved to Drive Trash with a 30-day recovery window."
-                          : "Files deleted on PC are permanently purged from Google Drive without recovery."}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 p-0.5 rounded-md bg-[#161b22] border border-[#30363d] shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setDeletion("drive_trash")}
-                        className={cn(
-                          "px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
-                          deletion === "drive_trash"
-                            ? "bg-[#1f6feb] text-white shadow-sm font-semibold"
-                            : "text-[#7d8590] hover:text-[#c9d1d9]"
-                        )}
-                      >
-                        Drive Trash
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeletion("delete")}
-                        className={cn(
-                          "px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
-                          deletion === "delete"
-                            ? "bg-[#da3633] text-white shadow-sm font-semibold"
-                            : "text-[#7d8590] hover:text-[#c9d1d9]"
-                        )}
-                      >
-                        Permanent
-                      </button>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-1 p-0.5 rounded-md bg-[#161b22] border border-[#30363d] shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setDeletion("drive_trash")}
+                    className={cn(
+                      "px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
+                      deletion === "drive_trash"
+                        ? "bg-[#1f6feb] text-white shadow-sm font-semibold"
+                        : "text-[#7d8590] hover:text-[#c9d1d9]"
+                    )}
+                  >
+                    Drive Trash
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeletion("delete")}
+                    className={cn(
+                      "px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
+                      deletion === "delete"
+                        ? "bg-[#da3633] text-white shadow-sm font-semibold"
+                        : "text-[#7d8590] hover:text-[#c9d1d9]"
+                    )}
+                  >
+                    Permanent
+                  </button>
                 </div>
-              )}
+              </div>
             </div>
           </div>
 

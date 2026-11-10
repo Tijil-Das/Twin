@@ -46,6 +46,7 @@ fn test_property_reference_model_20k_ops() {
                 drive_mtime_ms: Some(1_700_000_000_000 + op_idx as i64),
                 drive_rev: Some(format!("rev_{op_idx}")),
                 state: st,
+                os_file_id: None,
             };
             db.upsert_file(row.clone()).expect("upsert_file");
             model.insert(key, row);
@@ -129,6 +130,7 @@ fn test_primary_key_collisions() {
                     drive_mtime_ms: None,
                     drive_rev: None,
                     state: "dirty".into(),
+                    os_file_id: None,
                 };
                 db_cloned.upsert_file(row).expect("upsert under collision");
             }
@@ -194,6 +196,7 @@ fn test_extreme_path_lengths() {
         drive_mtime_ms: None,
         drive_rev: None,
         state: "synced".into(),
+        os_file_id: None,
     };
     db.upsert_file(row_64k).expect("upsert 64KB path");
 
@@ -216,6 +219,7 @@ fn test_extreme_path_lengths() {
         drive_mtime_ms: None,
         drive_rev: None,
         state: "dirty".into(),
+        os_file_id: None,
     };
     db.upsert_file(deep_row).expect("upsert deep path");
 
@@ -258,6 +262,7 @@ fn test_unicode_torture() {
             drive_mtime_ms: None,
             drive_rev: None,
             state: "synced".into(),
+            os_file_id: None,
         };
         db.upsert_file(row).unwrap_or_else(|e| panic!("Failed upsert for {label}: {e}"));
 
@@ -300,6 +305,7 @@ fn test_special_character_and_sql_injection() {
             drive_mtime_ms: None,
             drive_rev: None,
             state: "dirty".into(),
+            os_file_id: None,
         };
 
         db.upsert_file(row).expect("upsert dangerous string");
@@ -332,6 +338,7 @@ fn test_crash_and_wal_recovery() {
                 drive_mtime_ms: None,
                 drive_rev: None,
                 state: "dirty".into(),
+                os_file_id: None,
             };
             db.upsert_file(row).expect("upsert");
         }
@@ -381,6 +388,7 @@ fn test_file_corruption_recovery() {
                     drive_mtime_ms: None,
                     drive_rev: None,
                     state: "synced".into(),
+                    os_file_id: None,
                 };
                 db.upsert_file(row).expect("upsert");
             }
@@ -446,6 +454,7 @@ fn test_concurrency_16_threads() {
                     drive_mtime_ms: None,
                     drive_rev: None,
                     state: "dirty".into(),
+                    os_file_id: None,
                 };
                 let _ = db_cloned.upsert_file(row);
                 let _ = db_cloned.mark_state("pair_conc", &rel, "synced");

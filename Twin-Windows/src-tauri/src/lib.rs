@@ -7,6 +7,7 @@ pub mod error;
 pub mod github;
 pub mod governor;
 pub mod queue;
+pub mod rename;
 pub mod rules;
 pub mod sync;
 pub mod transfer;
@@ -63,9 +64,16 @@ pub fn set_tray_state<R: Runtime>(app: &AppHandle<R>, state: TrayState, custom_t
     match Image::from_bytes(state.icon_bytes()) {
         Ok(icon) => {
             if let Some(tray) = app.tray_by_id("main") {
-                let _ = tray.set_icon(Some(icon));
+                let _ = tray.set_icon_as_template(false);
+                if let Err(e) = tray.set_icon(Some(icon)) {
+                    tracing::warn!("Failed to set tray icon: {e}");
+                }
                 let tip = custom_tooltip.unwrap_or_else(|| state.tooltip());
-                let _ = tray.set_tooltip(Some(tip));
+                if let Err(e) = tray.set_tooltip(Some(tip)) {
+                    tracing::warn!("Failed to set tray tooltip: {e}");
+                }
+            } else {
+                tracing::warn!("Tray icon 'main' not found");
             }
         }
         Err(e) => {
@@ -97,6 +105,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
     TrayIconBuilder::with_id("main")
         .icon(icon)
+        .icon_as_template(false)
         .tooltip("Twin \u{2013} Idle")
         .menu(&menu)
         .on_menu_event({

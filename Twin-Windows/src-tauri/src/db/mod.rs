@@ -74,6 +74,11 @@ static MIGRATIONS: &[&str] = &[
         PRIMARY KEY(pair_id, rel_path)
     );
     "#,
+    // version 2 – add os_file_id for rename/move detection
+    r#"
+    ALTER TABLE files ADD COLUMN os_file_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_files_os_id ON files(pair_id, os_file_id);
+    "#,
 ];
 
 const MAX_ACTIVITY_ROWS: i64 = 2000;
@@ -94,6 +99,7 @@ pub struct FileRow {
     pub drive_mtime_ms: Option<i64>,
     pub drive_rev: Option<String>,
     pub state: String,
+    pub os_file_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,6 +155,8 @@ pub struct PairSyncStatus {
     pub synced: i64,
     pub total: i64,
     pub is_synced: bool,
+    #[serde(default)]
+    pub is_syncing: bool,
     #[serde(default)]
     pub deleted: i64,
     #[serde(default)]
@@ -297,7 +305,7 @@ impl Db {
     pub fn get_file(&self, pair: &str, rel: &str) -> Result<Option<FileRow>, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
         conn.query_row(
-            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state
+            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id
              FROM files WHERE pair_id=?1 AND rel_path=?2",
             params![pair, rel],
             row_to_file,
@@ -310,7 +318,7 @@ impl Db {
     pub fn find_any_file_by_rel_path(&self, rel: &str) -> Result<Option<FileRow>, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
         conn.query_row(
-            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state
+            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id
              FROM files WHERE rel_path=?1 AND drive_id IS NOT NULL ORDER BY mtime_ms DESC LIMIT 1",
             params![rel],
             row_to_file,
@@ -322,6 +330,42 @@ impl Db {
     pub fn upsert_file(&self, row: FileRow) -> Result<(), AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
         conn.execute(
+            "INSERT INTO files(pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+             ON CONFLICT(pair_id,rel_path) DO UPDATE SET
+               size=excluded.size, mtime_ms=excluded.mtime_ms, md5=excluded.md5,
+               drive_id=excluded.drive_id, drive_md5=excluded.drive_md5,
+               drive_mtime_ms=excluded.drive_mtime_ms, drive_rev=excluded.drive_rev,
+               state=excluded.state,
+               os_file_id=COALESCE(excluded.os_file_id, os_file_id)",
+            params![
+                row.pair_id, row.rel_path, row.size, row.mtime_ms, row.md5,
+                row.drive_id, row.drive_md5, row.drive_mtime_ms, row.drive_rev, row.state,
+                row.os_file_id
+            ],
+        )
+        .map_err(|e| AppError::Db(format!("upsert_file: {e}")))?;
+        Ok(())
+    }
+
+    /// Store Google Drive metadata for a file, also recording local size/mtime/md5
+    /// so the heartbeat rescan does not re-enqueue an already-synced file.
+    /// Inserts a row if the file is not tracked yet.
+    pub fn set_drive_meta(
+        &self,
+        pair: &str,
+        rel: &str,
+        size: Option<i64>,
+        mtime_ms: Option<i64>,
+        md5: Option<&str>,
+        drive_id: &str,
+        drive_md5: Option<&str>,
+        drive_mtime_ms: Option<i64>,
+        drive_rev: Option<&str>,
+        state: &str,
+    ) -> Result<(), AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.execute(
             "INSERT INTO files(pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state)
              VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
              ON CONFLICT(pair_id,rel_path) DO UPDATE SET
@@ -330,33 +374,9 @@ impl Db {
                drive_mtime_ms=excluded.drive_mtime_ms, drive_rev=excluded.drive_rev,
                state=excluded.state",
             params![
-                row.pair_id, row.rel_path, row.size, row.mtime_ms, row.md5,
-                row.drive_id, row.drive_md5, row.drive_mtime_ms, row.drive_rev, row.state
+                pair, rel, size, mtime_ms, md5,
+                drive_id, drive_md5, drive_mtime_ms, drive_rev, state
             ],
-        )
-        .map_err(|e| AppError::Db(format!("upsert_file: {e}")))?;
-        Ok(())
-    }
-
-    /// Store Google Drive metadata for a file without touching local fields.
-    /// Inserts a row if the file is not tracked yet.
-    pub fn set_drive_meta(
-        &self,
-        pair: &str,
-        rel: &str,
-        drive_id: &str,
-        drive_md5: Option<&str>,
-        drive_mtime_ms: Option<i64>,
-        drive_rev: Option<&str>,
-    ) -> Result<(), AppError> {
-        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
-        conn.execute(
-            "INSERT INTO files(pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state)
-             VALUES(?1,?2,NULL,NULL,NULL,?3,?4,?5,?6,'dirty')
-             ON CONFLICT(pair_id,rel_path) DO UPDATE SET
-               drive_id=excluded.drive_id, drive_md5=excluded.drive_md5,
-               drive_mtime_ms=excluded.drive_mtime_ms, drive_rev=excluded.drive_rev",
-            params![pair, rel, drive_id, drive_md5, drive_mtime_ms, drive_rev],
         )
         .map_err(|e| AppError::Db(format!("set_drive_meta: {e}")))?;
         Ok(())
@@ -391,7 +411,7 @@ impl Db {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
         let mut stmt = conn
             .prepare(
-                "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state
+                "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id
                  FROM files WHERE pair_id=?1 AND state='dirty' LIMIT ?2",
             )
             .map_err(|e| AppError::Db(format!("list_dirty prepare: {e}")))?;
@@ -736,7 +756,7 @@ impl Db {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
         let mut stmt = conn
             .prepare(
-                "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state
+                "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id
                  FROM files WHERE pair_id=?1",
             )
             .map_err(|e| AppError::Db(format!("list_all_files prepare: {e}")))?;
@@ -754,13 +774,128 @@ impl Db {
     pub fn get_file_by_drive_id(&self, pair: &str, drive_id: &str) -> Result<Option<FileRow>, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
         conn.query_row(
-            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state
+            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id
              FROM files WHERE pair_id=?1 AND drive_id=?2",
             params![pair, drive_id],
             row_to_file,
         )
         .optional()
         .map_err(|e| AppError::Db(format!("get_file_by_drive_id: {e}")))
+    }
+
+    /// Look up a file row by OS file id (inode/file index) for rename detection.
+    pub fn get_file_by_os_id(&self, pair: &str, os_id: &str) -> Result<Option<FileRow>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.query_row(
+            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id
+             FROM files WHERE pair_id=?1 AND os_file_id=?2 LIMIT 1",
+            params![pair, os_id],
+            row_to_file,
+        )
+        .optional()
+        .map_err(|e| AppError::Db(format!("get_file_by_os_id: {e}")))
+    }
+
+    /// Update the os_file_id for a tracked file.
+    pub fn set_file_os_id(&self, pair: &str, rel: &str, os_id: &str) -> Result<(), AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.execute(
+            "UPDATE files SET os_file_id=?1 WHERE pair_id=?2 AND rel_path=?3",
+            params![os_id, pair, rel],
+        )
+        .map_err(|e| AppError::Db(format!("set_file_os_id: {e}")))?;
+        Ok(())
+    }
+
+    /// Find a 'synced' or 'deleted_local' file row matching md5 + size (hash-based rename fallback).
+    pub fn find_synced_by_md5(&self, pair: &str, md5: &str, size: i64) -> Result<Option<FileRow>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.query_row(
+            "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id
+             FROM files WHERE pair_id=?1 AND md5=?2 AND size=?3
+             AND state IN ('synced','deleted_local') LIMIT 1",
+            params![pair, md5, size],
+            row_to_file,
+        )
+        .optional()
+        .map_err(|e| AppError::Db(format!("find_synced_by_md5: {e}")))
+    }
+
+    /// Find candidate file rows that are missing locally matching a given size.
+    /// Used to avoid computing hashes for new files if no candidate has the same size.
+    pub fn find_missing_by_size(&self, pair: &str, size: i64) -> Result<Vec<FileRow>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id
+                 FROM files WHERE pair_id=?1 AND size=?2 AND (state='deleted_local' OR state='synced')",
+            )
+            .map_err(|e| AppError::Db(format!("find_missing_by_size prepare: {e}")))?;
+
+        let rows = stmt
+            .query_map(params![pair, size], row_to_file)
+            .map_err(|e| AppError::Db(format!("find_missing_by_size query: {e}")))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Db(format!("find_missing_by_size collect: {e}")))?;
+
+        Ok(rows)
+    }
+
+    /// Atomically insert/update the new file row and delete the old row within a single SQLite transaction.
+    pub fn apply_rename_tx(&self, pair: &str, old_rel: &str, new_row: FileRow) -> Result<(), AppError> {
+        let mut conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let tx = conn.transaction().map_err(|e| AppError::Db(format!("apply_rename_tx begin: {e}")))?;
+
+        tx.execute(
+            "INSERT INTO files(pair_id,rel_path,size,mtime_ms,md5,drive_id,drive_md5,drive_mtime_ms,drive_rev,state,os_file_id)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+             ON CONFLICT(pair_id,rel_path) DO UPDATE SET
+               size=excluded.size, mtime_ms=excluded.mtime_ms, md5=excluded.md5,
+               drive_id=excluded.drive_id, drive_md5=excluded.drive_md5,
+               drive_mtime_ms=excluded.drive_mtime_ms, drive_rev=excluded.drive_rev,
+               state=excluded.state,
+               os_file_id=COALESCE(excluded.os_file_id, os_file_id)",
+            params![
+                new_row.pair_id, new_row.rel_path, new_row.size, new_row.mtime_ms, new_row.md5,
+                new_row.drive_id, new_row.drive_md5, new_row.drive_mtime_ms, new_row.drive_rev, new_row.state,
+                new_row.os_file_id
+            ],
+        )
+        .map_err(|e| AppError::Db(format!("apply_rename_tx upsert: {e}")))?;
+
+        tx.execute(
+            "DELETE FROM files WHERE pair_id=?1 AND rel_path=?2",
+            params![pair, old_rel],
+        )
+        .map_err(|e| AppError::Db(format!("apply_rename_tx delete old: {e}")))?;
+
+        tx.commit().map_err(|e| AppError::Db(format!("apply_rename_tx commit: {e}")))?;
+        Ok(())
+    }
+
+    /// Update child paths for a folder rename in a single atomic SQL transaction.
+    pub fn rename_folder_prefix(&self, pair: &str, old_prefix: &str, new_prefix: &str) -> Result<usize, AppError> {
+        let mut conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let clean_old = old_prefix.trim_matches('/');
+        let clean_new = new_prefix.trim_matches('/');
+        let pattern = format!("{clean_old}/%");
+        let old_with_slash = format!("{clean_old}/");
+        let new_with_slash = format!("{clean_new}/");
+        let prefix_len = old_with_slash.len() as i64;
+
+        let tx = conn.transaction().map_err(|e| AppError::Db(format!("rename_folder_prefix begin: {e}")))?;
+
+        // Update all files nested under old_prefix/
+        let count = tx.execute(
+            "UPDATE files
+             SET rel_path = ?1 || SUBSTR(rel_path, ?2 + 1)
+             WHERE pair_id = ?3 AND (rel_path = ?4 OR rel_path LIKE ?5)",
+            params![new_with_slash, prefix_len, pair, clean_old, pattern],
+        )
+        .map_err(|e| AppError::Db(format!("rename_folder_prefix update: {e}")))?;
+
+        tx.commit().map_err(|e| AppError::Db(format!("rename_folder_prefix commit: {e}")))?;
+        Ok(count)
     }
 
     pub fn get_stats(&self, db_path: &std::path::Path) -> Result<DatabaseStats, AppError> {
@@ -988,17 +1123,24 @@ impl Db {
             let last_sync_ms = last_sync.or(last_scan);
             let verified_scan = last_scan.is_some() || last_sync.is_some();
 
+            let active_jobs = active_jobs_map.remove(&pair_id).unwrap_or_default();
+            let is_pair_active = crate::sync::is_pair_syncing(&pair_id)
+                || running > 0
+                || queued > 0
+                || dirty > 0
+                || !active_jobs.is_empty();
+
             // Truly synced condition:
-            // 0 queued, 0 running, 0 failed, 0 dirty, 0 conflict
+            // Not actively syncing, 0 queued, 0 running, 0 failed, 0 dirty, 0 conflict
             // AND all active files are synced (synced == total, or empty folder verified)
-            let is_synced = queued == 0
+            let is_synced = !is_pair_active
+                && queued == 0
                 && running == 0
                 && failed == 0
                 && dirty == 0
                 && conflict == 0
                 && (synced == total || (total == 0 && verified_scan));
 
-            let active_jobs = active_jobs_map.remove(&pair_id).unwrap_or_default();
             let last_activity = last_activity_map.remove(&pair_id);
 
             statuses.insert(
@@ -1013,6 +1155,7 @@ impl Db {
                     synced,
                     total,
                     is_synced,
+                    is_syncing: is_pair_active,
                     deleted,
                     active_jobs,
                     last_activity,
@@ -1037,6 +1180,7 @@ impl Db {
             synced: 0,
             total: 0,
             is_synced: false,
+            is_syncing: false,
             deleted: 0,
             active_jobs: Vec::new(),
             last_activity: None,
@@ -1044,7 +1188,7 @@ impl Db {
         }))
     }
 
-    /// Retrieve relative paths for all currently active syncing jobs or dirty files.
+    /// Retrieve relative paths for all currently active syncing jobs (running or queued).
     pub fn get_active_syncing_paths(&self) -> Result<Vec<(String, String)>, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
 
@@ -1062,20 +1206,6 @@ impl Db {
             let rel_path: String = row.get(1).map_err(|e| AppError::Db(e.to_string()))?;
             if !rel_path.is_empty() {
                 results.push((pair_id, rel_path));
-            }
-        }
-
-        if let Ok(mut f_stmt) = conn.prepare(
-            "SELECT pair_id, rel_path FROM files WHERE state IN ('dirty', 'conflict')"
-        ) {
-            if let Ok(mut f_rows) = f_stmt.query([]) {
-                while let Ok(Some(row)) = f_rows.next() {
-                    let pair_id: String = row.get(0).unwrap_or_default();
-                    let rel_path: String = row.get(1).unwrap_or_default();
-                    if !rel_path.is_empty() {
-                        results.push((pair_id, rel_path));
-                    }
-                }
             }
         }
 
@@ -1104,6 +1234,7 @@ fn row_to_file(r: &rusqlite::Row<'_>) -> rusqlite::Result<FileRow> {
         drive_mtime_ms: r.get(7)?,
         drive_rev: r.get(8)?,
         state: r.get(9)?,
+        os_file_id: r.get(10).unwrap_or(None),
     })
 }
 
@@ -1255,6 +1386,7 @@ mod tests {
             drive_mtime_ms: None,
             drive_rev: None,
             state: "dirty".into(),
+            os_file_id: None,
         }
     }
 
@@ -1442,6 +1574,7 @@ mod tests {
                         drive_mtime_ms: None,
                         drive_rev: None,
                         state: "dirty".into(),
+                        os_file_id: None,
                     };
                     db_clone.upsert_file(row).expect("upsert should not fail");
                 }
