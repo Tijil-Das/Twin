@@ -37,7 +37,7 @@ import {
   updateConfig,
   runSyncCycle,
   retryAllFailed,
-  queueStatus,
+  queueStatus as fetchQueueStatus,
   getPairStatuses,
   type PairEntry,
 } from "@/lib/tauri";
@@ -245,7 +245,7 @@ function FolderPairRow({
     setSyncing(true);
     try {
       await runSyncCycle(id);
-      const [qs, ps] = await Promise.all([queueStatus(), getPairStatuses()]);
+      const [qs, ps] = await Promise.all([fetchQueueStatus(), getPairStatuses()]);
       setQueueStatus(qs);
       setPairStatuses(ps);
       toast.success(`Sync cycle completed for "${folderName}"`);
@@ -733,7 +733,7 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
     setSyncingAll(true);
     try {
       await syncNow();
-      const [qs, ps] = await Promise.all([queueStatus(), getPairStatuses()]);
+      const [qs, ps] = await Promise.all([fetchQueueStatus(), getPairStatuses()]);
       setQueueStatus(qs);
       setPairStatuses(ps);
       toast.success("Triggered sync cycle for all folders");
@@ -1008,3 +1008,4 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
     </div>
   );
 }
+
