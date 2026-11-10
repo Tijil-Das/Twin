@@ -5,6 +5,37 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.2.0] - 2026-11-10
+
+### 🚀 Major Release — Full Upload Activity Lifecycle, Windows Shell Overlays & Production Hardening
+
+#### ⚡ Upload Progress & Activity Fixes
+- **Full upload activity lifecycle restored**: Uploads now show start-to-end progress in the activity section — from "Uploading" with real-time progress bar through "100% / Success" — before numbers update to synced count (99/99). No more phantom "done in milliseconds" followed by unexplained re-uploads.
+- **Fixed NULL metadata re-upload loop**: Files synced via Drive remote-dedup path now correctly store `size`, `mtime_ms`, `md5`, and `state` in SQLite instead of hardcoded NULLs. Heartbeat rescan and reconcile no longer falsely flag synced files as "locally changed," eliminating the 46-file re-upload storm after completion.
+- **Completion timer reduced**: Completed transfers clear from the activity panel after 300ms (was 1200ms), so the UI immediately reflects "done" state.
+- **Real-time transfer merge in activity ledger**: In-flight progress events are merged into the activity section during transfer, showing upload percentage and progress bar alongside historical records.
+
+#### 🪟 Windows Shell Folder Overlays
+- **Explorer overlay badges**: Folder sync status (Idle/Syncing/Paused/Error) now displays directly in Windows File Explorer via `IShellIconOverlayIdentifier` with placement-specific ICOs.
+- **Tray icon state transitions**: Instant yellow↔green badge toggling with 500ms poll interval and 1.5s-2.0s linger cooldown for smooth state changes.
+- **Overlay registration**: Auto register/unregister DLL, restart Explorer, and apply overlay badges without manual steps.
+
+#### 🔄 Sync Engine Reliability
+- **Windows Path Prefix Normalization**: Eliminated silent dropping of local filesystem events caused by NTFS case variance (`D:\DOCUMENTS` vs `d:\documents`), verbatim UNC paths (`\\?\D:\...`), and mixed slash separators.
+- **Recursive Directory Discovery**: Bulk folder paste/drag/create now traverses and registers all child files immediately — no more dropped files on directory copy/move.
+- **Continuous 60-Second Background Heartbeat Rescan**: Autonomous local scan every 60 seconds across all active pairs guarantees changes missed by OS watcher are detected and uploaded automatically.
+- **Transient Windows File Lock Retries**: Retry backoff for files temporarily locked by external editors during atomic save operations.
+- **Remote Changes API Feed Fix**: Remote trash events and changes to already-tracked SQLite files are retained and dispatched immediately.
+
+#### 🔧 Infrastructure & Tooling
+- **Overlay handler build**: Separate `overlay-handler/` crate for the Explorer shell extension DLL.
+- **Icon-Pack**: Complete tray and overlay icon set in all required resolutions (Tray: error/idle/paused/syncing; Overlay: synced/syncing).
+- **Icon generation scripts**: Python scripts for automated tray and overlay icon generation.
+- **NSIS installer**: Verified `nsis_tauri_utils.dll` plugin for Windows installer bundling.
+- **Test suite**: Added overlay toggle tests, benchmarks, and expanded DB/drive/sync torture tests.
+
+---
+
 ## [1.1.7] - 2026-11-08
 
 ### ⚡ Critical Fixes — Continuous Auto-Detection, Windows Path Normalization & Background Heartbeat Rescan

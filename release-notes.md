@@ -1,6 +1,28 @@
-# Twin v1.1.7
+# Twin v1.2.0
 
-Critical reliability release fixing automatic local change detection, Windows path prefix normalization, directory tree expansion, file lock handling, background heartbeat rescan, and two-way Google Drive changes polling.
+Major release: full upload activity lifecycle, Windows Shell folder overlays, and production hardening for the sync engine.
+
+---
+
+### 🚀 What's New in v1.2.0
+
+#### 📁 Windows Shell Folder Overlays
+- **Explorer overlay badges**: Folder sync status (Idle/Syncing/Paused/Error) displays directly in Windows File Explorer via `IShellIconOverlayIdentifier`. No more opening the app to check sync state — see it on your folders.
+- **Placement-specific ICOs**: Custom icon pack for tray and overlay states in all required Windows resolutions.
+- **Auto DLL registration**: One-command registration/unregistration of the overlay handler DLL with automatic Explorer restart.
+
+#### 📊 Upload Activity — Full Start-to-End Lifecycle
+- **Real-time progress in activity section**: Uploads now show "Uploading" with live progress bar during transfer (like delete-from-cloud), then "100% / Success" on completion, before numbers update to synced count.
+- **No more phantom instant-complete**: Fixed the bug where files showed "done in milliseconds" then inexplicably re-uploaded. Uploads now display their full lifecycle transparently.
+- **300ms completion dismiss**: Finished transfers clear from the activity panel immediately (was 1200ms), keeping the UI responsive.
+
+#### 🔧 Sync Engine Hardening
+- **Fixed NULL metadata re-upload loop**: Files synced via Drive remote-dedup now correctly store `size`/`mtime_ms`/`md5`/`state` in SQLite. The 60-second heartbeat rescan and reconcile no longer falsely flag synced files as "changed," eliminating the post-complete re-upload storm.
+- **Windows Path Normalization**: Case-insensitive NTFS path matching, verbatim UNC path support, and mixed separator handling eliminate silent event drops.
+- **Recursive Directory Discovery**: Bulk folder operations (paste/drag/create) now discover and queue all nested child files immediately.
+- **Background Heartbeat Rescan**: Autonomous 60-second local scan guarantees changes missed by OS watcher (sleep/wake, buffer overflow) are detected and uploaded.
+- **File Lock Retry**: Graceful handling of transient Windows file locks during atomic saves by external apps.
+- **Drive Changes Feed Fix**: Remote trash events and changes to already-tracked files are retained and propagated immediately.
 
 ---
 
