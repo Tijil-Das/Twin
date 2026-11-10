@@ -1,6 +1,20 @@
-# Twin v1.2.0
+# Twin v1.2.1
 
-Major release: full upload activity lifecycle, Windows Shell folder overlays, and production hardening for the sync engine.
+Patch release: UI stability fix, settings header cleanup, and version source-of-truth alignment across all build manifests.
+
+---
+
+### 🔧 What's Fixed in v1.2.1
+
+#### 🐛 UI Build Stability
+- **Fixed QueueStatus type conflict blocking build**: Resolved a TypeScript type mismatch in the queue status consumer that prevented the production build from completing. The app now compiles cleanly and ships reliably.
+
+#### 🧹 Settings & Header Cleanup
+- **Removed unused Sliders icon from Sync Speed & Performance header**: The settings section header now displays only the title text without a redundant icon, and the unused `Sliders` import was removed from `lucide-react`.
+
+#### 🏷️ Version Source-of-Truth Alignment
+- **Fixed tauri.conf.json version mismatch**: `tauri.conf.json` was stuck at `1.1.7` while `package.json` and `Cargo.toml` were already at `1.2.0`. This caused the sidebar to display the wrong version (`1.1.7`) even on `1.2.0` builds. All three manifests now agree, and the sidebar fetches the live version from Tauri's `getVersion()` automatically — no manual edits needed per release.
+- **Synced all version references**: `package.json`, `Cargo.toml`, `tauri.conf.json`, `Website/main.js`, and `Website/index.html` all report `1.2.1`.
 
 ---
 

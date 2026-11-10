@@ -55,7 +55,6 @@ import {
   Copy,
   AlertCircle,
   Trash2,
-  Sliders,
   Power,
   Layers,
   Palette,
@@ -638,9 +637,6 @@ export function SettingsScreen() {
       {/* 2. Concurrency & Performance */}
       <section className="space-y-2.5">
         <h2 className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)] px-1 flex items-center gap-2">
-          <span className="w-5 h-5 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-            <Sliders size={12} />
-          </span>
           <span>Sync Speed & Performance</span>
         </h2>
 

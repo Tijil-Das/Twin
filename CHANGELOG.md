@@ -5,6 +5,21 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.2.1] - 2026-11-11
+
+### 🔧 Patch Release — UI Stability Fix, Settings Cleanup & Version Alignment
+
+#### ⚠️ Build Stability
+- **Fixed QueueStatus type conflict**: Resolved a TypeScript type mismatch in the queue status consumer that blocked the production build. The app now compiles and ships cleanly.
+
+#### 🧹 UI Cleanup
+- **Removed unused Sliders icon from Sync Speed & Performance settings header**: Header now shows only the section title; unused `lucide-react` import removed.
+
+#### 🏷️ Version Alignment
+- **Fixed tauri.conf.json version mismatch**: Was stuck at `1.1.7` while `package.json`/`Cargo.toml` were at `1.2.0`, causing the sidebar to display a stale version. All three manifests now agree and the sidebar reads the live version via Tauri `getVersion()`.
+
+---
+
 ## [1.2.0] - 2026-11-10
 
 ### 🚀 Major Release — Full Upload Activity Lifecycle, Windows Shell Overlays & Production Hardening
