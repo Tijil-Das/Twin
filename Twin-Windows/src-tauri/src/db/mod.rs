@@ -578,6 +578,24 @@ impl Db {
         .map_err(|e| AppError::Db(format!("count_jobs: {e}")))
     }
 
+    /// Cancel queued or failed jobs for a pair, optionally filtered by job kind (e.g. "download" or "delete").
+    pub fn cancel_jobs_by_kind(&self, pair_id: &str, kind: Option<&str>) -> Result<usize, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let count = if let Some(k) = kind {
+            conn.execute(
+                "UPDATE jobs SET status='cancelled' WHERE pair_id=?1 AND kind=?2 AND status IN ('queued', 'failed')",
+                params![pair_id, k],
+            )
+        } else {
+            conn.execute(
+                "UPDATE jobs SET status='cancelled' WHERE pair_id=?1 AND status IN ('queued', 'failed')",
+                params![pair_id],
+            )
+        }
+        .map_err(|e| AppError::Db(format!("cancel_jobs_by_kind: {e}")))?;
+        Ok(count)
+    }
+
     /// Re-queue failed jobs (optionally filtered by pair_id).
     pub fn retry_failed_jobs(&self, pair_id: Option<&str>) -> Result<usize, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;

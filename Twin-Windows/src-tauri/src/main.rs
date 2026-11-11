@@ -642,6 +642,7 @@ fn main() {
             commands::register_overlay_extension,
             commands::unregister_overlay_extension,
             commands::restart_explorer_shell,
+            commands::cancel_pair_jobs,
         ])
         .setup(move |app| {
             let handle = app.handle();

@@ -183,6 +183,8 @@ export const getConfig = () => invoke<Config>("get_config");
 export const updateConfig = (cfg: Config) => invoke<Config>("update_config", { patch: cfg });
 export const addPair = (pair: PairEntry) => invoke<void>("add_pair", { pair });
 export const removePair = (id: string) => invoke<void>("remove_pair", { id });
+export const cancelPairJobs = (pairId: string, kind?: string) =>
+  invoke<number>("cancel_pair_jobs", { pairId, kind });
 
 export interface GoogleUserProfile {
   email: string;

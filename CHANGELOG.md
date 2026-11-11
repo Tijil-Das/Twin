@@ -5,6 +5,27 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.2.2] - 2026-11-11
+
+### 🚀 Feature Release — Dynamic Pair Reconfiguration, Live Poller Reload & Transfer Viewport Prioritization
+
+#### ⚙️ Dynamic Pair Configuration
+- **Interactive Sync Mode Selector**: Switch between Two-Way Sync, Cloud Backup (Upload only), and Cloud Mirror directly in Pair Details.
+- **Mirror Mode Confirmation Modal**: Protective warning detailing that local PC state is the strict master in Mirror mode and remote-only items will be deleted or trashed.
+- **Remote Deletion Policy Controls**: Reconfigure between Drive Trash, Ignore Remote, and Permanent Deletion with safety modal.
+- **Locked Identity Indicators**: Local folder and Drive target paths marked locked to SQLite state to prevent desynchronization.
+
+#### 🛡️ Backend Engine Hardening
+- **Queue Job Cancellation (`cancel_pair_jobs`)**: Automatically cancel obsolete download/delete jobs when mode or deletion policies change.
+- **Live-Reload in Changes Poller**: `poll_changes_loop` reloads fresh pair configuration on every iteration; ignores remote changes in upload-only mode without network waste.
+- **Transfer Worker Guardrails**: Download and upload runners check current topology and exclusion rules prior to execution.
+
+#### 📊 Active Transfers Viewport
+- **Priority Sorting**: Actively streaming files are sorted to the top of the folder breakdown list.
+- **Pinned Top Viewport**: Container scroll stays at the top as transfers cycle so the active file is never hidden.
+
+---
+
 ## [1.2.1] - 2026-11-11
 
 ### 🔧 Patch Release — UI Stability Fix, Settings Cleanup & Version Alignment

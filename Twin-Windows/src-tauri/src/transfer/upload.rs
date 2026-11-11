@@ -103,6 +103,14 @@ async fn run_upload(
         }
     };
 
+    let rules_cfg = disk_cfg.as_ref().map(|c| &c.rules).unwrap_or(&cfg.rules);
+    let pair_rules = crate::rules::Rules::for_pair(rules_cfg, &pair);
+    if pair_rules.is_dir_excluded(&job.rel_path) || !pair_rules.allowed(std::path::Path::new(&job.rel_path), 0) {
+        info!("upload: {} is now excluded by rules; skipping job", job.rel_path);
+        let _ = db.complete_job(job.id);
+        return Ok(());
+    }
+
     let local_path = PathBuf::from(&pair.local).join(&job.rel_path);
 
     // Skip if file no longer exists (delete job will handle it separately).
@@ -567,6 +575,13 @@ async fn run_delete(
 
     let existing = db.get_file(&job.pair_id, &job.rel_path)?;
     let policy = pair.deletion.clone().unwrap_or(current_cfg.policy.deletion);
+
+    if policy == DeletionPolicy::Ignore {
+        info!("delete: deletion policy is Ignore for pair {}; skipping delete for {}", job.pair_id, job.rel_path);
+        let _ = db.complete_job(job.id);
+        return Ok(());
+    }
+
     let target_state = if policy == DeletionPolicy::Delete { "deleted" } else { "trashed" };
 
     let drive_id = match existing.as_ref().and_then(|r| r.drive_id.as_deref()) {

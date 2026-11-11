@@ -21,12 +21,17 @@ import {
   ShieldAlert,
   ArrowUp,
   ArrowDown,
+  ArrowLeftRight,
+  CloudUpload,
+  FlipHorizontal2,
   FolderTree,
   CheckSquare,
   Square,
   FileCode,
   Plus,
   X,
+  AlertTriangle,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +50,9 @@ import {
   listPairSubfolders,
   verifyPairIntegrity,
   repairPairMismatches,
+  cancelPairJobs,
   type PairEntry,
+  type PairMode,
   type SubfolderItem,
   type IntegrityReport,
 } from "@/lib/tauri";
@@ -94,6 +101,10 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [copiedLocal, setCopiedLocal] = useState(false);
   const [copiedDrive, setCopiedDrive] = useState(false);
+  const [updatingMode, setUpdatingMode] = useState(false);
+  const [updatingDeletion, setUpdatingDeletion] = useState(false);
+  const [showMirrorConfirm, setShowMirrorConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!pair) {
     return (
@@ -315,6 +326,109 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
       onBack();
     } catch (err) {
       toast.error(`Failed to remove pair: ${String(err)}`);
+    }
+  }
+
+  async function handleModeChange(newMode: PairMode, skipConfirm = false) {
+    if (!pair || !config || updatingMode || pair.mode === newMode) return;
+
+    if (newMode === "mirror" && !skipConfirm) {
+      setShowMirrorConfirm(true);
+      return;
+    }
+
+    setUpdatingMode(true);
+    try {
+      // 1. If switching to upload-only, cancel pending download jobs so remote files don't touch local files
+      if (newMode === "upload") {
+        try {
+          await cancelPairJobs(pairId, "download");
+        } catch (e) {
+          console.warn("Could not cancel download jobs:", e);
+        }
+      }
+
+      // 2. Persist new mode in config
+      const currentPairs = Array.isArray(config.pairs)
+        ? config.pairs
+        : Array.isArray((config as any).pair)
+        ? (config as any).pair
+        : [];
+      const nextPairs = currentPairs.map((p: PairEntry) =>
+        p.id === pairId ? { ...p, mode: newMode } : p
+      );
+      const nextCfg = { ...config, pairs: nextPairs, pair: nextPairs };
+      await updateConfig(nextCfg);
+      const reloaded = await getConfig();
+      setConfig(reloaded);
+
+      // 3. Topology alignment:
+      // If switching to two_way or mirror, kick off a cycle to reconcile with Drive immediately
+      if (newMode === "two_way" || newMode === "mirror") {
+        toast.info(
+          newMode === "mirror"
+            ? `Switched "${folderName}" to Cloud Mirror. Aligning remote Google Drive folder…`
+            : `Switched "${folderName}" to Two-Way Sync. Checking for remote updates…`
+        );
+        try {
+          void runSyncCycle(pairId);
+        } catch (_) {}
+      } else {
+        toast.success(`Switched "${folderName}" to Cloud Backup (upload only)`);
+      }
+    } catch (err) {
+      toast.error(`Failed to update sync mode: ${String(err)}`);
+    } finally {
+      setUpdatingMode(false);
+      setShowMirrorConfirm(false);
+    }
+  }
+
+  async function handleDeletionChange(newDeletion: "drive_trash" | "delete" | "ignore", skipConfirm = false) {
+    if (!pair || !config || updatingDeletion || pair.deletion === newDeletion) return;
+
+    if (newDeletion === "delete" && !skipConfirm) {
+      setShowDeleteConfirm(true);
+      return;
+    }
+
+    setUpdatingDeletion(true);
+    try {
+      // 1. If switching to ignore, cancel pending delete jobs so remote files are spared
+      if (newDeletion === "ignore") {
+        try {
+          await cancelPairJobs(pairId, "delete");
+        } catch (e) {
+          console.warn("Could not cancel delete jobs:", e);
+        }
+      }
+
+      // 2. Persist new deletion policy in config
+      const currentPairs = Array.isArray(config.pairs)
+        ? config.pairs
+        : Array.isArray((config as any).pair)
+        ? (config as any).pair
+        : [];
+      const nextPairs = currentPairs.map((p: PairEntry) =>
+        p.id === pairId ? { ...p, deletion: newDeletion } : p
+      );
+      const nextCfg = { ...config, pairs: nextPairs, pair: nextPairs };
+      await updateConfig(nextCfg);
+      const reloaded = await getConfig();
+      setConfig(reloaded);
+
+      if (newDeletion === "ignore") {
+        toast.success("Remote Deletion Safety: Ignore (Local deletions will not delete Drive files)");
+      } else if (newDeletion === "drive_trash") {
+        toast.success("Remote Deletion Safety: Drive Trash (30-day recovery enabled)");
+      } else {
+        toast.success("Remote Deletion Safety: Permanent Deletion enabled");
+      }
+    } catch (err) {
+      toast.error(`Failed to update deletion policy: ${String(err)}`);
+    } finally {
+      setUpdatingDeletion(false);
+      setShowDeleteConfirm(false);
     }
   }
 
@@ -683,7 +797,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
         </div>
 
         <div className="divide-y divide-[#30363d]/60 text-xs">
-          {/* Row 1: Local Path */}
+          {/* Row 1: Local Path (Identity key - locked) */}
           <div className="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-0.5 sm:max-w-xs">
               <span className="font-semibold text-[#e6edf3] flex items-center gap-1.5">
@@ -691,11 +805,17 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
                 Local Storage Directory
               </span>
               <p className="text-[#7d8590] text-[11px]">
-                Local filesystem directory monitored for file changes
+                Local directory monitored for changes (bound to SQLite tracking)
               </p>
             </div>
 
-            <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
+            <div className="flex items-center gap-2 min-w-0 flex-1 justify-end flex-wrap sm:flex-nowrap">
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#21262d] text-[#8b949e] border border-[#30363d] shrink-0"
+                title="Local folder path is locked to database sync state. To switch folders, remove and re-create this pair."
+              >
+                <Lock size={10} /> Locked
+              </span>
               <div className="px-3 py-1.5 rounded-lg bg-[#161b22] border border-[#30363d] font-mono text-xs text-[#c9d1d9] truncate select-all max-w-md lg:max-w-xl xl:max-w-3xl" title={pair.local}>
                 {pair.local}
               </div>
@@ -718,7 +838,7 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
             </div>
           </div>
 
-          {/* Row 2: Google Drive Target */}
+          {/* Row 2: Google Drive Target (Identity key - locked) */}
           <div className="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-0.5 sm:max-w-xs">
               <span className="font-semibold text-[#e6edf3] flex items-center gap-1.5">
@@ -726,11 +846,17 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
                 Google Drive Target Folder
               </span>
               <p className="text-[#7d8590] text-[11px]">
-                Connected target directory in Google Drive
+                Connected target directory in Google Drive (bound to cloud revision cache)
               </p>
             </div>
 
-            <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
+            <div className="flex items-center gap-2 min-w-0 flex-1 justify-end flex-wrap sm:flex-nowrap">
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#21262d] text-[#8b949e] border border-[#30363d] shrink-0"
+                title="Google Drive target folder is locked to cloud sync state. To change cloud destination, remove and re-create this pair."
+              >
+                <Lock size={10} /> Locked
+              </span>
               <div className="px-3 py-1.5 rounded-lg bg-[#161b22] border border-[#30363d] font-mono text-xs text-[#c9d1d9] truncate select-all max-w-md lg:max-w-xl xl:max-w-3xl" title={pair.drive_folder_id || "Root"}>
                 {pair.drive_folder_id ? `ID: ${pair.drive_folder_id}` : "My Drive (Root)"}
               </div>
@@ -753,45 +879,137 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
             </div>
           </div>
 
-          {/* Row 3: Sync Mode & Topology */}
+          {/* Row 3: Sync Topology & Mode (Configurable post-formation) */}
           <div className="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <span className="font-semibold text-[#e6edf3] flex items-center gap-1.5">
-                <Layers size={13} className="text-[#58a6ff]" />
-                Sync Topology & Mode
-              </span>
+            <div className="space-y-0.5 sm:max-w-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-[#e6edf3] flex items-center gap-1.5">
+                  <Layers size={13} className="text-[#58a6ff]" />
+                  Sync Topology & Mode
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/30">
+                  Configurable
+                </span>
+              </div>
               <p className="text-[#7d8590] text-[11px]">
                 {modeInfo.description}
               </p>
             </div>
 
-            <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-[#161b22] text-[#c9d1d9] border border-[#30363d] shrink-0 self-start sm:self-auto">
-              {modeInfo.label}
-            </span>
+            <div className="flex items-center gap-1.5 bg-[#161b22] p-1 rounded-lg border border-[#30363d] shrink-0 self-start sm:self-auto flex-wrap">
+              <button
+                type="button"
+                disabled={updatingMode}
+                onClick={() => handleModeChange("two_way")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50",
+                  pair.mode === "two_way"
+                    ? "bg-[#1f6feb] text-white shadow-sm font-semibold"
+                    : "text-[#7d8590] hover:text-[#c9d1d9] hover:bg-[#21262d]"
+                )}
+                title="Bidirectional sync between local disk and Google Drive"
+              >
+                <ArrowLeftRight size={12} />
+                <span>Two-Way</span>
+              </button>
+              <button
+                type="button"
+                disabled={updatingMode}
+                onClick={() => handleModeChange("upload")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50",
+                  pair.mode === "upload"
+                    ? "bg-[#238636] text-white shadow-sm font-semibold"
+                    : "text-[#7d8590] hover:text-[#c9d1d9] hover:bg-[#21262d]"
+                )}
+                title="Cloud Backup (Upload only) - Remote changes will not modify or overwrite local files"
+              >
+                <CloudUpload size={12} />
+                <span>Cloud Backup</span>
+              </button>
+              <button
+                type="button"
+                disabled={updatingMode}
+                onClick={() => handleModeChange("mirror")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50",
+                  pair.mode === "mirror"
+                    ? "bg-[#d29922]/20 text-[#e3b341] border border-[#d29922]/50 shadow-sm font-semibold"
+                    : "text-[#7d8590] hover:text-[#c9d1d9] hover:bg-[#21262d]"
+                )}
+                title="Strict replica of local PC - Drive files not on PC will be deleted"
+              >
+                <FlipHorizontal2 size={12} />
+                <span>Cloud Mirror</span>
+              </button>
+            </div>
           </div>
 
-          {/* Row 4: Deletion Safety */}
+          {/* Row 4: Deletion Safety (Configurable post-formation) */}
           <div className="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <span className="font-semibold text-[#e6edf3] flex items-center gap-1.5">
-                <ShieldCheck size={13} className="text-emerald-400" />
-                Remote Deletion Safety
-              </span>
+            <div className="space-y-0.5 sm:max-w-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-[#e6edf3] flex items-center gap-1.5">
+                  <ShieldCheck size={13} className="text-emerald-400" />
+                  Remote Deletion Safety
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#238636]/20 text-[#3fb950] border border-[#238636]/30">
+                  Configurable
+                </span>
+              </div>
               <p className="text-[#7d8590] text-[11px]">
                 {pair.deletion === "delete"
                   ? "Files deleted locally are immediately purged permanently on Google Drive."
+                  : pair.deletion === "ignore"
+                  ? "Files deleted locally are preserved in Google Drive (never touched remotely)."
                   : "Files deleted locally are moved to Google Drive Trash for safe 30-day recovery."}
               </p>
             </div>
 
-            <span className={cn(
-              "px-2.5 py-1 rounded-md text-xs font-medium border shrink-0 self-start sm:self-auto",
-              pair.deletion === "delete"
-                ? "bg-red-500/10 text-red-400 border-red-500/30"
-                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-            )}>
-              {pair.deletion === "delete" ? "Permanent Deletion" : "Drive Trash (30-day recovery)"}
-            </span>
+            <div className="flex items-center gap-1.5 bg-[#161b22] p-1 rounded-lg border border-[#30363d] shrink-0 self-start sm:self-auto flex-wrap">
+              <button
+                type="button"
+                disabled={updatingDeletion}
+                onClick={() => handleDeletionChange("drive_trash")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer disabled:opacity-50",
+                  pair.deletion === "drive_trash" || !pair.deletion
+                    ? "bg-[#238636] text-white shadow-sm font-semibold"
+                    : "text-[#7d8590] hover:text-[#c9d1d9] hover:bg-[#21262d]"
+                )}
+                title="Move deleted files to Google Drive Trash for safe 30-day recovery"
+              >
+                Drive Trash
+              </button>
+              <button
+                type="button"
+                disabled={updatingDeletion}
+                onClick={() => handleDeletionChange("ignore")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer disabled:opacity-50",
+                  pair.deletion === "ignore"
+                    ? "bg-[#1f6feb] text-white shadow-sm font-semibold"
+                    : "text-[#7d8590] hover:text-[#c9d1d9] hover:bg-[#21262d]"
+                )}
+                title="Ignore local deletions - keep remote files in Google Drive intact"
+              >
+                Ignore Remote
+              </button>
+              <button
+                type="button"
+                disabled={updatingDeletion}
+                onClick={() => handleDeletionChange("delete")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer disabled:opacity-50",
+                  pair.deletion === "delete"
+                    ? "bg-[#da3633] text-white shadow-sm font-semibold"
+                    : "text-[#7d8590] hover:text-[#c9d1d9] hover:bg-[#21262d]"
+                )}
+                title="Permanently purge files from Google Drive immediately"
+              >
+                Permanent
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1199,6 +1417,96 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
           </div>
         )}
       </div>
+
+      {/* ── Mirror Mode Confirmation Dialog ── */}
+      {showMirrorConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-xl bg-[#161b22] border border-[#d29922]/50 p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-[#d29922]">
+              <div className="w-9 h-9 rounded-lg bg-[#d29922]/20 flex items-center justify-center shrink-0 border border-[#d29922]/40">
+                <AlertTriangle size={20} className="text-[#e3b341]" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#e6edf3]">Switch to Cloud Mirror Mode?</h3>
+                <p className="text-xs text-[#8b949e]">Strict one-way local mirror topology</p>
+              </div>
+            </div>
+
+            <div className="text-xs text-[#c9d1d9] space-y-2 bg-[#0d1117] p-3.5 rounded-lg border border-[#30363d] leading-relaxed">
+              <p>
+                In <strong className="text-[#e3b341]">Cloud Mirror mode</strong>, your local PC folder is the strict source of truth:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-[#8b949e] text-[11px]">
+                <li>Any files or folders in Google Drive that do not exist on this PC will be <strong className="text-red-400">deleted or moved to Trash</strong>.</li>
+                <li>Conflicting edits in Google Drive will be overwritten by your PC versions.</li>
+                <li>Changes made directly on Google Drive will never download to your PC.</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowMirrorConfirm(false)}
+                className="h-8 px-3 text-xs text-[#8b949e] hover:text-[#e6edf3] cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleModeChange("mirror", true)}
+                className="h-8 px-3.5 text-xs font-semibold bg-[#d29922] hover:bg-[#bb871e] text-black rounded-md shadow-sm cursor-pointer"
+              >
+                Confirm Switch to Mirror
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Permanent Deletion Confirmation Dialog ── */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-xl bg-[#161b22] border border-red-500/50 p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400">
+              <div className="w-9 h-9 rounded-lg bg-red-500/20 flex items-center justify-center shrink-0 border border-red-500/40">
+                <AlertTriangle size={20} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#e6edf3]">Enable Permanent Remote Deletion?</h3>
+                <p className="text-xs text-[#8b949e]">Irreversible file deletion policy</p>
+              </div>
+            </div>
+
+            <div className="text-xs text-[#c9d1d9] space-y-2 bg-[#0d1117] p-3.5 rounded-lg border border-[#30363d] leading-relaxed">
+              <p>
+                When <strong className="text-red-400">Permanent Deletion</strong> is active, files deleted on this PC are immediately purged permanently from Google Drive without going to Trash.
+              </p>
+              <p className="text-[#8b949e] text-[11px]">
+                You will not have a 30-day recovery window in Google Drive Trash for any deleted files.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="h-8 px-3 text-xs text-[#8b949e] hover:text-[#e6edf3] cursor-pointer"
+              >
+                Keep Drive Trash
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleDeletionChange("delete", true)}
+                className="h-8 px-3.5 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-md shadow-sm cursor-pointer"
+              >
+                Enable Permanent Deletion
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

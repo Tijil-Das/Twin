@@ -303,11 +303,27 @@ pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
     sleep(Duration::from_secs(5)).await;
 
         loop {
+            // Reload fresh pair configuration on each cycle to pick up mode/policy changes dynamically
+            let current_cfg = crate::config::load().unwrap_or_default();
+            let pair = match current_cfg.pairs.iter().find(|p| p.id == pair.id) {
+                Some(p) => p.clone(),
+                None => {
+                    info!("pair {}: changes poll loop exiting (pair removed)", pair.id);
+                    return;
+                }
+            };
+
             // 100% hard cutoff: if this pair has been disabled, abort immediately
             // so no remote changes are ever fetched or jobs enqueued for it.
             if !pair.enabled {
                 info!("pair {}: changes poll loop exiting (pair disabled)", pair.id);
                 return;
+            }
+
+            // In upload-only mode, remote changes are ignored; sleep and wait for next tick
+            if pair.mode == crate::config::PairMode::Upload {
+                sleep(Duration::from_secs(30)).await;
+                continue;
             }
 
             ctx.gov.checkpoint().await;
@@ -340,15 +356,26 @@ pub async fn poll_changes_loop(pair: PairEntry, ctx: Ctx) {
             Ok(result) => {
                 let mut applied = 0;
                 // Apply each change through the decision table.
+                let rules = crate::rules::Rules::for_pair(&current_cfg.rules, &pair);
                 for change in &result.changes {
                     ctx.gov.checkpoint().await;
+
+                    // Skip remote change if the file is excluded by rules
+                    if let Some(ref file) = change.file {
+                        if let Some(ref name) = file.name {
+                            if rules.is_dir_excluded(name) || !rules.allowed(std::path::Path::new(name), 0) {
+                                continue;
+                            }
+                        }
+                    }
+
                     if let Err(e) = reconcile::apply_remote_change_with_policies(
                         &ctx.db,
                         &pair,
                         change,
                         &ctx.echo,
-                        ctx.policy.conflict.clone(),
-                        pair.deletion.clone().unwrap_or_else(|| ctx.policy.deletion.clone()),
+                        current_cfg.policy.conflict.clone(),
+                        pair.deletion.clone().unwrap_or_else(|| current_cfg.policy.deletion.clone()),
                     ).await {
                         warn!("pair {}: apply change error: {e}", pair.id);
                     } else {

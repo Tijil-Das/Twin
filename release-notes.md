@@ -1,3 +1,31 @@
+# Twin v1.2.2
+
+Feature and reliability release: dynamic pair reconfiguration in the UI with safety confirmations and live reload, active transfer auto-scroll & sorting prioritization, and queue guardrails.
+
+---
+
+### 🚀 What's New & Improved in v1.2.2
+
+#### ⚙️ Dynamic Pair Reconfiguration in Pair Details
+- **Sync Topology & Mode Switching**: Easily reconfigure an active pair between **Two-Way Sync** (`two_way`), **Cloud Backup** (`upload`), and **Cloud Mirror** (`mirror`) directly from the pair details screen.
+- **Safety Confirmation for Cloud Mirror**: Switching to Mirror mode presents a clear confirmation modal detailing that the local PC folder is the strict source of truth and extraneous remote files on Drive will be removed.
+- **Remote Deletion Safety Controls**: Switch anytime between **Drive Trash** (safe 30-day recovery), **Ignore Remote** (never delete from Drive on local removal), and **Permanent Deletion** (with confirmation dialog).
+- **Locked Identity Indicators**: Local directory and Google Drive target folders display clear lock badges with explanatory tooltips indicating they are anchored to the local SQLite database and cloud metadata.
+
+#### 🛡️ Advanced Queue & Engine Guardrails
+- **Automated Queue Cancellation (`cancel_pair_jobs`)**:
+  - Switching a pair to **Cloud Backup (Upload-only)** immediately cancels pending download jobs so remote modifications never overwrite local files.
+  - Switching to **Ignore Deletions** immediately cancels pending remote delete jobs.
+  - Excluding subfolders cancels pending jobs for those directories.
+- **Dynamic Live-Reload for Changes Poller**: The background Google Drive Changes polling loop (`poll_changes_loop`) now dynamically reloads pair configuration on each cycle, instantly respecting mode and deletion changes without requiring an app restart.
+- **Worker Execution Guardrails**: Transfer workers in `download.rs` and `upload.rs` verify pair topology and exclusion rules before processing files, skipping any jobs that became obsolete while queued.
+
+#### 📊 Active Transfers Breakdown Auto-Scroll & Priority
+- **Active Transfer Prioritization**: In the overview screen's active pair transfer breakdown, actively streaming files with non-zero transfer rates and live byte streams are sorted to the very top (`index 0`).
+- **Auto-Scroll to In-Flight Transfer**: The scroll container automatically maintains `scrollTop = 0` whenever active transfers change or complete, keeping the currently transferring file in continuous view.
+
+---
+
 # Twin v1.2.1
 
 Patch release: UI stability fix, settings header cleanup, and version source-of-truth alignment across all build manifests.

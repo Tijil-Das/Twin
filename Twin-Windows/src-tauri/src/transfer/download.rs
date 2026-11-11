@@ -123,6 +123,22 @@ pub(crate) async fn run_download(
         }
     };
 
+    // If pair mode was switched to Upload-only, cancel/skip download so remote files don't touch local disk
+    if pair.mode == crate::config::PairMode::Upload {
+        info!("download: pair {} is in upload-only mode; skipping download for {}", pair.id, job.rel_path);
+        let _ = db.complete_job(job.id);
+        return Ok(());
+    }
+
+    // If file is excluded by rules, skip download
+    let rules_cfg = disk_cfg.as_ref().map(|c| &c.rules).unwrap_or(&cfg.rules);
+    let pair_rules = crate::rules::Rules::for_pair(rules_cfg, &pair);
+    if pair_rules.is_dir_excluded(&job.rel_path) || !pair_rules.allowed(std::path::Path::new(&job.rel_path), 0) {
+        info!("download: {} is excluded by rules; skipping download", job.rel_path);
+        let _ = db.complete_job(job.id);
+        return Ok(());
+    }
+
     let dest = PathBuf::from(&pair.local).join(&job.rel_path);
 
     // Look up drive metadata from DB.

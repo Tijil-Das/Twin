@@ -303,3 +303,15 @@ pub fn unregister_overlay_extension() -> Result<(), String> {
 pub fn restart_explorer_shell() -> Result<(), String> {
     crate::overlay::restart_explorer()
 }
+
+#[tauri::command]
+pub fn cancel_pair_jobs(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    pair_id: String,
+    kind: Option<String>,
+) -> Result<usize, String> {
+    db_state
+        .0
+        .cancel_jobs_by_kind(&pair_id, kind.as_deref())
+        .map_err(|e| e.to_string())
+}
