@@ -578,7 +578,7 @@ async fn handle_list_files(
                 continue;
             }
         }
-        matches.push(f.clone());
+        matches.push(drive_file_json(f));
     }
 
     let json = serde_json::json!({ "files": matches });
@@ -707,7 +707,7 @@ async fn handle_create_file(
                     if let Some(desc) = meta.get("description").and_then(|v| v.as_str()) {
                         f.description = Some(desc.to_string());
                     }
-                    let resp = serde_json::json!(f);
+                    let resp = drive_file_json(f);
                     write_json(200, &resp, out);
                 } else {
                     write_json(404, &serde_json::json!({ "error": "file not found" }), out);
@@ -739,7 +739,7 @@ async fn handle_create_file(
                     revisions: Vec::new(),
                 };
                 st.files.insert(id.clone(), fake_file.clone());
-                write_json(200, &serde_json::json!(fake_file), out);
+                write_json(200, &drive_file_json(&fake_file), out);
             }
         }
     }
@@ -903,7 +903,7 @@ async fn handle_get_file(
         out.extend_from_slice(&file.data);
     } else {
         // Metadata
-        write_json(200, &serde_json::json!(file), out);
+        write_json(200, &drive_file_json(file), out);
     }
 }
 
@@ -1025,6 +1025,26 @@ async fn handle_create_permission(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Encode file metadata exactly as the Google Drive v3 JSON API does.
+///
+/// In particular, Drive serializes `size` as a decimal string. Returning the
+/// in-memory u64 directly made the fake incompatible with the real client and
+/// hid all folder-creation paths from earlier transfer tests.
+fn drive_file_json(file: &FakeFile) -> serde_json::Value {
+    serde_json::json!({
+        "id": file.id,
+        "name": file.name,
+        "parents": file.parents,
+        "mimeType": file.mime_type,
+        "size": file.size.to_string(),
+        "md5Checksum": file.md5_checksum,
+        "modifiedTime": file.modified_time,
+        "trashed": file.trashed,
+        "starred": file.starred,
+        "description": file.description,
+    })
+}
 
 fn write_json(status: u16, json: &serde_json::Value, out: &mut Vec<u8>) {
     let body = json.to_string();

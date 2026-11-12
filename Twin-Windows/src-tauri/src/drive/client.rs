@@ -25,27 +25,10 @@ const UPLOAD_BASE: &str = "https://www.googleapis.com/upload/drive/v3";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_RETRIES: u32 = 5;
 
-static GLOBAL_PATH_CACHE: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
 static PATH_ENSURE_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
-
-fn global_path_cache() -> &'static Mutex<HashMap<String, String>> {
-    GLOBAL_PATH_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
 
 fn path_ensure_lock() -> &'static Mutex<()> {
     PATH_ENSURE_LOCK.get_or_init(|| Mutex::new(()))
-}
-
-/// Evict all path cache entries starting with `{pair_id}|{rel_path}`.
-pub async fn invalidate_path_cache(pair_id: &str, rel_path: &str) {
-    let mut cache = global_path_cache().lock().await;
-    let clean_rel = rel_path.trim_matches('/');
-    let prefix = if clean_rel.is_empty() {
-        format!("{pair_id}|")
-    } else {
-        format!("{pair_id}|{clean_rel}")
-    };
-    cache.retain(|k, _| !k.starts_with(&prefix));
 }
 
 /// Check if an error message indicates the file is already deleted, trashed, or not found on Drive.
@@ -69,8 +52,9 @@ pub struct DriveClient {
     pub(crate) http: Client,
     pub(crate) base_url: String,
     pub(crate) upload_base_url: String,
-    /// Cache: Drive folder path -> folder id, keyed by (pair_id, rel_dir).
-    _path_cache: Arc<Mutex<HashMap<String, String>>>,
+    /// Cache: Drive folder path -> folder id, scoped to this client instance.
+    /// It must never be shared across accounts or test endpoints.
+    path_cache: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl DriveClient {
@@ -89,7 +73,7 @@ impl DriveClient {
             http,
             base_url: API_BASE.into(),
             upload_base_url: UPLOAD_BASE.into(),
-            _path_cache: Arc::new(Mutex::new(HashMap::new())),
+            path_cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -99,7 +83,7 @@ impl DriveClient {
             http,
             upload_base_url: base_url.clone(),
             base_url,
-            _path_cache: Arc::new(Mutex::new(HashMap::new())),
+            path_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -120,6 +104,17 @@ impl DriveClient {
 
     pub fn upload_base_url(&self) -> &str {
         &self.upload_base_url
+    }
+
+    /// Evict cached folders at `rel_path` and below for this Drive client.
+    pub async fn invalidate_path_cache(&self, pair_id: &str, rel_path: &str) {
+        let clean_rel = rel_path.trim_matches('/').replace('\\', "/");
+        let prefix = if clean_rel.is_empty() {
+            format!("{pair_id}|")
+        } else {
+            format!("{pair_id}|{clean_rel}")
+        };
+        self.path_cache.lock().await.retain(|key, _| !key.starts_with(&prefix));
     }
 
     // Helpers
@@ -432,7 +427,7 @@ impl DriveClient {
     }
 
     /// Ensure all directories in `rel_dir` exist under `root_id`.
-    /// Uses global synchronized path cache; creates missing folders in order without racing.
+    /// Uses a client-scoped synchronized path cache; creates missing folders in order without racing.
     pub async fn ensure_path(
         &self,
         pair_id: &str,
@@ -445,7 +440,7 @@ impl DriveClient {
 
         let cache_key = format!("{pair_id}|{rel_dir}");
         {
-            let cache = global_path_cache().lock().await;
+            let cache = self.path_cache.lock().await;
             if let Some(id) = cache.get(&cache_key) {
                 return Ok(id.clone());
             }
@@ -456,7 +451,7 @@ impl DriveClient {
 
         // Re-check cache under the lock in case another worker just finished ensuring this path.
         {
-            let cache = global_path_cache().lock().await;
+            let cache = self.path_cache.lock().await;
             if let Some(id) = cache.get(&cache_key) {
                 return Ok(id.clone());
             }
@@ -473,7 +468,7 @@ impl DriveClient {
             let ck = format!("{pair_id}|{cumulative}");
 
             let folder_id = {
-                let cache = global_path_cache().lock().await;
+                let cache = self.path_cache.lock().await;
                 cache.get(&ck).cloned()
             };
 
@@ -485,7 +480,7 @@ impl DriveClient {
                         Some(f) => f.id,
                         None => self.create_folder(&parent, component).await?,
                     };
-                    let mut cache = global_path_cache().lock().await;
+                    let mut cache = self.path_cache.lock().await;
                     cache.insert(ck, id.clone());
                     id
                 }
@@ -494,7 +489,7 @@ impl DriveClient {
             parent = folder_id;
         }
 
-        let mut cache = global_path_cache().lock().await;
+        let mut cache = self.path_cache.lock().await;
         cache.insert(cache_key, parent.clone());
         Ok(parent)
     }

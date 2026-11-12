@@ -617,8 +617,8 @@ pub async fn run_folder_rename(
     let updated_count = db.rename_folder_prefix(pair_id, &clean_old, &clean_new)?;
 
     // 4. Invalidate path cache for old and new folders
-    crate::drive::client::invalidate_path_cache(pair_id, &clean_old).await;
-    crate::drive::client::invalidate_path_cache(pair_id, &clean_new).await;
+    drive.invalidate_path_cache(pair_id, &clean_old).await;
+    drive.invalidate_path_cache(pair_id, &clean_new).await;
 
     // 5. Log folder rename activity
     let _ = db.log_activity(Activity {

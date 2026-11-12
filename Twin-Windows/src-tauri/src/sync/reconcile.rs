@@ -174,7 +174,7 @@ pub async fn reconcile_listing_with_policy(
                     result.deletes += 1;
                 }
                 pruned_remote_folder_prefixes.push(format!("{rel_dir}/"));
-                crate::drive::client::invalidate_path_cache(&pair.id, &rel_dir).await;
+                drive.invalidate_path_cache(&pair.id, &rel_dir).await;
             } else if folder_entries.len() > 1 {
                 // Duplicate folders on Drive for the same local directory!
                 // Keep the first instance as primary, migrate any contents from duplicates into primary, then trash the duplicates.

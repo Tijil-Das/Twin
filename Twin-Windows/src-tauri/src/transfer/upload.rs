@@ -641,7 +641,7 @@ async fn run_delete(
         }
     }
 
-    crate::drive::client::invalidate_path_cache(&job.pair_id, &job.rel_path).await;
+    drive.invalidate_path_cache(&job.pair_id, &job.rel_path).await;
     info!("deleted/trashed {} (policy={:?})", job.rel_path, policy);
     Ok(())
 }
