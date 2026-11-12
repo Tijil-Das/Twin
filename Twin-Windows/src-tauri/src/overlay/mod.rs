@@ -120,6 +120,18 @@ static SEQUENCE: AtomicUsize = AtomicUsize::new(1);
 static LAST_FOLDER_STATUSES: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
 static FOLDER_COOLDOWNS: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
 
+/// Clear process-local overlay bookkeeping between isolated integration tests.
+/// This does not affect the Explorer shared-memory contract.
+pub fn reset_overlay_state_for_tests() {
+    if let Ok(mut lock) = LAST_FOLDER_STATUSES.lock() {
+        *lock = None;
+    }
+    if let Ok(mut lock) = FOLDER_COOLDOWNS.lock() {
+        *lock = None;
+    }
+    SEQUENCE.store(1, Ordering::SeqCst);
+}
+
 #[cfg(windows)]
 struct ShmemHolder {
     #[allow(dead_code)]

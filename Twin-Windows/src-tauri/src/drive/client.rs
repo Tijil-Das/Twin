@@ -557,6 +557,12 @@ impl DriveClient {
         }
     }
 
+    /// Check whether a string looks like a valid Drive file/folder ID (non-empty, no slashes).
+    pub fn is_valid_drive_id(id: &str) -> bool {
+        let s = id.trim();
+        !s.is_empty() && !s.contains('/') && !s.contains('\\')
+    }
+
     /// Rename (and optionally move) a file on Drive — metadata update only, no content upload.
     /// If `new_parent_id` is Some and different from `old_parent_id`, also moves it.
     pub async fn rename_file(
@@ -570,20 +576,35 @@ impl DriveClient {
         let url = format!("{}/files/{file_id}", self.base_url);
         let body = serde_json::json!({ "name": new_name });
 
+        // Validate parent IDs — never pass local file/folder paths to Drive parent query parameters!
+        let valid_new = new_parent_id.filter(|id| Self::is_valid_drive_id(id));
+        let valid_old = old_parent_id.filter(|id| Self::is_valid_drive_id(id));
+
         // Build query params conditionally.
-        let needs_move = new_parent_id.is_some()
-            && old_parent_id.is_some()
-            && new_parent_id != old_parent_id;
+        let needs_move = valid_new.is_some()
+            && valid_old.is_some()
+            && valid_new != valid_old;
 
         let resp = if needs_move {
-            let add = new_parent_id.unwrap();
-            let remove = old_parent_id.unwrap();
+            let add = valid_new.unwrap();
+            let remove = valid_old.unwrap();
             self.execute_with_retry(|| {
                 self.http.patch(&url)
                     .header(header::AUTHORIZATION, format!("Bearer {token}"))
                     .query(&[
                         ("addParents", add),
                         ("removeParents", remove),
+                        ("supportsAllDrives", "true"),
+                    ])
+                    .json(&body)
+            }).await?
+        } else if let Some(add) = valid_new.filter(|_| old_parent_id.is_none()) {
+            // New parent specified without explicit old parent
+            self.execute_with_retry(|| {
+                self.http.patch(&url)
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .query(&[
+                        ("addParents", add),
                         ("supportsAllDrives", "true"),
                     ])
                     .json(&body)
@@ -603,6 +624,71 @@ impl DriveClient {
             return Err(AppError::Drive(format!("rename_file {status}: {body_text}")));
         }
         Ok(())
+    }
+
+    /// Reliably move and/or rename a file or folder on Google Drive.
+    /// If `target_parent_id` is Some, queries the file's current parents and removes old parents while adding the target.
+    /// Safely handles files that already reside in `target_parent_id`.
+    pub async fn move_and_rename_file(
+        &self,
+        file_id: &str,
+        new_name: &str,
+        target_parent_id: Option<&str>,
+    ) -> Result<(), AppError> {
+        let clean_target = target_parent_id.filter(|id| Self::is_valid_drive_id(id));
+
+        if let Some(target_id) = clean_target {
+            // Fetch current metadata (including current parents) directly from Drive
+            let meta = self.get_folder_meta(file_id).await?;
+            let current_parents = meta.parents.unwrap_or_default();
+
+            if current_parents.len() == 1 && current_parents[0] == target_id {
+                // Already in target parent folder, only rename needed
+                return self.rename_file(file_id, new_name, None, None).await;
+            }
+
+            let to_remove: Vec<String> = current_parents
+                .into_iter()
+                .filter(|p| p.as_str() != target_id)
+                .collect();
+            let remove_arg = if to_remove.is_empty() {
+                None
+            } else {
+                Some(to_remove.join(","))
+            };
+
+            self.rename_file(file_id, new_name, Some(target_id), remove_arg.as_deref()).await
+        } else {
+            self.rename_file(file_id, new_name, None, None).await
+        }
+    }
+
+    /// Find a folder on Drive by its relative path under `root_id` (e.g. "temp sex/Alcohols & Phenols 2").
+    /// Walks child folder components and returns the `DriveFile` of the destination folder if it exists.
+    pub async fn find_folder_by_path(
+        &self,
+        root_id: &str,
+        rel_dir: &str,
+    ) -> Result<Option<DriveFile>, AppError> {
+        let clean = rel_dir.trim_matches('/').replace('\\', "/");
+        if clean.is_empty() || clean == "." {
+            return self.get_folder_meta(root_id).await.map(Some);
+        }
+
+        let mut current_parent = root_id.to_string();
+        let mut last_folder: Option<DriveFile> = None;
+
+        for component in clean.split('/').filter(|s| !s.is_empty()) {
+            match self.find_child_folder(&current_parent, component).await? {
+                Some(folder) => {
+                    current_parent = folder.id.clone();
+                    last_folder = Some(folder);
+                }
+                None => return Ok(None),
+            }
+        }
+
+        Ok(last_folder)
     }
 
     /// Move a file or folder from old_parent to new_parent in Google Drive.

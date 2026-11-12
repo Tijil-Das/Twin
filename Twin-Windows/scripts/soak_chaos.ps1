@@ -47,9 +47,9 @@ $report = @"
 
 - **Date**: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 - **Workload**: $Cycles cycles mixed create/modify/delete
-- **Orphan Partial Files**: 0
-- **Database Integrity**: OK (verified via PRAGMA integrity_check)
-- **Status**: PASSED
+- **Orphan Partial Files**: $((Get-ChildItem -Path $TargetDir -Recurse -File -Filter '*.twin-part' -ErrorAction SilentlyContinue).Count)
+- **Database Integrity**: Not exercised by this filesystem generator (use the Rust T2 suite for SQLite integrity checks)
+- **Status**: Filesystem workload generated; application sync verification is performed by the Rust T3/T4 suites
 "@
 
 Set-Content -Path "$reportDir/soak-latest.md" -Value $report

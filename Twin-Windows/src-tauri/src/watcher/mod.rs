@@ -469,6 +469,7 @@ pub async fn scan_pair(
                     };
 
                     if let Some(old_rel) = rename_old {
+                        let _ = db.cancel_jobs_by_path(&pair.id, "delete", &old_rel);
                         let _ = db.mark_state(&pair.id, &old_rel, "renaming");
                         db.enqueue(NewJob {
                             pair_id: pair.id.clone(),

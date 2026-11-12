@@ -12,9 +12,13 @@ fn make_pair(id: &str, local: &str) -> PairEntry {
 fn make_status(pid: &str, q: i64, r: i64, d: i64, synced: bool) -> PairSyncStatus {
     PairSyncStatus { pair_id: pid.into(), queued: q, running: r, failed: 0, dirty: d, conflict: 0, synced: 100, total: 100, is_synced: synced, is_syncing: q > 0 || r > 0 || d > 0, deleted: 0, active_jobs: Vec::new(), last_activity: None, last_sync_ms: None }
 }
-fn clear_guards() { let _ = twin_lib::sync::ACTIVE_SYNC_PAIRS.lock(); }
+fn clear_guards() {
+    twin_lib::sync::reset_sync_guards_for_tests();
+    twin_lib::overlay::reset_overlay_state_for_tests();
+}
 
 #[test]
+#[serial_test::serial]
 fn test_idle_green() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\Synced");
@@ -26,6 +30,7 @@ fn test_idle_green() {
     assert_eq!(res.get(&n), Some(&STATUS_SYNCED), "Idle synced should be green");
 }
 #[test]
+#[serial_test::serial]
 fn test_queued_yellow() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\Syncing");
@@ -37,6 +42,7 @@ fn test_queued_yellow() {
     assert_eq!(res.get(&n), Some(&STATUS_SYNCING), "Queued should be yellow");
 }
 #[test]
+#[serial_test::serial]
 fn test_running_yellow() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\Syncing");
@@ -48,6 +54,7 @@ fn test_running_yellow() {
     assert_eq!(res.get(&n), Some(&STATUS_SYNCING), "Running should be yellow");
 }
 #[test]
+#[serial_test::serial]
 fn test_dirty_yellow() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\Dirty");
@@ -59,6 +66,7 @@ fn test_dirty_yellow() {
     assert_eq!(res.get(&n), Some(&STATUS_SYNCING), "Dirty should be yellow");
 }
 #[test]
+#[serial_test::serial]
 fn test_guard_yellow() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\Guarded");
@@ -72,6 +80,7 @@ fn test_guard_yellow() {
     mark_pair_sync_end("p1");
 }
 #[test]
+#[serial_test::serial]
 fn test_active_paths_yellow() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\ActivePath");
@@ -83,6 +92,7 @@ fn test_active_paths_yellow() {
     assert_eq!(res.get(&n), Some(&STATUS_SYNCING), "Active paths should be yellow");
 }
 #[test]
+#[serial_test::serial]
 fn test_toggle_yellow_to_green() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\Toggle");
@@ -94,9 +104,15 @@ fn test_toggle_yellow_to_green() {
     assert_eq!(res.get(&n), Some(&STATUS_SYNCING), "Phase 1: syncing = yellow");
     let mut st = HashMap::new(); st.insert("p1".into(), make_status("p1", 0, 0, 0, true));
     let res = calculate_folder_statuses(&ps, &st, &ap, false);
-    assert_eq!(res.get(&n), Some(&STATUS_SYNCED), "Phase 2: complete = green");
+    assert_eq!(res.get(&n), Some(&STATUS_SYNCING), "Phase 2: cooldown keeps yellow");
+    for _ in 0..3 {
+        let _ = calculate_folder_statuses(&ps, &st, &ap, false);
+    }
+    let res = calculate_folder_statuses(&ps, &st, &ap, false);
+    assert_eq!(res.get(&n), Some(&STATUS_SYNCED), "Phase 2: cooldown expires to green");
 }
 #[test]
+#[serial_test::serial]
 fn test_multi_pair_yellow() {
     clear_guards();
     let pa = make_pair("pa", "C:\\Users\\Test\\Shared");
@@ -111,6 +127,7 @@ fn test_multi_pair_yellow() {
     assert_eq!(res.get(&n), Some(&STATUS_SYNCING), "Shared folder, one syncing = yellow");
 }
 #[test]
+#[serial_test::serial]
 fn test_disabled_ignored() {
     clear_guards();
     let dp = PairEntry { id: "p-dis".into(), local: "C:\\Users\\Test\\Disabled".into(), enabled: false, ..Default::default() };
@@ -121,6 +138,7 @@ fn test_disabled_ignored() {
     assert!(res.is_empty(), "Disabled pair should produce no entries");
 }
 #[test]
+#[serial_test::serial]
 fn test_cooldown_yellow() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\Cooldown");
@@ -135,6 +153,7 @@ fn test_cooldown_yellow() {
     assert_eq!(res.get(&n), Some(&STATUS_SYNCING), "Phase 2: cooldown keeps yellow");
 }
 #[test]
+#[serial_test::serial]
 fn test_no_db_entry_guard_yellow() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\NoDb");
@@ -148,6 +167,7 @@ fn test_no_db_entry_guard_yellow() {
     mark_pair_sync_end("p1");
 }
 #[test]
+#[serial_test::serial]
 fn test_upload_lifecycle() {
     clear_guards();
     let p = make_pair("p1", "C:\\Users\\Test\\Upload");
@@ -163,9 +183,14 @@ fn test_upload_lifecycle() {
     assert_eq!(calculate_folder_statuses(&ps, &st, &ap, false).get(&n), Some(&STATUS_SYNCING), "Step3 running+guard yellow");
     mark_pair_sync_end("p1");
     let mut st = HashMap::new(); st.insert("p1".into(), make_status("p1", 0, 0, 0, true));
-    assert_eq!(calculate_folder_statuses(&ps, &st, &ap, false).get(&n), Some(&STATUS_SYNCED), "Step4 complete green");
+    assert_eq!(calculate_folder_statuses(&ps, &st, &ap, false).get(&n), Some(&STATUS_SYNCING), "Step4 cooldown keeps yellow");
+    for _ in 0..3 {
+        let _ = calculate_folder_statuses(&ps, &st, &ap, false);
+    }
+    assert_eq!(calculate_folder_statuses(&ps, &st, &ap, false).get(&n), Some(&STATUS_SYNCED), "Step4 cooldown expires to green");
 }
 #[test]
+#[serial_test::serial]
 fn test_is_pair_syncing_state() {
     clear_guards();
     assert!(!is_pair_syncing("p-none"));
@@ -175,6 +200,7 @@ fn test_is_pair_syncing_state() {
     mark_pair_sync_end("p-t"); assert!(!is_pair_syncing("p-t"));
 }
 #[test]
+#[serial_test::serial]
 fn test_any_pair_syncing_state() {
     clear_guards();
     assert!(!any_pair_syncing());

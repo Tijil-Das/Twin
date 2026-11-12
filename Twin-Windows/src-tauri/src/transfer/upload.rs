@@ -574,6 +574,13 @@ async fn run_delete(
     }
 
     let existing = db.get_file(&job.pair_id, &job.rel_path)?;
+    if let Some(ref row) = existing {
+        // If file is currently being renamed or is back to synced/dirty (e.g. replaced by rename), do not delete!
+        if matches!(row.state.as_str(), "renaming" | "synced" | "dirty") {
+            info!("delete: file {} is now in active state '{}', skipping deletion", job.rel_path, row.state);
+            return Ok(());
+        }
+    }
     let policy = pair.deletion.clone().unwrap_or(current_cfg.policy.deletion);
 
     if policy == DeletionPolicy::Ignore {

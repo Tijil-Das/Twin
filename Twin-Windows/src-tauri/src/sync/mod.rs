@@ -63,6 +63,19 @@ pub fn any_pair_syncing() -> bool {
     false
 }
 
+/// Reset the in-process sync guard state.
+///
+/// This is intentionally explicit rather than exposing the mutex itself. It is
+/// used by integration tests to isolate cases after a failed/panicking test,
+/// and is harmless for the runtime because it only clears bookkeeping; it does
+/// not cancel an actual sync task.
+pub fn reset_sync_guards_for_tests() {
+    if let Ok(mut lock) = ACTIVE_SYNC_PAIRS.lock() {
+        *lock = None;
+    }
+    ACTIVE_SYNC_CYCLES.store(0, Ordering::SeqCst);
+}
+
 /// Number of active sync or reconciliation cycles currently running.
 pub fn active_sync_cycles_count() -> usize {
     ACTIVE_SYNC_CYCLES.load(Ordering::Relaxed)

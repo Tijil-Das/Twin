@@ -422,6 +422,9 @@ pub async fn run_rename_job(
         }
     }
 
+    // Cancel any pending delete jobs for old_rel
+    let _ = db.cancel_jobs_by_path(&job.pair_id, "delete", old_rel);
+
     // 1. Fetch the old row.
     let old_row = match db.get_file(&job.pair_id, old_rel)? {
         Some(r) => r,
@@ -431,49 +434,108 @@ pub async fn run_rename_job(
         }
     };
 
+    let disk_cfg = crate::config::load().ok();
+    let pair = disk_cfg.as_ref().and_then(|c| c.pairs.iter().find(|p| p.id == job.pair_id));
+
     let new_name = std::path::Path::new(new_rel)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| new_rel.to_string());
 
+    let old_dir = std::path::Path::new(old_rel)
+        .parent()
+        .and_then(|p| if p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().replace('\\', "/")) });
+    let new_dir = std::path::Path::new(new_rel)
+        .parent()
+        .and_then(|p| if p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().replace('\\', "/")) });
+
     // Record the pending operation in DB before network call
     let _ = db.mark_state(&job.pair_id, old_rel, "renaming");
 
     // 2. Update Drive metadata (name + parents) if we have a Drive file ID.
-    if let Some(ref drive_id) = old_row.drive_id {
-        let old_dir = std::path::Path::new(old_rel)
-            .parent()
-            .and_then(|p| if p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().replace('\\', "/")) });
-        let new_dir = std::path::Path::new(new_rel)
-            .parent()
-            .and_then(|p| if p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().replace('\\', "/")) });
+    let mut drive_missing = false;
+    let mut updated_drive_id = old_row.drive_id.clone();
 
-        drive
-            .rename_file(
-                drive_id,
-                &new_name,
-                new_dir.as_deref(),
-                old_dir.as_deref(),
-            )
-            .await?;
+    if let Some(ref drive_id) = old_row.drive_id {
+        let drive_root_id = pair.map(|p| p.drive_folder_id.as_str()).unwrap_or("root");
+
+        // Determine target parent folder ID if parent directory changed
+        let target_parent_id: Option<String> = if old_dir != new_dir {
+            match new_dir.as_deref() {
+                Some(dir) if !dir.is_empty() => {
+                    match drive.ensure_path(&job.pair_id, drive_root_id, dir).await {
+                        Ok(id) => Some(id),
+                        Err(e) if crate::drive::client::is_already_deleted_or_not_found(&e.to_string()) => {
+                            drive_missing = true;
+                            None
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+                _ => Some(drive_root_id.to_string()),
+            }
+        } else {
+            None
+        };
+
+        if !drive_missing {
+            match drive.move_and_rename_file(drive_id, &new_name, target_parent_id.as_deref()).await {
+                Ok(()) => {
+                    info!("drive rename ok: {} ({}) -> name: {}, target_parent: {:?}", drive_id, old_rel, new_name, target_parent_id);
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if crate::drive::client::is_already_deleted_or_not_found(&err_str) {
+                        info!(
+                            "rename {} -> {}: remote file {} not found on Drive ({}), falling back to upload",
+                            old_rel, new_rel, drive_id, err_str
+                        );
+                        drive_missing = true;
+                        updated_drive_id = None;
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
     }
 
-    // 3. Atomically update DB row in a single SQLite transaction (upsert new row + delete old row)
+    // 3. Atomically update DB row in SQLite
     let now_ms = now_ms();
+    let need_upload = drive_missing || (old_row.drive_id.is_none() && old_row.state == "dirty");
+    let new_state = if drive_missing {
+        "dirty".into()
+    } else if old_row.state == "renaming" {
+        "synced".into()
+    } else {
+        old_row.state.clone()
+    };
+
     let new_row = FileRow {
         pair_id: job.pair_id.clone(),
         rel_path: new_rel.to_string(),
         size: old_row.size,
         mtime_ms: old_row.mtime_ms,
         md5: old_row.md5.clone(),
-        drive_id: old_row.drive_id.clone(),
-        drive_md5: old_row.drive_md5.clone(),
-        drive_mtime_ms: old_row.drive_mtime_ms,
-        drive_rev: old_row.drive_rev.clone(),
-        state: "synced".into(),
+        drive_id: if drive_missing { None } else { updated_drive_id },
+        drive_md5: if drive_missing { None } else { old_row.drive_md5.clone() },
+        drive_mtime_ms: if drive_missing { None } else { old_row.drive_mtime_ms },
+        drive_rev: if drive_missing { None } else { old_row.drive_rev.clone() },
+        state: new_state,
         os_file_id: old_row.os_file_id.clone(),
     };
     db.apply_rename_tx(&job.pair_id, old_rel, new_row)?;
+
+    // If remote file was missing or content was dirty, enqueue an upload for the new path
+    if need_upload {
+        let _ = db.enqueue(crate::db::NewJob {
+            pair_id: job.pair_id.clone(),
+            kind: "upload".into(),
+            rel_path: new_rel.to_string(),
+            priority: 5,
+            created_ms: now_ms,
+        });
+    }
 
     // 4. Log activity.
     let _ = db.log_activity(Activity {
@@ -495,7 +557,7 @@ pub async fn run_rename_job(
 /// Execute a complete folder rename/move:
 /// 1. Updates the folder name/parent on Drive (ONE single cloud operation).
 /// 2. Updates all child file paths in SQLite in a single atomic SQL transaction.
-/// 3. Invalidates local Drive path cache.
+/// 3. Invalidate local Drive path cache.
 pub async fn run_folder_rename(
     db: &Arc<Db>,
     drive: &crate::drive::client::DriveClient,
@@ -515,25 +577,50 @@ pub async fn run_folder_rename(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| clean_new.clone());
 
-    // 1. Rename folder on Drive in a single call if folder exists
-    if let Ok(Some(folder_item)) = drive.find_child_folder(drive_root_id, &clean_old).await {
-        let old_parent = std::path::Path::new(&clean_old)
-            .parent()
-            .and_then(|p| if p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().replace('\\', "/")) });
-        let new_parent = std::path::Path::new(&clean_new)
-            .parent()
-            .and_then(|p| if p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().replace('\\', "/")) });
+    let old_parent = std::path::Path::new(&clean_old)
+        .parent()
+        .and_then(|p| if p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().replace('\\', "/")) });
+    let new_parent = std::path::Path::new(&clean_new)
+        .parent()
+        .and_then(|p| if p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().replace('\\', "/")) });
 
-        let _ = drive.rename_file(&folder_item.id, &new_name, new_parent.as_deref(), old_parent.as_deref()).await;
+    // 1. Cancel any pending delete jobs for files under the old folder
+    let _ = db.cancel_jobs_by_path_prefix(pair_id, "delete", &clean_old);
+
+    // 2. Rename/move folder on Drive in a single call if folder exists
+    match drive.find_folder_by_path(drive_root_id, &clean_old).await {
+        Ok(Some(folder_item)) => {
+            let target_parent_id: Option<String> = if old_parent != new_parent {
+                match new_parent.as_deref() {
+                    Some(p) if !p.is_empty() => {
+                        drive.ensure_path(pair_id, drive_root_id, p).await.ok()
+                    }
+                    _ => Some(drive_root_id.to_string()),
+                }
+            } else {
+                None
+            };
+
+            if let Err(e) = drive.move_and_rename_file(&folder_item.id, &new_name, target_parent_id.as_deref()).await {
+                info!("folder rename on drive skipped/failed ({e}) for {} -> {}", clean_old, clean_new);
+            }
+        }
+        Ok(None) => {
+            info!("folder {} not found on Drive, remote rename skipped", clean_old);
+        }
+        Err(e) => {
+            info!("find_folder_by_path for {} returned err: {e}", clean_old);
+        }
     }
 
-    // 2. Atomically update all child files in local DB in a single SQL query
+    // 3. Atomically update all child files in local DB in a single SQL query
     let updated_count = db.rename_folder_prefix(pair_id, &clean_old, &clean_new)?;
 
-    // 3. Invalidate path cache
+    // 4. Invalidate path cache for old and new folders
     crate::drive::client::invalidate_path_cache(pair_id, &clean_old).await;
+    crate::drive::client::invalidate_path_cache(pair_id, &clean_new).await;
 
-    // 4. Log folder rename activity
+    // 5. Log folder rename activity
     let _ = db.log_activity(Activity {
         id: None,
         ts_ms: now_ms(),
@@ -1112,5 +1199,114 @@ mod tests {
             25,
         );
         assert_eq!(result, None, "different file must never be mistaken for a rename");
+    }
+
+    // ── Test 16: Remote 404 on rename falls back gracefully to upload ─────────
+
+    #[tokio::test]
+    async fn test_run_rename_job_remote_404_falls_back_to_upload() {
+        let (_dir, db) = temp_db();
+
+        let mut row = sample_row("p1", "temp sex/Alcohols & Phenols 2/4.jpeg", "abc", 170, "synced");
+        row.drive_id = Some("drv_already_deleted_404".into());
+        db.upsert_file(row).unwrap();
+
+        // Enqueue a pending delete job that should be cancelled
+        db.enqueue(crate::db::NewJob {
+            pair_id: "p1".into(),
+            kind: "delete".into(),
+            rel_path: "temp sex/Alcohols & Phenols 2/4.jpeg".into(),
+            priority: 1,
+            created_ms: 100,
+        }).unwrap();
+
+        let rename_job = crate::db::Job {
+            id: 2,
+            pair_id: "p1".into(),
+            kind: "rename".into(),
+            rel_path: "temp sex/Alcohols & Phenols 2/4.jpeg\ttemp/Alcohols & Phenols 2/4.jpeg".into(),
+            priority: 15,
+            attempts: 0,
+            next_try_ms: 0,
+            status: "running".into(),
+            last_error: None,
+            created_ms: 200,
+        };
+
+        crate::auth::set_token_for_test("test_tok").await;
+        let server = MockServer::start().await;
+
+        // Drive returns 404 Not Found for the missing remote file ID
+        Mock::given(method("GET"))
+            .and(path("/files/drv_already_deleted_404"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+                "error": {
+                    "code": 404,
+                    "message": "File not found: drv_already_deleted_404."
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let drive = crate::drive::client::DriveClient::new_with_client(
+            reqwest::Client::new(),
+            server.uri(),
+        );
+
+        // run_rename_job must succeed cleanly without throwing a Drive 404 error
+        run_rename_job(&rename_job, Arc::clone(&db), &drive).await.unwrap();
+
+        // Old file must be gone from DB
+        assert!(db.get_file("p1", "temp sex/Alcohols & Phenols 2/4.jpeg").unwrap().is_none());
+
+        // New file must exist, with state dirty and drive_id None so it gets uploaded
+        let new_row = db.get_file("p1", "temp/Alcohols & Phenols 2/4.jpeg").unwrap().unwrap();
+        assert_eq!(new_row.state, "dirty");
+        assert!(new_row.drive_id.is_none());
+
+        // The queued delete job for old path must be cancelled
+        let queued_delete = db.find_job("p1", "temp sex/Alcohols & Phenols 2/4.jpeg", "delete").unwrap();
+        assert!(queued_delete.is_none() || queued_delete.unwrap().status == "cancelled");
+
+        // A new upload job must be enqueued for the new path
+        let upload_job = db.find_job("p1", "temp/Alcohols & Phenols 2/4.jpeg", "upload").unwrap();
+        assert!(upload_job.is_some());
+    }
+
+    // ── Test 17: Cancel jobs by path and path prefix ──────────────────────────
+
+    #[test]
+    fn test_cancel_jobs_by_path_and_prefix() {
+        let (_dir, db) = temp_db();
+
+        db.enqueue(crate::db::NewJob {
+            pair_id: "p1".into(),
+            kind: "delete".into(),
+            rel_path: "temp sex/sub/file1.txt".into(),
+            priority: 1,
+            created_ms: 100,
+        }).unwrap();
+
+        db.enqueue(crate::db::NewJob {
+            pair_id: "p1".into(),
+            kind: "delete".into(),
+            rel_path: "temp sex/sub/file2.txt".into(),
+            priority: 1,
+            created_ms: 100,
+        }).unwrap();
+
+        db.enqueue(crate::db::NewJob {
+            pair_id: "p1".into(),
+            kind: "delete".into(),
+            rel_path: "other/file.txt".into(),
+            priority: 1,
+            created_ms: 100,
+        }).unwrap();
+
+        let cancelled = db.cancel_jobs_by_path_prefix("p1", "delete", "temp sex").unwrap();
+        assert_eq!(cancelled, 2);
+
+        let other = db.find_job("p1", "other/file.txt", "delete").unwrap().unwrap();
+        assert_eq!(other.status, "queued");
     }
 }

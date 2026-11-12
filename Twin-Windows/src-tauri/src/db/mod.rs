@@ -521,6 +521,19 @@ impl Db {
         Ok(())
     }
 
+    /// Find the most recent job for a path and kind (regardless of status).
+    pub fn find_job(&self, pair_id: &str, rel_path: &str, kind: &str) -> Result<Option<Job>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.query_row(
+            "SELECT id,pair_id,kind,rel_path,priority,attempts,next_try_ms,status,last_error,created_ms
+             FROM jobs WHERE pair_id=?1 AND rel_path=?2 AND kind=?3 ORDER BY id DESC LIMIT 1",
+            params![pair_id, rel_path, kind],
+            row_to_job,
+        )
+        .optional()
+        .map_err(|e| AppError::Db(format!("find_job: {e}")))
+    }
+
     /// Reset any leftover 'running' jobs back to 'queued' so interrupted transfers resume immediately.
     pub fn reset_stale_running_jobs(&self) -> Result<usize, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
@@ -593,6 +606,28 @@ impl Db {
             )
         }
         .map_err(|e| AppError::Db(format!("cancel_jobs_by_kind: {e}")))?;
+        Ok(count)
+    }
+
+    /// Cancel all queued or failed jobs for a specific path within a pair.
+    pub fn cancel_jobs_by_path(&self, pair_id: &str, kind: &str, rel_path: &str) -> Result<usize, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let count = conn.execute(
+            "UPDATE jobs SET status='cancelled' WHERE pair_id=?1 AND kind=?2 AND rel_path=?3 AND status IN ('queued', 'failed')",
+            params![pair_id, kind, rel_path],
+        ).map_err(|e| AppError::Db(format!("cancel_jobs_by_path: {e}")))?;
+        Ok(count)
+    }
+
+    /// Cancel all queued or failed jobs for paths starting with `prefix/` (e.g. folder deleted/renamed).
+    pub fn cancel_jobs_by_path_prefix(&self, pair_id: &str, kind: &str, prefix: &str) -> Result<usize, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        let clean = prefix.trim_matches('/').replace('\\', "/");
+        let like_pattern = format!("{clean}/%");
+        let count = conn.execute(
+            "UPDATE jobs SET status='cancelled' WHERE pair_id=?1 AND kind=?2 AND (rel_path=?3 OR rel_path LIKE ?4) AND status IN ('queued', 'failed')",
+            params![pair_id, kind, clean, like_pattern],
+        ).map_err(|e| AppError::Db(format!("cancel_jobs_by_path_prefix: {e}")))?;
         Ok(count)
     }
 
@@ -894,8 +929,8 @@ impl Db {
     /// Update child paths for a folder rename in a single atomic SQL transaction.
     pub fn rename_folder_prefix(&self, pair: &str, old_prefix: &str, new_prefix: &str) -> Result<usize, AppError> {
         let mut conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
-        let clean_old = old_prefix.trim_matches('/');
-        let clean_new = new_prefix.trim_matches('/');
+        let clean_old = old_prefix.trim_matches('/').replace('\\', "/");
+        let clean_new = new_prefix.trim_matches('/').replace('\\', "/");
         let pattern = format!("{clean_old}/%");
         let old_with_slash = format!("{clean_old}/");
         let new_with_slash = format!("{clean_new}/");
@@ -905,12 +940,26 @@ impl Db {
 
         // Update all files nested under old_prefix/
         let count = tx.execute(
-            "UPDATE files
-             SET rel_path = ?1 || SUBSTR(rel_path, ?2 + 1)
+            "UPDATE OR REPLACE files
+             SET rel_path = CASE
+                 WHEN rel_path = ?4 THEN ?6
+                 ELSE ?1 || SUBSTR(rel_path, ?2 + 1)
+             END
              WHERE pair_id = ?3 AND (rel_path = ?4 OR rel_path LIKE ?5)",
-            params![new_with_slash, prefix_len, pair, clean_old, pattern],
+            params![new_with_slash, prefix_len, pair, clean_old, pattern, clean_new],
         )
         .map_err(|e| AppError::Db(format!("rename_folder_prefix update: {e}")))?;
+
+        // Also update any queued/failed jobs pointing to child files under old_prefix/
+        let _ = tx.execute(
+            "UPDATE jobs
+             SET rel_path = CASE
+                 WHEN rel_path = ?4 THEN ?6
+                 ELSE ?1 || SUBSTR(rel_path, ?2 + 1)
+             END
+             WHERE pair_id = ?3 AND (rel_path = ?4 OR rel_path LIKE ?5) AND status IN ('queued', 'failed')",
+            params![new_with_slash, prefix_len, pair, clean_old, pattern, clean_new],
+        );
 
         tx.commit().map_err(|e| AppError::Db(format!("rename_folder_prefix commit: {e}")))?;
         Ok(count)

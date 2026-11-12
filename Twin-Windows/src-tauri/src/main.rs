@@ -992,31 +992,61 @@ fn main() {
                                                 None => false,
                                             };
                                             if !skip {
-                                                let row = db::FileRow {
-                                                    pair_id: pair.id.clone(),
-                                                    rel_path: rel_str.clone(),
-                                                    size: Some(size),
-                                                    mtime_ms: Some(mtime_ms),
-                                                    md5,
-                                                    drive_id: existing.as_ref().and_then(|r| r.drive_id.clone()),
-                                                    drive_md5: existing.as_ref().and_then(|r| r.drive_md5.clone()),
-                                                    drive_mtime_ms: existing.as_ref().and_then(|r| r.drive_mtime_ms),
-                                                    drive_rev: existing.as_ref().and_then(|r| r.drive_rev.clone()),
-                                                    state: "dirty".into(),
-                                                    os_file_id: None,
+                                                let is_new = existing.is_none()
+                                                    || existing.as_ref().map(|r| r.state.as_str() == "deleted_local").unwrap_or(false);
+                                                let rename_old = if is_new {
+                                                    twin_lib::rename::detect_rename_with_root(
+                                                        &db_watch,
+                                                        &pair.id,
+                                                        Some(&root),
+                                                        &full_path,
+                                                        &rel_str,
+                                                        md5.as_deref(),
+                                                        size,
+                                                    )
+                                                } else {
+                                                    None
                                                 };
-                                                let _ = db_watch.upsert_file(row);
+
                                                 let now_ms = std::time::SystemTime::now()
                                                     .duration_since(std::time::UNIX_EPOCH)
                                                     .unwrap_or_default()
                                                     .as_millis() as i64;
-                                                let _ = db_watch.enqueue(db::NewJob {
-                                                    pair_id: pair.id.clone(),
-                                                    kind: "upload".into(),
-                                                    rel_path: rel_str,
-                                                    priority: 1,
-                                                    created_ms: now_ms,
-                                                });
+
+                                                if let Some(old_rel) = rename_old {
+                                                    let _ = db_watch.cancel_jobs_by_path(&pair.id, "delete", &old_rel);
+                                                    let _ = db_watch.mark_state(&pair.id, &old_rel, "renaming");
+                                                    let _ = db_watch.enqueue(db::NewJob {
+                                                        pair_id: pair.id.clone(),
+                                                        kind: "rename".into(),
+                                                        rel_path: format!("{}\t{}", old_rel, rel_str),
+                                                        priority: 15,
+                                                        created_ms: now_ms,
+                                                    });
+                                                } else {
+                                                    let os_id = twin_lib::rename::get_file_identity(&full_path).map(|id| id.os_id);
+                                                    let row = db::FileRow {
+                                                        pair_id: pair.id.clone(),
+                                                        rel_path: rel_str.clone(),
+                                                        size: Some(size),
+                                                        mtime_ms: Some(mtime_ms),
+                                                        md5,
+                                                        drive_id: existing.as_ref().and_then(|r| r.drive_id.clone()),
+                                                        drive_md5: existing.as_ref().and_then(|r| r.drive_md5.clone()),
+                                                        drive_mtime_ms: existing.as_ref().and_then(|r| r.drive_mtime_ms),
+                                                        drive_rev: existing.as_ref().and_then(|r| r.drive_rev.clone()),
+                                                        state: "dirty".into(),
+                                                        os_file_id: os_id.or_else(|| existing.as_ref().and_then(|r| r.os_file_id.clone())),
+                                                    };
+                                                    let _ = db_watch.upsert_file(row);
+                                                    let _ = db_watch.enqueue(db::NewJob {
+                                                        pair_id: pair.id.clone(),
+                                                        kind: "upload".into(),
+                                                        rel_path: rel_str,
+                                                        priority: 1,
+                                                        created_ms: now_ms,
+                                                    });
+                                                }
                                                 q_watch.wake();
                                             }
                                         }
@@ -1050,6 +1080,7 @@ fn main() {
                                 watcher::ChangeKind::Renamed { from } => {
                                     let from_rel = watcher::strip_root_prefix(&from, &root).unwrap_or(from);
                                     let from_rel_str = from_rel.to_string_lossy().replace('\\', "/");
+                                    let _ = db_watch.cancel_jobs_by_path(&pair.id, "delete", &from_rel_str);
                                     let now_ms = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .unwrap_or_default()
@@ -1063,6 +1094,7 @@ fn main() {
 
                                     // 2. Folder rename detection
                                     if full_path.is_dir() {
+                                        let _ = db_watch.cancel_jobs_by_path_prefix(&pair.id, "delete", &from_rel_str);
                                         if let Ok(drive_client) = drive::DriveClient::new() {
                                             let _ = twin_lib::rename::run_folder_rename(
                                                 &db_watch,
