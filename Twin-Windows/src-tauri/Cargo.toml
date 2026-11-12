@@ -1,6 +1,6 @@
 [package]
 name = "twin"
-version = "1.2.2"
+version = "1.2.3"
 description = "Twin – Windows Google Drive sync"
 authors = []
 edition = "2021"

@@ -1,3 +1,29 @@
+# Twin v1.2.3
+
+Reliability & edge-case patch release: robust nested folder & cross-directory rename detection, dynamic Google Drive parent resolution, graceful 404 recovery, and deletion race condition prevention.
+
+---
+
+### 🚀 What's New & Fixed in v1.2.3
+
+#### 📂 Nested Folder & Cross-Directory Rename Fixes
+- **Dynamic Google Drive Parent Resolution**: Resolved Google Drive API `HTTP 404 Not Found` errors caused by passing relative local paths to parent query parameters (`addParents`/`removeParents`). Parent IDs are now verified and dynamically resolved to real Google Drive folder IDs using `ensure_path` and `find_folder_by_path`.
+- **Verified Remote Parent Patching**: The new `move_and_rename_file` engine fetches a file's active parent IDs directly from Google Drive, moving only when parents actually differ and removing only the existing parent IDs without duplicating or leaving orphaned folders.
+- **Support for Arbitrarily Nested Folder Moves**: Moving or renaming folders multiple levels deep now properly walks the remote folder hierarchy to find and rename/move the target folder.
+
+#### 🛡️ Graceful 404 Recovery & Self-Healing
+- **Automatic Fallback to Clean Upload**: If a file or folder is deleted or missing on Google Drive when a rename or move occurs, the rename job no longer fails or stalls the queue with a 404 error. The engine catches the missing remote resource, resets `drive_id = None`, sets `state = 'dirty'`, and enqueues a fresh upload for the new path so the file is synced seamlessly to Google Drive.
+
+#### ⚡ Deletion Race Condition Prevention
+- **Automatic Pending Delete Cancellation**: Renaming a file or directory immediately cancels any pending or queued `delete` jobs for the old path and all nested files (`cancel_jobs_by_path` / `cancel_jobs_by_path_prefix`), preventing delete events from racing ahead and removing files that were just renamed.
+- **Pre-Delete State Guard**: The delete worker (`run_delete`) checks whether a file row has transitioned to an active state (`renaming`, `synced`, or `dirty`) before executing cloud deletion, preventing newly moved or renamed files from being accidentally deleted.
+
+#### 🗄️ Database & Watcher Hardening
+- **Conflict-Free Folder Path Updates**: `rename_folder_prefix` now utilizes `UPDATE OR REPLACE` in SQLite and updates both `files` and `jobs` tables atomically, eliminating unique constraint failures when moving or copying folders into existing structures.
+- **Watcher Rename Detection on File Move/Copy**: File modification events on untracked or deleted-local files now trigger hash and OS identity rename detection, detecting moves and copies instantly without re-uploading unchanged content.
+
+---
+
 # Twin v1.2.2
 
 Feature and reliability release: dynamic pair reconfiguration in the UI with safety confirmations and live reload, active transfer auto-scroll & sorting prioritization, and queue guardrails.

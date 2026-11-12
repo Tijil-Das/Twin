@@ -5,6 +5,28 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.2.3] - 2026-11-12
+
+### 🔧 Reliability & Edge-Case Patch — Nested Folder Renames, Drive 404 Recovery & Delete Race Prevention
+
+#### 📂 Nested Folder & Cross-Directory Renames
+- **Dynamic Parent ID Resolution**: Fixed Google Drive API `404 Not Found` errors caused by passing relative local paths to parent parameters. Parent IDs are now verified and dynamically resolved to real Drive folder IDs using `ensure_path` and `find_folder_by_path`.
+- **Verified Remote Parent Patching**: `move_and_rename_file` inspects current parent IDs from Drive, moving only when parents differ and removing only the existing parent IDs.
+- **Nested Folder Hierarchy Support**: Moving or renaming folders multiple levels deep now properly walks the remote folder hierarchy to find and rename/move the target folder.
+
+#### 🛡️ Graceful 404 Recovery
+- **Automatic Fallback to Upload**: If a file or folder was deleted or missing on Google Drive when a rename or move occurs, the engine resets `drive_id = None`, sets `state = 'dirty'`, and enqueues a clean re-upload for the new path so sync continues without failure.
+
+#### ⚡ Deletion Race Prevention
+- **Pending Delete Cancellation**: Renaming a file or directory cancels any pending or queued `delete` jobs for the old path and prefix (`cancel_jobs_by_path` / `cancel_jobs_by_path_prefix`).
+- **Pre-Delete State Guard**: The delete worker (`run_delete`) checks whether a file row has transitioned to an active state (`renaming`, `synced`, or `dirty`) before executing cloud deletion.
+
+#### 🗄️ Database & Watcher Hardening
+- **Conflict-Free Folder Path Updates**: `rename_folder_prefix` uses `UPDATE OR REPLACE` in SQLite and updates both `files` and `jobs` tables atomically.
+- **Watcher Rename Detection on File Move/Copy**: Modification events on untracked or deleted-local files trigger hash and OS identity rename detection, detecting moves and copies instantly.
+
+---
+
 ## [1.2.2] - 2026-11-11
 
 ### 🚀 Feature Release — Dynamic Pair Reconfiguration, Live Poller Reload & Transfer Viewport Prioritization
