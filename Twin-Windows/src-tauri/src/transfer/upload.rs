@@ -6,7 +6,7 @@
 //! - Respects governor checkpoint and bandwidth limiter between chunks.
 
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -111,7 +111,7 @@ async fn run_upload(
         return Ok(());
     }
 
-    let local_path = PathBuf::from(&pair.local).join(&job.rel_path);
+    let local_path = crate::transfer::resolve_under_root(Path::new(&pair.local), &job.rel_path)?;
 
     // Skip if file no longer exists (delete job will handle it separately).
     if !local_path.exists() {
@@ -119,8 +119,13 @@ async fn run_upload(
         return Ok(());
     }
 
-    let meta = std::fs::metadata(&local_path)
+    let meta = std::fs::symlink_metadata(&local_path)
         .map_err(|e| AppError::Io(format!("upload metadata: {e}")))?;
+    if meta.file_type().is_symlink() {
+        warn!("upload: skipping symlink {} to keep the sync root contained", job.rel_path);
+        let _ = db.mark_state(&job.pair_id, &job.rel_path, "skipped");
+        return Ok(());
+    }
     let size = meta.len();
     let mtime_ms = meta.modified().ok()
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
@@ -566,7 +571,7 @@ async fn run_delete(
     };
 
     // Safety guard: if the file exists locally, abort delete to prevent accidental loss
-    let local_path = PathBuf::from(&pair.local).join(&job.rel_path);
+    let local_path = crate::transfer::resolve_under_root(Path::new(&pair.local), &job.rel_path)?;
     if local_path.exists() {
         warn!("delete: file {} still exists locally, skipping deletion to prevent data loss", job.rel_path);
         let _ = db.mark_state(&job.pair_id, &job.rel_path, "dirty");
@@ -658,7 +663,7 @@ async fn run_mkdir(
         }
     };
 
-    let local_dir = PathBuf::from(&pair.local).join(&job.rel_path);
+    let local_dir = crate::transfer::resolve_under_root(Path::new(&pair.local), &job.rel_path)?;
     if !local_dir.exists() {
         info!("mkdir: local dir {} no longer exists, skipping", job.rel_path);
         return Ok(());

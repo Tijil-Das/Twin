@@ -963,7 +963,13 @@ fn main() {
                             };
                             let rules = rules::Rules::for_pair(&current_cfg.rules, &pair);
                             let root = std::path::PathBuf::from(&pair.local);
-                            let full_path = root.join(&change.rel_path);
+                            let full_path = match transfer::resolve_under_root(&root, &change.rel_path.to_string_lossy()) {
+                                Ok(path) => path,
+                                Err(e) => {
+                                    warn!("watcher: ignoring unsafe local event path {:?}: {e}", change.rel_path);
+                                    continue;
+                                }
+                            };
                             let rel_str = change.rel_path.to_string_lossy().replace('\\', "/");
 
                             match change.kind {

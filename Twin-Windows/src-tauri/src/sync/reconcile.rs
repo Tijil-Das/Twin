@@ -16,7 +16,7 @@
 //! Mode `two_way`: full table.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -210,7 +210,7 @@ pub async fn reconcile_listing_with_policy(
 
     // Walk Drive entries and compare against Db.
     let now = now_ms();
-    let cfg = crate::config::load().unwrap_or_default();
+    let cfg = crate::config::load()?;
     let rules = crate::rules::Rules::for_pair(&cfg.rules, pair);
 
     for (rel, remote) in &remote_by_rel {
@@ -220,7 +220,13 @@ pub async fn reconcile_listing_with_policy(
             continue;
         }
 
-        let local_path = local_root.join(rel);
+        let local_path = match crate::transfer::resolve_under_root(&local_root, rel) {
+            Ok(path) => path,
+            Err(e) => {
+                warn!("reconcile: skipping unsafe Drive path {rel:?}: {e}");
+                continue;
+            }
+        };
         let db_row = db.get_file(&pair.id, rel)?;
 
         let local_exists = local_path.exists();
@@ -381,7 +387,13 @@ pub async fn reconcile_listing_with_policy(
         for row in &all_tracked {
             if !remote_rels.contains(&&row.rel_path) {
                 // Local file exists on disk but not in Drive → upload it.
-                let lp = local_root.join(&row.rel_path);
+                let lp = match crate::transfer::resolve_under_root(&local_root, &row.rel_path) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        warn!("reconcile: skipping unsafe persisted path {:?}: {e}", row.rel_path);
+                        continue;
+                    }
+                };
                 if lp.exists() {
                     // The remote object is gone; forget its id so the upload
                     // creates a fresh copy instead of patching a deleted file.
@@ -440,7 +452,13 @@ pub async fn apply_remote_change_with_policies(
         // Find local file by drive_id.
         let drive_id = change.file.as_ref().map(|f| f.id.as_str()).unwrap_or(&change.file_id);
         if let Some(row) = db.get_file_by_drive_id(&pair.id, drive_id)? {
-            let local_path = PathBuf::from(&pair.local).join(&row.rel_path);
+            let local_path = match crate::transfer::resolve_under_root(Path::new(&pair.local), &row.rel_path) {
+                Ok(path) => path,
+                Err(e) => {
+                    warn!("remote delete: skipping unsafe persisted path {:?}: {e}", row.rel_path);
+                    return Ok(());
+                }
+            };
             match pair.mode {
                 // Upload-only pairs never touch the local side for remote events.
                 PairMode::Upload => {}
@@ -511,8 +529,20 @@ pub async fn apply_remote_change_with_policies(
                 };
 
                 let root = PathBuf::from(&pair.local);
-                let old_local = root.join(&old_rel);
-                let new_local = root.join(&new_rel);
+                let old_local = match crate::transfer::resolve_under_root(&root, &old_rel) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        warn!("remote rename: skipping unsafe old path {old_rel:?}: {e}");
+                        return Ok(());
+                    }
+                };
+                let new_local = match crate::transfer::resolve_under_root(&root, &new_rel) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        warn!("remote rename: skipping unsafe new path {new_rel:?}: {e}");
+                        return Ok(());
+                    }
+                };
 
                 if matches!(pair.mode, PairMode::TwoWay) {
                     info!("Remote rename detected for {}: {} -> {}", file.id, old_rel, new_rel);
@@ -551,7 +581,13 @@ pub async fn apply_remote_change_with_policies(
             None => return Ok(()),
         },
     };
-    let local_path = PathBuf::from(&pair.local).join(&rel_path);
+    let local_path = match crate::transfer::resolve_under_root(Path::new(&pair.local), &rel_path) {
+        Ok(path) => path,
+        Err(e) => {
+            warn!("remote change: skipping unsafe Drive path {rel_path:?}: {e}");
+            return Ok(());
+        }
+    };
 
     let remote_md5 = file.md5_checksum.as_deref().unwrap_or("");
     let db_row = match tracked {
@@ -815,7 +851,7 @@ pub fn resolve_conflict(
         }
         "both" => {
             // Upload local under a conflict name, download remote to original.
-            let local_path = PathBuf::from(&pair.local).join(rel_path);
+            let local_path = crate::transfer::resolve_under_root(Path::new(&pair.local), rel_path)?;
             let machine = hostname();
             let ts = timestamp_str();
             let stem = local_path.file_stem()

@@ -360,10 +360,17 @@ pub async fn scan_pair(
             gov.checkpoint().await;
 
             let path = entry.path();
-            let meta = match path.metadata() {
+            // Never follow symlinks/junctions while scanning a sync root: a
+            // link can point outside the user-selected folder and would turn a
+            // harmless local entry into an unintended upload.
+            let meta = match path.symlink_metadata() {
                 Ok(m) => m,
                 Err(_) => continue,
             };
+            if meta.file_type().is_symlink() {
+                warn!("scan_pair: skipping symlink {:?}", path);
+                continue;
+            }
 
             let rel = match strip_root_prefix(&path, &root) {
                 Some(r) => r,

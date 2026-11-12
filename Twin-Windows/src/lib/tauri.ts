@@ -240,7 +240,9 @@ export const driveSetFolderColor = (folderId: string, color?: string | null) =>
   invoke<void>("drive_set_folder_color", { folderId, colorRgb: color ?? null });
 export const driveSetFoldersColor = (folderIds: string[], color?: string | null) =>
   invoke<void>("drive_set_folders_color", { folderIds, colorRgb: color ?? null });
-export const authHasFullScope = () => invoke<boolean>("auth_has_full_scope").catch(() => true);
+// A failed scope probe must never grant capabilities optimistically.  The UI
+// can prompt for sign-in/reauthorization instead of making a doomed mutation.
+export const authHasFullScope = () => invoke<boolean>("auth_has_full_scope").catch(() => false);
 export const pickFolder = () => invoke<string | null>("pick_folder");
 export const openLocalPath = (path: string) => invoke<void>("open_local_path", { path });
 export const openUrlExternal = (url: string) => invoke<void>("open_url_external", { url });

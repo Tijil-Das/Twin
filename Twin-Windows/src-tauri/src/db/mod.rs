@@ -591,6 +591,17 @@ impl Db {
         .map_err(|e| AppError::Db(format!("count_jobs: {e}")))
     }
 
+    /// Earliest scheduled retry for queued work, if any.
+    pub fn next_queued_retry_ms(&self) -> Result<Option<i64>, AppError> {
+        let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
+        conn.query_row(
+            "SELECT MIN(next_try_ms) FROM jobs WHERE status='queued'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| AppError::Db(format!("next_queued_retry_ms: {e}")) )
+    }
+
     /// Cancel queued or failed jobs for a pair, optionally filtered by job kind (e.g. "download" or "delete").
     pub fn cancel_jobs_by_kind(&self, pair_id: &str, kind: Option<&str>) -> Result<usize, AppError> {
         let conn = self.conn.lock().map_err(|_| AppError::Db("lock poisoned".into()))?;
@@ -1533,6 +1544,25 @@ mod tests {
         db.complete_job(id1).unwrap();
         let id2 = db.enqueue(job).unwrap();
         assert_ne!(id1, id2, "after completion a new job should get a new id");
+    }
+
+    #[test]
+    fn next_queued_retry_ignores_non_queued_jobs() {
+        let (_dir, db) = temp_db();
+        let first = db.enqueue(NewJob {
+            pair_id: "p1".into(), kind: "upload".into(), rel_path: "first.txt".into(),
+            priority: 0, created_ms: now_ms(),
+        }).unwrap();
+        let second = db.enqueue(NewJob {
+            pair_id: "p1".into(), kind: "download".into(), rel_path: "second.txt".into(),
+            priority: 0, created_ms: now_ms(),
+        }).unwrap();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute("UPDATE jobs SET next_try_ms=9000 WHERE id=?1", params![first]).unwrap();
+            conn.execute("UPDATE jobs SET next_try_ms=1000, status='done' WHERE id=?1", params![second]).unwrap();
+        }
+        assert_eq!(db.next_queued_retry_ms().unwrap(), Some(9000));
     }
 
     // ── backoff schedule ─────────────────────────────────────────────────────

@@ -187,7 +187,8 @@ pub async fn verify_pair_integrity(
             continue;
         }
         scanned += 1;
-        let local_path = local_root.join(&file.rel_path);
+        let local_path = crate::transfer::resolve_under_root(&local_root, &file.rel_path)
+            .map_err(|e| e.to_string())?;
         if local_path.is_file() {
             match crate::transfer::upload::compute_md5_blocking(&local_path).await {
                 Ok(local_hash) => {
@@ -235,10 +236,10 @@ pub fn repair_pair_mismatches(
 ) -> Result<usize, String> {
     let mut repaired = 0;
     for rel in paths {
-        if let Ok(Some(mut row)) = db_state.0.get_file(&pair_id, &rel) {
+        if let Some(mut row) = db_state.0.get_file(&pair_id, &rel).map_err(|e| e.to_string())? {
             row.state = "dirty".to_string();
             row.drive_md5 = None;
-            let _ = db_state.0.upsert_file(row);
+            db_state.0.upsert_file(row).map_err(|e| e.to_string())?;
             repaired += 1;
         }
     }
@@ -275,6 +276,7 @@ pub fn set_overlay_settings(
     let mut cfg = crate::config::load().map_err(|e| e.to_string())?;
     cfg.overlay.enabled = enabled;
     cfg.overlay.placement = placement;
+    cfg.validate().map_err(|e| e.to_string())?;
     crate::config::save_shared(&cfg).map_err(|e| e.to_string())?;
 
     let _ = crate::overlay::sync_registry_settings(&cfg.overlay);

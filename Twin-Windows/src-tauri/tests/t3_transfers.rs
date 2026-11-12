@@ -87,7 +87,8 @@ async fn test_size_tier_matrix() {
         limiter: Arc::clone(&limiter),
     };
 
-    // Test tiers: 0 B, 1 B, 256 KB, 5 MB, 8 MB, 8 MB + 1 B
+    // Test tiers: 0 B, 1 B, 256 KB, 5 MB, 8 MB, 8 MB + 1 B, and a
+    // >32 MiB file that exercises the four-way ranged download path.
     let tiers: Vec<(&str, usize)> = vec![
         ("zero.bin", 0),
         ("one.bin", 1),
@@ -95,6 +96,7 @@ async fn test_size_tier_matrix() {
         ("5m.bin", 5 * 1024 * 1024),
         ("8m.bin", 8 * 1024 * 1024),
         ("8m_plus_1.bin", 8 * 1024 * 1024 + 1),
+        ("parallel_33m_plus_17.bin", 33 * 1024 * 1024 + 17),
     ];
 
     let rng = TestRng::new(0x1234_5678_0001);

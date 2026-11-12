@@ -104,31 +104,50 @@ export const useStore = create<AppState>((set) => ({
 
   progress: {},
   setProgress: (ev) => {
+    // Events may arrive out of order after a retry or reconnect. Store only a
+    // finite, monotonic value so a stale event cannot make the UI move
+    // backwards, overflow, or display NaN/Infinity.
+    const total = Number.isFinite(ev.bytes_total) && ev.bytes_total >= 0
+      ? Math.floor(ev.bytes_total)
+      : 0;
+    const reportedDone = Number.isFinite(ev.bytes_done) && ev.bytes_done >= 0
+      ? Math.floor(ev.bytes_done)
+      : 0;
+    const previous = useStore.getState().progress[ev.job_id];
+    const bytesDone = Math.min(total, Math.max(previous?.bytes_done ?? 0, reportedDone));
+    const normalized: ProgressEvent = {
+      ...ev,
+      bytes_total: total,
+      bytes_done: bytesDone,
+      speed_bps: Number.isFinite(ev.speed_bps) && (ev.speed_bps ?? 0) >= 0 ? ev.speed_bps : undefined,
+      eta_secs: Number.isFinite(ev.eta_secs) && (ev.eta_secs ?? 0) >= 0 ? ev.eta_secs : null,
+    };
+
     // 100% guard: never store progress events for disabled pairs
     const cfg = useStore.getState().config;
-    if (cfg?.pairs?.some((p: PairEntry) => p.id === ev.pair_id && !p.enabled)) return;
+    if (cfg?.pairs?.some((p: PairEntry) => p.id === normalized.pair_id && !p.enabled)) return;
 
     // Schedule delayed cleanup for finished jobs outside of the pure reducer
-    if (ev.bytes_done >= ev.bytes_total && ev.bytes_total > 0) {
-      if (!completionTimers.has(ev.job_id)) {
+    if (normalized.bytes_done >= normalized.bytes_total) {
+      if (!completionTimers.has(normalized.job_id)) {
         const timer = setTimeout(() => {
-          completionTimers.delete(ev.job_id);
-          useStore.getState().clearProgress(ev.job_id);
+          completionTimers.delete(normalized.job_id);
+          useStore.getState().clearProgress(normalized.job_id);
         }, 300);
-        completionTimers.set(ev.job_id, timer);
+        completionTimers.set(normalized.job_id, timer);
       }
     } else {
-      const existing = completionTimers.get(ev.job_id);
+      const existing = completionTimers.get(normalized.job_id);
       if (existing) {
         clearTimeout(existing);
-        completionTimers.delete(ev.job_id);
+        completionTimers.delete(normalized.job_id);
       }
     }
 
     set((s) => ({
       progress: {
         ...s.progress,
-        [ev.job_id]: ev,
+        [normalized.job_id]: normalized,
       },
     }));
   },
@@ -153,6 +172,11 @@ export const useStore = create<AppState>((set) => ({
       for (const jobId of Object.keys(next) as (string | number)[]) {
         const ev = next[jobId as number];
         if (ev?.pair_id === pairId) {
+          const timer = completionTimers.get(jobId as number);
+          if (timer) {
+            clearTimeout(timer);
+            completionTimers.delete(jobId as number);
+          }
           delete next[jobId as number];
           changed = true;
         }

@@ -139,7 +139,7 @@ pub(crate) async fn run_download(
         return Ok(());
     }
 
-    let dest = PathBuf::from(&pair.local).join(&job.rel_path);
+    let dest = crate::transfer::resolve_under_root(Path::new(&pair.local), &job.rel_path)?;
 
     // Look up drive metadata from DB.
     let file_row = db.get_file(&job.pair_id, &job.rel_path)?;
@@ -388,6 +388,7 @@ async fn download_parallel(
 
         let start = range_idx * range_size;
         let end   = (start + range_size - 1).min(size - 1);
+        let expected_len = end - start + 1;
 
         let permit = Arc::clone(&sem);
         let http   = drive.http.clone();
@@ -421,9 +422,12 @@ async fn download_parallel(
                 .map_err(|e| AppError::Drive(format!("range GET: {e}")))?;
 
             let status = resp.status();
-            if !status.is_success() && status.as_u16() != 206 {
+            // A ranged request must produce a partial response. Accepting a
+            // 200 here means a proxy/server ignored Range and would let every
+            // worker overwrite its slice with the whole file.
+            if status.as_u16() != 206 {
                 let body = resp.text().await.unwrap_or_default();
-                return Err(AppError::Drive(format!("range GET HTTP {status}: {body}")));
+                return Err(AppError::Drive(format!("range GET expected 206, got {status}: {body}")));
             }
 
             // Open the pre-sized file for writing at the right offset.
@@ -446,6 +450,11 @@ async fn download_parallel(
                 while offset < chunk.len() {
                     let end_off = (offset + RANGE_BUFFER).min(chunk.len());
                     let slice = &chunk[offset..end_off];
+                    if written.saturating_add(slice.len() as u64) > expected_len {
+                        return Err(AppError::Drive(format!(
+                            "range GET returned more bytes than requested for {start}-{end}"
+                        )));
+                    }
 
                     limiter.acquire(slice.len() as u64).await;
 
@@ -469,6 +478,12 @@ async fn download_parallel(
                     written += slice.len() as u64;
                     offset = end_off;
                 }
+            }
+
+            if written != expected_len {
+                return Err(AppError::Drive(format!(
+                    "range GET was truncated for {start}-{end}: got {written} of {expected_len} bytes"
+                )));
             }
 
             Ok::<(u64, u64), AppError>((range_idx, written))
@@ -605,7 +620,7 @@ pub(crate) async fn run_restore(
         None => (payload.trim(), None),
     };
     let dest = if dest_override.is_empty() {
-        PathBuf::from(&pair.local).join(&file_name)
+        crate::transfer::resolve_under_root(Path::new(&pair.local), &file_name)?
     } else {
         PathBuf::from(dest_override)
     };
@@ -884,7 +899,7 @@ pub async fn restore_folder(
 
         for f in page.files {
             let name = f.name.unwrap_or_else(|| f.id.clone());
-            let child_dest = dest.join(&name);
+            let child_dest = crate::transfer::resolve_under_root(&dest, &name)?;
             let mime = f.mime_type.as_deref().unwrap_or("");
 
             if mime == "application/vnd.google-apps.folder" {

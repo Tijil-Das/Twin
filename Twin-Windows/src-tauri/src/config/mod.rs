@@ -290,6 +290,33 @@ impl Config {
                 "governor percentage values must be 0..100".into(),
             ));
         }
+        if !matches!(self.overlay.placement.as_str(), "top_right" | "bottom_right" | "centered") {
+            return Err(AppError::Config("overlay.placement must be top_right, bottom_right, or centered".into()));
+        }
+
+        let vars = self.vars_map();
+        let mut ids = std::collections::HashSet::new();
+        let mut local_roots = std::collections::HashSet::new();
+        for pair in self.pairs.iter().filter(|pair| pair.enabled) {
+            let id = pair.id.trim();
+            if id.is_empty() || !ids.insert(id.to_string()) {
+                return Err(AppError::Config("enabled pairs must have unique, non-empty ids".into()));
+            }
+            if pair.drive_folder_id.trim().is_empty()
+                || pair.drive_folder_id.contains('/')
+                || pair.drive_folder_id.contains('\\')
+            {
+                return Err(AppError::Config(format!("pair '{id}' has an invalid Drive folder id")));
+            }
+            let local = expand(&pair.local, &vars);
+            if pair.local.trim().is_empty() || !local.is_absolute() {
+                return Err(AppError::Config(format!("pair '{id}' must use an absolute local path")));
+            }
+            let key = local.to_string_lossy().trim_end_matches(['\\', '/']).to_ascii_lowercase();
+            if !local_roots.insert(key) {
+                return Err(AppError::Config(format!("pair '{id}' duplicates an enabled local folder")));
+            }
+        }
         Ok(())
     }
 }
@@ -532,6 +559,7 @@ pub fn add_pair(pair: PairEntry) -> Result<Config, AppError> {
         )));
     }
     cfg.pairs.push(pair);
+    cfg.validate()?;
     save_shared(&cfg)?;
     Ok(cfg)
 }
@@ -593,6 +621,30 @@ mod tests {
         cfg.governor.cpu_resume_pct = 80;
         cfg.governor.cpu_pause_pct = 70;
         assert!(cfg.validate().is_err()); // resume >= pause
+    }
+
+    #[test]
+    fn enabled_pairs_require_safe_unique_roots() {
+        let mut cfg = Config::default();
+        cfg.pairs.push(PairEntry {
+            id: "documents".into(),
+            local: r"C:\\Twin\\Documents".into(),
+            drive_folder_id: "drive-documents".into(),
+            ..Default::default()
+        });
+        assert!(cfg.validate().is_ok());
+
+        cfg.pairs.push(PairEntry {
+            id: "documents-copy".into(),
+            local: r"c:\\twin\\documents\\".into(),
+            drive_folder_id: "drive-copy".into(),
+            ..Default::default()
+        });
+        assert!(cfg.validate().is_err());
+
+        cfg.pairs.pop();
+        cfg.pairs[0].local = "relative/path".into();
+        assert!(cfg.validate().is_err());
     }
 
     #[test]

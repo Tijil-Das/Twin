@@ -244,11 +244,7 @@ async fn dispatcher<R: JobRunner>(
 
 /// Query the DB for the earliest `next_try_ms` among queued jobs.
 fn next_retry_time(db: &Arc<Db>) -> Option<i64> {
-    // We don't expose a dedicated method — use a raw query through the Db's
-    // public interface.  Since there's no public min-next-try query, we fall
-    // back to None (worst case: wait for notify).  P07/P08 can refine.
-    let _ = db;
-    None
+    db.next_queued_retry_ms().ok().flatten()
 }
 
 fn now_ms() -> i64 {
@@ -279,7 +275,7 @@ pub async fn sync_now(
     app: tauri::AppHandle,
     pair_id: Option<String>,
 ) -> Result<(), String> {
-    let cfg = crate::config::load().unwrap_or_default();
+    let cfg = crate::config::load().map_err(|e| e.to_string())?;
     let db_path = db_state.db_path();
     let db = match crate::db::Db::open(&db_path) {
         Ok(d) => std::sync::Arc::new(d),
