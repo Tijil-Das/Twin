@@ -87,10 +87,14 @@ function FolderPairRow({
   const progress = useStore((s) => s.progress) ?? {};
   const pairStatuses = useStore((s) => s.pairStatuses) ?? {};
   const pairStatus = pairStatuses[id];
+  const gov = useStore((s) => s.gov) ?? { kind: "running" as const, reason: null, concurrency: 2 };
   const setConfig = useStore((s) => s.setConfig);
   const setQueueStatus = useStore((s) => s.setQueueStatus);
   const setPairStatuses = useStore((s) => s.setPairStatuses);
   const config = useStore((s) => s.config);
+
+  const govKind = String(gov?.kind ?? gov?.state ?? "running").toLowerCase();
+  const isEnginePaused = govKind === "user_paused" || govKind === "paused";
 
   const [syncing, setSyncing] = useState(false);
   const [copiedLocal, setCopiedLocal] = useState(false);
@@ -186,11 +190,12 @@ function FolderPairRow({
   })();
 
   const isCurrentlySyncing =
-    syncing ||
-    Boolean(pairStatus?.is_syncing) ||
-    activeTransfers.length > 0 ||
-    (pairStatus?.running ?? 0) > 0 ||
-    (pairStatus?.queued ?? 0) > 0;
+    !isEnginePaused &&
+    (syncing ||
+      Boolean(pairStatus?.is_syncing) ||
+      activeTransfers.length > 0 ||
+      (pairStatus?.running ?? 0) > 0 ||
+      (pairStatus?.queued ?? 0) > 0);
   const primaryTransfer = activeTransfers[0];
   const transfersScrollRef = useRef<HTMLDivElement>(null);
   const primaryTransferRef = useRef<HTMLDivElement>(null);
@@ -363,7 +368,50 @@ function FolderPairRow({
 
             {/* Line 2: Status Line belonging directly to this pair */}
             <div className="flex items-center gap-2 text-xs font-mono min-w-0 whitespace-nowrap overflow-hidden">
-              {primaryTransfer ? (
+              {!enabled ? (
+                <div className="flex items-center gap-1.5 text-[#d29922] whitespace-nowrap min-w-0">
+                  <Pause size={12} className="text-[#d29922] shrink-0" />
+                  <span>Folder sync paused</span>
+                </div>
+              ) : isEnginePaused ? (
+                primaryTransfer ? (
+                  <div className="flex items-center gap-1.5 min-w-0 text-xs">
+                    <span className="flex items-center gap-1 text-zinc-400 shrink-0 font-semibold">
+                      <Pause size={12} className="text-zinc-400 shrink-0" />
+                      Sync Paused ({primaryTransfer.kind.toLowerCase().includes("download") ? "Download" : "Upload"}):
+                    </span>
+                    <span
+                      className="text-[#e6edf3] font-mono font-medium truncate max-w-[240px] sm:max-w-md lg:max-w-xl xl:max-w-2xl"
+                      title={primaryTransfer.relPath}
+                    >
+                      "{primaryTransfer.fileName}"
+                    </span>
+                    {primaryTransfer.pct > 0 && (
+                      <span className="text-zinc-400 font-mono shrink-0">
+                        ({primaryTransfer.pct}%)
+                      </span>
+                    )}
+                    <span className="text-zinc-500 font-sans text-[11px] shrink-0">
+                      • Engine paused
+                    </span>
+                    {moreTransfersCount > 0 && (
+                      <span className="text-[#7d8590] shrink-0 font-sans text-[11px]">
+                        (+{moreTransfersCount} more)
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-zinc-400 whitespace-nowrap min-w-0">
+                    <Pause size={12} className="text-zinc-400 shrink-0" />
+                    <span>Sync paused • Engine is paused</span>
+                    {pendingFiles > 0 && (
+                      <span className="text-[#7d8590] font-mono">
+                        ({pendingFiles} file{pendingFiles === 1 ? "" : "s"} waiting)
+                      </span>
+                    )}
+                  </div>
+                )
+              ) : primaryTransfer ? (
                 <div className="flex items-center gap-1.5 min-w-0 text-xs">
                   {primaryTransfer.kind.toLowerCase().includes("download") ? (
                     <span className="flex items-center gap-1 text-[#58a6ff] shrink-0 font-semibold">
@@ -485,8 +533,8 @@ function FolderPairRow({
           <button
             type="button"
             onClick={handleSync}
-            disabled={!enabled || isCurrentlySyncing}
-            title="Sync this folder now"
+            disabled={!enabled || isCurrentlySyncing || isEnginePaused}
+            title={isEnginePaused ? "Sync engine is paused" : "Sync this folder now"}
             className="p-1.5 rounded-md text-[#7d8590] hover:text-[#e6edf3] hover:bg-[#21262d] transition-colors cursor-pointer disabled:opacity-40"
           >
             <RefreshCw
@@ -539,12 +587,12 @@ function FolderPairRow({
           <div className="relative rounded-lg bg-[#080c12] border border-[#30363d]/80 p-3 shadow-inner flex flex-col h-[180px]">
             {/* Child Panel Sub-Header */}
             <div className="flex items-center justify-between text-[11px] font-medium text-[#7d8590] pb-2 border-b border-[#21262d] shrink-0">
-              <span className="flex items-center gap-1.5 text-[#58a6ff] font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />
-                Active Transfers in "{folderName}" ({activeTransfers.length})
+              <span className={cn("flex items-center gap-1.5 font-semibold", isEnginePaused ? "text-zinc-400" : "text-[#58a6ff]")}>
+                <span className={cn("w-1.5 h-1.5 rounded-full", isEnginePaused ? "bg-zinc-400" : "bg-[#58a6ff] animate-pulse")} />
+                {isEnginePaused ? "Transfers Paused" : "Active Transfers"} in "{folderName}" ({activeTransfers.length})
               </span>
               <span className="font-mono text-[10px] text-[#7d8590] hidden sm:inline">
-                Live Drive sync
+                {isEnginePaused ? "Engine paused" : "Live Drive sync"}
               </span>
             </div>
 
@@ -555,8 +603,8 @@ function FolderPairRow({
             >
               {activeTransfers.map((t, idx) => {
                 const isDownload = t.kind.toLowerCase().includes("download");
-                const speed = t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
-                const eta = formatSmartEta(t.etaSecs, t.bytesTotal, t.bytesDone, t.speedBps);
+                const speed = !isEnginePaused && t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
+                const eta = !isEnginePaused ? formatSmartEta(t.etaSecs, t.bytesTotal, t.bytesDone, t.speedBps) : null;
 
                 return (
                   <div
@@ -566,7 +614,12 @@ function FolderPairRow({
                   >
                     <div className="flex items-center justify-between text-xs gap-3">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        {isDownload ? (
+                        {isEnginePaused ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-zinc-500/20 text-zinc-300 border border-zinc-500/40 shrink-0">
+                            <Pause size={11} className="text-zinc-400" />
+                            Paused ({isDownload ? "Download" : "Upload"})
+                          </span>
+                        ) : isDownload ? (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40 shrink-0">
                             <ArrowDown size={11} className="animate-bounce" />
                             Downloading
@@ -598,10 +651,13 @@ function FolderPairRow({
                         {speed && <span className="text-[#58a6ff] font-medium">{speed}</span>}
                         {speed && eta && <span>•</span>}
                         {eta && <span className="text-[#c9d1d9]">{eta}</span>}
+                        {isEnginePaused && <span className="text-zinc-400 font-medium">Paused</span>}
                         {t.bytesTotal > 0 ? (
                           <span className="text-[#e6edf3] font-bold ml-1">{t.pct}%</span>
                         ) : (
-                          <span className="text-[#58a6ff] font-medium ml-1">Transferring</span>
+                          <span className={cn("font-medium ml-1", isEnginePaused ? "text-zinc-400" : "text-[#58a6ff]")}>
+                            {isEnginePaused ? "Queued" : "Transferring"}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -609,13 +665,15 @@ function FolderPairRow({
                     <Progress
                       value={t.bytesTotal > 0 ? t.pct : 100}
                       aria-label={`Transfer progress for ${t.fileName}`}
-                      className={cn("h-1.5 bg-[#161b22]", t.bytesTotal === 0 && "animate-pulse")}
+                      className={cn("h-1.5 bg-[#161b22]", !isEnginePaused && t.bytesTotal === 0 && "animate-pulse")}
                     />
 
                     <div className="flex items-center justify-between text-[11px] font-mono text-[#7d8590]">
                       <span>
                         {t.bytesTotal > 0
                           ? `${formatBytes(t.bytesDone)} of ${formatBytes(t.bytesTotal)}`
+                          : isEnginePaused
+                          ? "Transfer paused"
                           : "Connecting & transferring…"}
                       </span>
                       {t.bytesTotal > 0 && t.pct > 0 && (
@@ -682,11 +740,12 @@ export function HomeScreen({ onSelectPair, onNavigate }: HomeScreenProps) {
     (e): e is ProgressEvent => Boolean(e && e.bytes_total > 0 && e.bytes_done < e.bytes_total)
   );
   const isBatchActive =
-    queueStatus.running > 0 ||
-    queueStatus.queued > 0 ||
-    activeEvents.length > 0 ||
-    syncingAll ||
-    Object.values(pairStatuses).some((s) => s.is_syncing);
+    !isPaused &&
+    (queueStatus.running > 0 ||
+      queueStatus.queued > 0 ||
+      activeEvents.length > 0 ||
+      syncingAll ||
+      Object.values(pairStatuses).some((s) => s.is_syncing));
   const hasFailures = (queueStatus.failed ?? 0) > 0 && !isBatchActive;
 
   // Check if any active pair has pending files that need sync

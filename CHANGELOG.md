@@ -5,6 +5,24 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.2.4] - 2026-11-21
+
+### 🔧 Engine Resilience & Queue Stability — DB Maintenance Prune, Double Scan Fix & Auth Queue Gate
+
+#### 🗄️ Database Maintenance
+- **Corrected Prune Column Typo**: Fixed query in `prune_and_optimize` referencing nonexistent `created_at` instead of `created_ms`, allowing dead done/cancelled jobs to be pruned and freeing space.
+
+#### ⚡ Sync Engine & Scanning
+- **Eliminated Redundant Filesystem Scan**: Extracted `run_drive_cycle_inner` so `reconcile_pair_gap` avoids a duplicate local filesystem scan per cycle, preventing pairs from stalling in indefinite scan loops.
+
+#### 🛡️ Queue & Transfer Protection
+- **Disconnected Google Drive Queue Gate**: Queue dispatcher now verifies `auth::is_logged_in()` before pulling jobs or dispatching transfer workers.
+- **Selective Startup & Sync Gap Check**: Startup auto-gap check and manual `sync_now` verify Google Drive connectivity before attempting cloud reconciliation.
+- **Live Queue Signal on Auth State**: Logging in or signing out immediately signals the queue dispatcher via `wake_queue()`.
+- **Orphan Progress Auto-Dismissal**: Failed jobs now emit a terminal completion event so 0% progress bars are cleared from the UI.
+
+---
+
 ## [1.2.3] - 2026-11-12
 
 ### 🔧 Reliability & Edge-Case Patch — Nested Folder Renames, Drive 404 Recovery & Delete Race Prevention

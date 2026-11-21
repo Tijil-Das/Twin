@@ -53,8 +53,17 @@ export default function App() {
     };
   }, []);
 
+  const mainRef = useRef<HTMLElement>(null);
+
   // Track window visibility so we stop processing events when hidden.
   const visibleRef = useRef(document.visibilityState === "visible");
+
+  // Reset scroll position when switching screens or opening a folder pair detail
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0;
+    }
+  }, [screen, selectedPairId]);
 
   // Only keep pair statuses for pairs still enabled in config.
   // Prevents disabled pairs from resurrecting via backend polling.
@@ -181,6 +190,7 @@ export default function App() {
           void authStatus().then((s) => setUserProfile(s.user ?? null)).catch(() => undefined);
         } else {
           setUserProfile(null);
+          useStore.setState({ progress: {} });
         }
       }),
 
@@ -206,7 +216,7 @@ export default function App() {
           }}
         />
 
-        <main className="flex-1 h-screen overflow-y-auto bg-[var(--bg)] relative flex flex-col">
+        <main ref={mainRef} className="flex-1 h-screen overflow-y-auto bg-[var(--bg)] relative flex flex-col">
           {!isOnline && (
             <div className="sticky top-0 z-40 shrink-0 bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 flex items-center justify-between text-xs text-amber-300 backdrop-blur-md">
               <div className="flex items-center gap-2.5">

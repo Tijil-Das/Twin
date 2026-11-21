@@ -438,6 +438,10 @@ async fn run_sync_cycle(
         return Err(format!("pair {} is disabled", pair_id));
     }
 
+    if !auth::is_logged_in() {
+        return Err("Google Drive is not connected. Please connect Google Drive in Settings.".into());
+    }
+
     let db_path = db_s.db_path();
     let db_arc  = Arc::new(db::Db::open(&db_path).map_err(|e| e.to_string())?);
     let drive   = drive::DriveClient::new().map_err(|e| e.to_string())?;
@@ -918,7 +922,11 @@ fn main() {
                 let echo_init = Arc::clone(&echo_shared);
 
                 tauri::async_runtime::spawn(async move {
-                    let drive_opt = drive::DriveClient::new().ok();
+                    let drive_opt = if auth::is_logged_in() {
+                        drive::DriveClient::new().ok()
+                    } else {
+                        None
+                    };
                     for pair in pairs_init.iter().filter(|p| p.enabled) {
                         info!("Starting initial auto-gap check for pair {} ({})", pair.id, pair.local);
                         let pair_rules = rules::Rules::for_pair(&rules_cfg_init, pair);
@@ -943,7 +951,9 @@ fn main() {
                             }
                         }
                     }
-                    q_init.wake();
+                    if auth::is_logged_in() {
+                        q_init.wake();
+                    }
                 });
             }
 

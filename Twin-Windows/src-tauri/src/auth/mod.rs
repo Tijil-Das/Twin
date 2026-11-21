@@ -391,6 +391,7 @@ pub async fn login_with_urls(
 
     app.emit("auth://changed", true)
         .map_err(|e| AppError::Other(format!("emit: {e}")))?;
+    crate::queue::wake_queue();
     info!("OAuth login complete");
     Ok(())
 }
@@ -497,8 +498,11 @@ pub async fn auth_login(app: tauri::AppHandle) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-pub async fn auth_logout() -> Result<(), AppError> {
-    logout().await
+pub async fn auth_logout(app: tauri::AppHandle) -> Result<(), AppError> {
+    logout().await?;
+    let _ = app.emit("auth://changed", false);
+    crate::queue::wake_queue();
+    Ok(())
 }
 
 #[tauri::command]

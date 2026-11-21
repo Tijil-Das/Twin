@@ -1,3 +1,27 @@
+# Twin v1.2.4
+
+Engine resilience & queue stability release: database maintenance pruning schema fix, elimination of redundant filesystem scan loops, Google Drive disconnected queue gate, and failure progress auto-dismissal.
+
+---
+
+### 🚀 What's New & Fixed in v1.2.4
+
+#### 🗄️ Database Maintenance & Pruning Fix
+- **Corrected Pruning Column Schema**: Resolved an issue where running "Clean up database" in Settings reported 0 jobs cleaned. The query mistakenly referenced a nonexistent `created_at` column instead of `created_ms`. Dead done/cancelled jobs older than the retention period are now properly pruned and compacted.
+
+#### ⚡ Elimination of Redundant Pair Scan Loops
+- **Direct Remote Reconciliation Path**: Extracted `run_drive_cycle_inner` so that `reconcile_pair_gap` skips performing a redundant second filesystem walk per cycle. This eliminates scanning stalls and prevents pairs from getting stuck in indefinite scan loops.
+
+#### 🛡️ Google Drive Disconnected Queue Gate
+- **Authentication Dispatcher Gate**: The job queue dispatcher now strictly checks `auth::is_logged_in()` before pulling jobs or dispatching workers. When Google Drive is disconnected, transfer jobs remain safely dormant in SQLite without CPU churn, infinite 2-second retry loops, or error spam.
+- **Selective Startup & Sync Gap Check**: Startup auto-gap checks and manual "Sync Now" calls verify Google Drive connectivity before attempting cloud reconciliation, falling back to local-only scanning when disconnected.
+- **Immediate Queue Notification on Auth Changes**: Logging in or signing out instantly signals the queue dispatcher via `wake_queue()`, starting or stopping transfers immediately.
+
+#### 📊 Transfer Failure Progress Cleanup
+- **Orphan Progress Auto-Dismissal**: Fixed an issue where failed transfers left persistent 0% progress bars frozen in the UI. Failed jobs now emit a terminal completion signal that triggers immediate auto-dismissal in the frontend store.
+
+---
+
 # Twin v1.2.3
 
 Reliability & edge-case patch release: robust nested folder & cross-directory rename detection, dynamic Google Drive parent resolution, graceful 404 recovery, and deletion race condition prevention.

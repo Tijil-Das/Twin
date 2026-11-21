@@ -16,6 +16,7 @@ use tokio::time::{sleep_until, Instant};
 use tracing::{info, warn};
 
 static WAKE_OBSERVER: Mutex<Option<Arc<Notify>>> = Mutex::new(None);
+static QUEUE_NOTIFY: Mutex<Option<Arc<Notify>>> = Mutex::new(None);
 
 /// Register an observer Notify to be alerted immediately whenever a job is queued or finished.
 pub fn set_wake_observer(n: Arc<Notify>) {
@@ -30,6 +31,16 @@ pub fn notify_wake_observer() {
             obs.notify_one();
         }
     }
+}
+
+/// Wake the queue dispatcher from any thread or module (e.g. on auth login/logout).
+pub fn wake_queue() {
+    if let Ok(guard) = QUEUE_NOTIFY.lock() {
+        if let Some(ref n) = *guard {
+            n.notify_one();
+        }
+    }
+    notify_wake_observer();
 }
 
 pub static ACTIVE_WORKERS: AtomicUsize = AtomicUsize::new(0);
@@ -117,6 +128,10 @@ impl Queue {
 
         let q = Queue { notify: Arc::clone(&notify) };
 
+        if let Ok(mut guard) = QUEUE_NOTIFY.lock() {
+            *guard = Some(Arc::clone(&notify));
+        }
+
         // Spawn the dispatcher.
         let db2 = Arc::clone(&db);
         let gov2 = gov.clone();
@@ -156,6 +171,16 @@ async fn dispatcher<R: JobRunner>(
         // Wait for governor to be Running before pulling work.
         gov.checkpoint().await;
 
+        // Ensure user is authenticated with Google Drive before dispatching transfers.
+        #[cfg(not(test))]
+        if !crate::auth::is_logged_in() {
+            tokio::select! {
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(2)) => {}
+                _ = notify.notified() => {}
+            }
+            continue;
+        }
+
         let now = now_ms();
 
         match db.next_due_job(now) {
@@ -178,7 +203,7 @@ async fn dispatcher<R: JobRunner>(
                     let _worker_guard = WorkerGuard::new();
                     let _pair_guard = crate::sync::PairSyncGuard::new(&job_pair_id);
                     let _permit = permit; // held for duration
-                    match runner2.run(job, prog).await {
+                    match runner2.run(job, prog.clone()).await {
                         Ok(()) => {
                             if let Err(e) = db2.complete_job(job_id) {
                                 warn!("complete_job {job_id}: {e}");
@@ -208,6 +233,15 @@ async fn dispatcher<R: JobRunner>(
                                 rel_path: job_rel_path,
                                 result: "failed".into(),
                                 detail: Some(err_msg),
+                            });
+                            // Signal completion to clear any in-flight progress bar from UI
+                            let _ = prog.send(ProgressUpdate {
+                                job_id,
+                                pair_id: String::new(),
+                                rel_path: String::new(),
+                                bytes_done: 1,
+                                bytes_total: 1,
+                                kind: "failed".into(),
                             });
                             notify_wake_observer();
                         }
@@ -283,7 +317,11 @@ pub async fn sync_now(
     };
     let gov = gov_state.0.clone();
     let q = state.0.clone();
-    let drive_opt = crate::drive::DriveClient::new().ok();
+    let drive_opt = if crate::auth::is_logged_in() {
+        crate::drive::DriveClient::new().ok()
+    } else {
+        None
+    };
     let echo = std::sync::Arc::new(crate::sync::SelfWritten::new());
 
     tokio::spawn(async move {

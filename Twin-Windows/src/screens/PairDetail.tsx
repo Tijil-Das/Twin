@@ -32,6 +32,7 @@ import {
   X,
   AlertTriangle,
   Lock,
+  Pause,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,8 +93,12 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
   const setPairStatuses = useStore((s) => s.setPairStatuses);
   const pairs = useStore((s) => s.pairs) ?? [];
   const pairStatuses = useStore((s) => s.pairStatuses) ?? {};
+  const gov = useStore((s) => s.gov) ?? { kind: "running" as const, reason: null, concurrency: 2 };
   const allActivity = useStore((s) => s.activity) ?? [];
   const progress = useStore((s) => s.progress) ?? {};
+
+  const govKind = String(gov?.kind ?? gov?.state ?? "running").toLowerCase();
+  const isEnginePaused = govKind === "user_paused" || govKind === "paused";
 
   const pair = pairs.find((p) => p.id === pairId);
   const pairStatus = pairStatuses[pairId];
@@ -211,11 +216,12 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
   })();
 
   const isCurrentlySyncing =
-    syncing ||
-    Boolean(pairStatus?.is_syncing) ||
-    activeTransfers.length > 0 ||
-    (pairStatus?.running ?? 0) > 0 ||
-    (pairStatus?.queued ?? 0) > 0;
+    !isEnginePaused &&
+    (syncing ||
+      Boolean(pairStatus?.is_syncing) ||
+      activeTransfers.length > 0 ||
+      (pairStatus?.running ?? 0) > 0 ||
+      (pairStatus?.queued ?? 0) > 0);
 
   // Activity events for this pair (historical DB records)
   const pairActivities = allActivity.filter((a) => a.pair_id === pairId);
@@ -622,7 +628,15 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
             </h1>
 
             {/* Live Status Pill */}
-            {activeTransfers.length > 0 || (pairStatus && pairStatus.running > 0) ? (
+            {!pair.enabled ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#30363d]/60 text-[#d29922] border border-[#d29922]/40 whitespace-nowrap">
+                <Pause size={12} /> Paused
+              </span>
+            ) : isEnginePaused ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 whitespace-nowrap">
+                <Pause size={12} /> Engine Paused
+              </span>
+            ) : activeTransfers.length > 0 || (pairStatus && pairStatus.running > 0) ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 whitespace-nowrap">
                 <RefreshCw size={12} className="animate-spin" /> Transferring
               </span>
@@ -676,8 +690,9 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
           <Button
             variant="secondary"
             onClick={handleSync}
-            disabled={!pair.enabled || isCurrentlySyncing}
-            className="h-8 px-3 text-xs font-semibold bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] border border-[#30363d] cursor-pointer flex items-center gap-1.5"
+            disabled={!pair.enabled || isCurrentlySyncing || isEnginePaused}
+            title={isEnginePaused ? "Sync engine is paused" : "Sync this folder now"}
+            className="h-8 px-3 text-xs font-semibold bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] border border-[#30363d] cursor-pointer flex items-center gap-1.5 disabled:opacity-40"
           >
             <RefreshCw size={13} className={cn(isCurrentlySyncing && "animate-spin text-[#58a6ff]")} />
             <span>Sync Now</span>
@@ -1249,23 +1264,29 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
       {activeTransfers.length > 0 && (
         <div className="p-5 rounded-xl bg-[#0d1117] border border-[#1f6feb]/40 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-white flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#58a6ff] animate-ping" />
-              Live In-Flight Transfers ({activeTransfers.length})
+            <span className={cn("text-sm font-semibold flex items-center gap-2", isEnginePaused ? "text-zinc-300" : "text-white")}>
+              <span className={cn("w-2 h-2 rounded-full", isEnginePaused ? "bg-zinc-400" : "bg-[#58a6ff] animate-ping")} />
+              {isEnginePaused ? "Transfers Paused" : "Live In-Flight Transfers"} ({activeTransfers.length})
+              {isEnginePaused && <span className="text-xs font-normal text-zinc-500 font-sans">• Engine Paused</span>}
             </span>
           </div>
 
           <div className="divide-y divide-[#30363d]/60">
             {activeTransfers.map((t) => {
               const isDownload = t.kind.toLowerCase().includes("download");
-              const speed = t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
-              const eta = formatSmartEta(t.etaSecs, t.bytesTotal, t.bytesDone, t.speedBps);
+              const speed = !isEnginePaused && t.speedBps && t.speedBps > 0 ? formatSpeed(t.speedBps) : "";
+              const eta = !isEnginePaused ? formatSmartEta(t.etaSecs, t.bytesTotal, t.bytesDone, t.speedBps) : null;
 
               return (
                 <div key={t.jobId} className="py-3 space-y-2">
                   <div className="flex items-center justify-between text-xs gap-3">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      {isDownload ? (
+                      {isEnginePaused ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-zinc-500/20 text-zinc-300 border border-zinc-500/40 shrink-0">
+                          <Pause size={12} className="text-zinc-400" />
+                          Paused ({isDownload ? "Download" : "Upload"})
+                        </span>
+                      ) : isDownload ? (
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40 shrink-0">
                           <ArrowDown size={12} className="animate-bounce" />
                           Downloading
@@ -1291,29 +1312,41 @@ export function PairDetailScreen({ pairId, onBack }: Props) {
                       {speed && <span className="text-[#58a6ff]">{speed}</span>}
                       {speed && eta && <span>•</span>}
                       {eta && <span>{eta}</span>}
+                      {isEnginePaused && <span className="text-zinc-400 font-medium">Paused</span>}
                       {t.bytesTotal > 0 ? (
                         <span className="text-white font-bold ml-1">{t.pct}%</span>
                       ) : (
-                        <span className="text-[#58a6ff] font-medium ml-1">Transferring</span>
+                        <span className={cn("font-medium ml-1", isEnginePaused ? "text-zinc-400" : "text-[#58a6ff]")}>
+                          {isEnginePaused ? "Queued" : "Transferring"}
+                        </span>
                       )}
                     </div>
                   </div>
 
                   <Progress
                     value={t.bytesTotal > 0 ? t.pct : 100}
-                    className={cn("h-2 bg-[#161b22]", t.bytesTotal === 0 && "animate-pulse")}
+                    className={cn("h-2 bg-[#161b22]", !isEnginePaused && t.bytesTotal === 0 && "animate-pulse")}
                   />
 
                   <div className="flex items-center justify-between text-xs font-mono text-[#7d8590]">
                     <span>
                       {t.bytesTotal > 0
                         ? `${formatBytes(t.bytesDone)} of ${formatBytes(t.bytesTotal)}`
+                        : isEnginePaused
+                        ? "Transfer paused"
                         : "Connecting & transferring…"}
                     </span>
-                    <span className="text-[#58a6ff] flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />
-                      Live Google Drive transfer
-                    </span>
+                    {isEnginePaused ? (
+                      <span className="text-zinc-500 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                        Engine paused
+                      </span>
+                    ) : (
+                      <span className="text-[#58a6ff] flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />
+                        Live Google Drive transfer
+                      </span>
+                    )}
                   </div>
                 </div>
               );
