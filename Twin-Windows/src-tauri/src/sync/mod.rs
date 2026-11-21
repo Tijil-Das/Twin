@@ -156,12 +156,24 @@ pub struct CycleReport {
 /// - Returns a `CycleReport`.
 pub async fn run_pair_cycle(pair: &PairEntry, ctx: &Ctx) -> Result<CycleReport, AppError> {
     let _guard = PairSyncGuard::new(&pair.id);
-    let mut report = CycleReport::default();
 
     // 1. Scan local filesystem so Db has all local files, modifications, and deletions recorded.
     let cfg = crate::config::load().unwrap_or_default();
     let rules = crate::rules::Rules::for_pair(&cfg.rules, pair);
     let _ = crate::watcher::scan_pair(pair, Arc::clone(&ctx.db), &rules, &ctx.gov).await;
+
+    run_drive_cycle_inner(pair, ctx, &cfg).await
+}
+
+/// Internal: run only the Drive-listing + reconcile part of a sync cycle.
+/// Callers that have already performed a local scan (e.g. `reconcile_pair_gap`)
+/// should call this instead of `run_pair_cycle` to avoid a redundant filesystem walk.
+async fn run_drive_cycle_inner(
+    pair: &PairEntry,
+    ctx: &Ctx,
+    cfg: &crate::config::Config,
+) -> Result<CycleReport, AppError> {
+    let mut report = CycleReport::default();
 
     // Only two_way and mirror modes participate in the Changes feed.
     let use_changes = matches!(pair.mode, PairMode::TwoWay | PairMode::Mirror);
@@ -249,7 +261,10 @@ pub async fn reconcile_pair_gap(
     let mut report = CycleReport::default();
     if pair.mode == PairMode::Mirror {
         // Mirror mode requires full listing reconciliation to guarantee remote matches local.
-        report = run_pair_cycle(pair, ctx).await?;
+        // The local scan was already done above — use the Drive-only inner path to avoid
+        // a second redundant filesystem walk that would cause the pair to appear stuck.
+        let cfg = crate::config::load().unwrap_or_default();
+        report = run_drive_cycle_inner(pair, ctx, &cfg).await?;
     } else if matches!(pair.mode, PairMode::TwoWay) {
         let page_token = ctx.db.get_page_token(&pair.id)?;
         if let Some(token) = page_token {
@@ -281,12 +296,16 @@ pub async fn reconcile_pair_gap(
                     report.downloads_queued += applied;
                 }
                 Err(e) => {
-                    info!("pair {}: incremental changes check failed ({e}), running full cycle", pair.id);
-                    report = run_pair_cycle(pair, ctx).await?;
+                    info!("pair {}: incremental changes check failed ({e}), running full Drive cycle", pair.id);
+                    // Scan was already done above; run only the Drive reconcile inner path.
+                    let cfg = crate::config::load().unwrap_or_default();
+                    report = run_drive_cycle_inner(pair, ctx, &cfg).await?;
                 }
             }
         } else {
-            report = run_pair_cycle(pair, ctx).await?;
+            // No token yet — run the Drive inner cycle (scan already done above).
+            let cfg = crate::config::load().unwrap_or_default();
+            report = run_drive_cycle_inner(pair, ctx, &cfg).await?;
         }
     }
 

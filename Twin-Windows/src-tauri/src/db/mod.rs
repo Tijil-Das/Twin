@@ -1022,7 +1022,7 @@ impl Db {
             .as_millis() as i64
             - (7 * 86_400_000);
         let jobs_removed = conn.execute(
-            "DELETE FROM jobs WHERE (status='done' OR status='cancelled') AND created_at < ?1",
+            "DELETE FROM jobs WHERE (status='done' OR status='cancelled') AND created_ms < ?1",
             params![job_cutoff_ms],
         )
         .unwrap_or(0);
